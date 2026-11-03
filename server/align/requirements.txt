@@ -1,0 +1,5 @@
+# The auto-sync helper's Python packages (torchaudio 2.9 drops the CTC aligner this uses).
+whisperx==3.8.6
+demucs==4.1.0
+torch==2.8.0
+torchaudio==2.8.0

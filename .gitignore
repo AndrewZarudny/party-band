@@ -1,0 +1,35 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+public/font
+public/soundfont
+.env.local
+.cache
+
+# Secrets and local data (API keys, recordings, models, the auto-sync helper's Python install)
+.env
+.env.*
+.claude/
+__pycache__/
+*.pyc
