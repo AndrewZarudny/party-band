@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import '../lessons/lessons.css'
 import { engine } from '../audio/engine'
-import type { ApplyOutcome, Cosmetic, Lesson, LessonResult, Prefs, Progress, Speed, SyncOutcome } from '../lessons/types'
+import type { ApplyOutcome, Cosmetic, Lesson, LessonResult, Prefs, Progress, SyncOutcome } from '../lessons/types'
 import { WORLDS, lessonById, validateLessons } from '../lessons/data'
-import { applyResult, dinoStageFor, isUnlocked, loadProgress, nextLesson, recordSkip, saveProgress } from '../lessons/progress'
+import { applyResult, dinoStageFor, isUnlocked, levelFor, loadProgress, nextLesson, recordSkip, saveProgress } from '../lessons/progress'
+import { pickFor, slowerSpeed, speedFor } from '../lessons/speed'
+import { planAfterRun, skipStep, swapStep, withTodayPlan } from '../lessons/plan'
 import { openAccountDialog, useAccount } from '../account/session'
 import { loadPrefs, savePrefs } from '../lessons/prefs'
 import { syncResult } from '../lessons/scoring'
@@ -16,9 +18,10 @@ import { SyncUp } from '../lessons/ui/SyncUp'
 import { SettingsPanel } from '../lessons/ui/SettingsPanel'
 import { AchievementsPanel } from '../lessons/ui/AchievementsPanel'
 import { PlayScreen } from '../lessons/ui/PlayScreen'
+import { PlanStrip, TodayScreen } from '../lessons/ui/TodayPlan'
 import { Dino } from '../lessons/ui/Dino'
 
-type Screen = 'welcome' | 'home' | 'intro' | 'sync' | 'play' | 'results' | 'achievements' | 'settings'
+type Screen = 'welcome' | 'home' | 'today' | 'intro' | 'sync' | 'play' | 'results' | 'achievements' | 'settings'
 
 const SYNC_ID = 'w1-01'
 
@@ -28,10 +31,6 @@ function hasSavedProgress() {
   } catch {
     return false
   }
-}
-
-function slower(s: Speed): Speed {
-  return s === 1 ? 0.85 : 0.7
 }
 
 /** The lesson after `id` in world order that is open now, or the first open unpassed one. */
@@ -56,7 +55,7 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
   const [syncBack, setSyncBack] = useState<Screen>('home')
   const [runKey, setRunKey] = useState(0)
   const [listen, setListen] = useState(false)
-  const [last, setLast] = useState<{ result: LessonResult; outcome: ApplyOutcome } | null>(null)
+  const [last, setLast] = useState<{ result: LessonResult; outcome: ApplyOutcome; finishedSet: boolean } | null>(null)
   const [staleEngine] = useState(() => import.meta.env.DEV && !engineHasLessons())
 
   useEffect(() => {
@@ -103,11 +102,19 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
     setLast(null)
   }, [])
 
+  // Today's set: made once per practice day, when the home or set screen shows.
+  useEffect(() => {
+    if (screen !== 'home' && screen !== 'today') return
+    const p = withTodayPlan(progress, new Date())
+    if (p) updateProgress(p)
+  }, [screen, progress, updateProgress])
+
   const open = (id: string) => {
     const l = lessonById(id)
     if (!l) return
     setLessonId(id)
-    updatePrefs({ ...prefs, lastLesson: id })
+    // A manual speed belongs to one lesson.
+    updatePrefs({ ...prefs, lastLesson: id, speedPick: prefs.speedPick?.lessonId === id ? prefs.speedPick : null })
     if (l.type === 'sync') {
       setSyncLesson(true)
       setSyncBack('home')
@@ -128,15 +135,29 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
     setScreen('play')
   }
 
-  const playSlower = () => {
-    updatePrefs({ ...prefs, speed: slower(prefs.speed) })
+  // The speed the current lesson's next run plays at (Auto, or this lesson's manual pick).
+  const runSpeed = lesson ? speedFor(lesson, progress.lessons[lesson.id], prefs) : 1
+
+  const playSlower = (from: number) => {
+    if (!lesson) return
+    updatePrefs({ ...prefs, speedPick: { lessonId: lesson.id, speed: slowerSpeed(from) } })
     play()
   }
 
   const finish = (l: Lesson, r: LessonResult) => {
-    const outcome = applyResult(progress, l, r, new Date(), { age: prefs.age })
-    updateProgress(outcome.progress)
-    setLast({ result: r, outcome })
+    const now = new Date()
+    const outcome = applyResult(progress, l, r, now, { age: prefs.age })
+    const planned = planAfterRun(outcome.progress, l.id, r, now)
+    updateProgress(planned.progress)
+    // Fold the set bonus into the card's XP lines, total and level.
+    let shown: ApplyOutcome = { ...outcome, progress: planned.progress }
+    if (planned.bonus > 0) {
+      const xp = outcome.xp + planned.bonus
+      const lines = outcome.lines.filter((x) => x.label !== 'Total')
+      lines.push({ label: "Today's set", value: `+${planned.bonus}` }, { label: 'Total', value: `+${xp}` })
+      shown = { ...shown, xp, lines, levelAfter: levelFor(planned.progress.xp).level }
+    }
+    setLast({ result: r, outcome: shown, finishedSet: planned.finished })
     setScreen('results')
   }
 
@@ -205,28 +226,43 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
         key={`${lesson.id}-${runKey}`}
         lesson={lesson}
         listen={listen}
+        speed={runSpeed}
         prefs={prefs}
         stage={stage}
         cosmetics={cosmetics}
         onPrefs={updatePrefs}
         onEnd={(r) => finish(lesson, r)}
         onQuit={() => setScreen('intro')}
-        onSlower={playSlower}
+        onSlower={() => playSlower(runSpeed)}
         onConnect={onConnect}
       />
     )
   } else if (screen === 'results' && lesson && last) {
     const next = nextAfter(last.outcome.progress, lesson.id)
     body = (
-      <ResultCard
-        lesson={lesson}
-        result={last.result}
-        outcome={last.outcome}
-        onNext={next ? () => open(next) : null}
-        onAgain={() => (lesson.type === 'sync' ? open(lesson.id) : play())}
-        onSlower={() => (lesson.type === 'sync' ? open(lesson.id) : playSlower())}
-        onHome={goHome}
-        onResync={() => resync('home')}
+      <>
+        <PlanStrip progress={last.outcome.progress} lessonId={lesson.id} finished={last.finishedSet} onOpen={open} />
+        <ResultCard
+          lesson={lesson}
+          result={last.result}
+          outcome={last.outcome}
+          pick={pickFor(prefs, lesson.id)}
+          onNext={next ? () => open(next) : null}
+          onAgain={() => (lesson.type === 'sync' ? open(lesson.id) : play())}
+          onSlower={() => (lesson.type === 'sync' ? open(lesson.id) : playSlower(last.result.speed))}
+          onHome={goHome}
+          onResync={() => resync('home')}
+        />
+      </>
+    )
+  } else if (screen === 'today') {
+    body = (
+      <TodayScreen
+        progress={progress}
+        onOpen={open}
+        onSwap={(i) => updateProgress(swapStep(progress, i, new Date()))}
+        onSkip={(i) => updateProgress(skipStep(progress, i))}
+        onBack={goHome}
       />
     )
   } else if (screen === 'achievements') {
@@ -250,6 +286,10 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
         onAchievements={() => setScreen('achievements')}
         onSettings={() => setScreen('settings')}
         onRename={(name) => updateProgress({ ...progress, dinoName: name })}
+        plan={progress.plan}
+        onPlanSwap={(i) => updateProgress(swapStep(progress, i, new Date()))}
+        onPlanSkip={(i) => updateProgress(skipStep(progress, i))}
+        onToday={() => setScreen('today')}
       />
     )
   }

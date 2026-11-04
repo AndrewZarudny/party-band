@@ -1,8 +1,9 @@
 // One play-through of a lesson: clock, band, input, judging and the end result.
 // The constructor is pure (LessonIntro uses it for previews); start() does all the side effects.
-import type { Autoplay, ChartEvent, Chart, InputFrame, InputOnset, JudgeResult, KeyName, Lesson, LessonResult, LiveHud, PlayedNote, RunState, Speed } from './types'
+import type { Autoplay, BackingSpec, ChartEvent, Chart, InputFrame, InputOnset, JudgeResult, KeyName, Lesson, LessonResult, LiveHud, PlayedNote, RunState, Speed } from './types'
 import { engine } from '../audio/engine'
 import { BackingBand } from '../audio/backing'
+import type { BackingPart } from '../audio/backing'
 import { FEELS, keysVoicing } from '../music/parts'
 import type { KeysVoicing } from '../music/parts'
 import { STANDARD_TUNING, parseChord } from '../music/theory'
@@ -26,6 +27,8 @@ const PLAYED_KEPT = 64
 const SLOPPY_JITTER = 0.14
 const SLOPPY_WRONG = 0.15
 const SLOPPY_SKIP = 0.1
+const BAND_GAIN = 0.7 // BackingBand's own output level; lesson.backing.level scales it
+const ALL_PARTS: Record<BackingPart, boolean> = { drums: true, bass: true, keys: true }
 
 export interface RunOpts {
   lesson: Lesson
@@ -81,6 +84,7 @@ export class LessonRun {
   private improvNotes: PlayedNote[] = []
   private box: FretPos[] = []
   private scalePcs: number[] = []
+  private listenBars = new Set<number>()
 
   constructor(o: RunOpts) {
     this.opts = o
@@ -128,7 +132,12 @@ export class LessonRun {
     this.aclock = new AudioClock(ctx)
     this.lead = new LeadVoice(ctx)
     const backing = lesson.backing
-    if (o.backingOn && backing) this.band = new BackingBand(ctx, ctx.destination)
+    const bandOn = !!backing && o.backingOn
+    if (backing && o.backingOn) {
+      this.band = new BackingBand(ctx, ctx.destination)
+      this.band.setVolume(BAND_GAIN * (backing.level ?? 1))
+    }
+    this.listenBars = new Set(this.chart.listenBars)
     const chords: (Chord | null)[] = backing ? backing.chords.map((s) => parseChord(s)) : []
     const voicings: (KeysVoicing | null)[] = []
     let prev: number[] | null = null
@@ -145,7 +154,8 @@ export class LessonRun {
       countInBeats: lesson.countInBeats ?? 4,
       totalBeats: this.chart.totalBeats,
       swing,
-      click: lesson.click ?? !backing,
+      // The click fills in whenever no band plays (no backing, or the Band switch is off).
+      click: lesson.click ?? !bandOn,
       onTick: (k) => this.onTick(k, chords, voicings, listen),
     })
 
@@ -252,7 +262,8 @@ export class LessonRun {
       const i = bar % chords.length
       const c = chords[i]
       const v = voicings[i]
-      if (c && v) this.band.playStep(k.t, k.step, 30 / this.bpm, c, FEELS[backing.feel], v, { drums: true, bass: true, keys: true })
+      const parts = this.partsFor(backing, bar)
+      if (c && v && parts) this.band.playStep(k.t, k.step, 30 / this.bpm, c, FEELS[backing.feel], v, parts)
     }
     const lead = this.lead
     if (!lead) return
@@ -271,6 +282,15 @@ export class LessonRun {
         strings.forEach((m, i) => lead.note(t + i * ARP_SEC, m, e.dur * spb, 0.7))
       }
     }
+  }
+
+  /** Band parts for one bar: the lesson's parts, thinned out in listen bars when the lesson asks. null = band rests. */
+  private partsFor(b: BackingSpec, bar: number): Record<BackingPart, boolean> | null {
+    const p = b.parts ? { drums: !!b.parts.drums, bass: !!b.parts.bass, keys: !!b.parts.keys } : ALL_PARTS
+    if (!this.listenBars.has(bar)) return p
+    const mode = b.onListen ?? 'all'
+    if (mode === 'none') return null
+    return mode === 'drums' ? { drums: p.drums, bass: false, keys: false } : p
   }
 
   private handleOnset(on: InputOnset) {

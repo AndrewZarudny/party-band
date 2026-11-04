@@ -91,10 +91,11 @@ function strumEvents(lesson: Lesson, chordBars: ChordBar[]): Draft[] {
   return out
 }
 
-/** The bar's chord as shown on the timeline: backing first, then the strummed chord, else ''. */
+/** The bar's chord as shown on the timeline: a band that plays harmony first, then the strummed chord, else ''. */
 function barChord(lesson: Lesson, i: number): string {
   const b = lesson.backing
-  if (b && b.chords.length) return b.chords[i % b.chords.length]
+  const harmony = !!b && (!b.parts || !!b.parts.bass || !!b.parts.keys)
+  if (b && harmony && b.chords.length) return b.chords[i % b.chords.length]
   const cb = lesson.chordBars?.[i]
   if (cb) return cb.chord === 'mute' ? '' : cb.chord
   return ''

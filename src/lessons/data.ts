@@ -10,6 +10,10 @@ const E5 = [0, 2, 2, -1, -1, -1]
 const A5o = [-1, 0, 2, 2, -1, -1]
 const AM_TOP = [-1, -1, -1, 5, 5, 5] // C E A on the top three strings
 const D_TOP = [-1, -1, -1, 7, 7, 5] // D F# A
+// Which band parts play. Keys only where the chord helps the ear (pitch, bends, a melody).
+const DRUMS = { drums: true }
+const GROOVE = { drums: true, bass: true }
+const FULL = { drums: true, bass: true, keys: true }
 const bars = (chord: string, strum: string, n: number, frets?: number[]) => Array.from({ length: n }, () => ({ chord, strum, frets }))
 
 export const WORLDS: WorldDef[] = [
@@ -30,53 +34,59 @@ export const LESSONS: Lesson[] = [
     tips: ['Pluck the open A string right on each click.', "Play with the click, don't chase it.",
       "Use headphones so the click doesn't leak into your guitar input.", 'Run this again if you change your audio interface or settings.'] },
   { id: 'w1-02', world: 1, order: 2, title: 'String Roll Call', goal: 'Find all six open strings by ear and feel.', type: 'notes',
-    bpm: 70, bars: 6, timing: 'easy', tone: 'Clean', seq: '0.0 1.0 2.0 3.0 4.0 5.0 4.0 3.0 2.0 1.0 0.0*2', step: 2,
+    bpm: 70, bars: 6, timing: 'easy', tone: 'Clean', backing: { feel: 'ballad', chords: ['Em'], parts: GROOVE, level: 0.55 },
+    seq: '0.0 1.0 2.0 3.0 4.0 5.0 4.0 3.0 2.0 1.0 0.0*2', step: 2,
     pass: 60, stars: [60, 80, 95], xp: 40,
     tips: ['No fretting needed. Just find each string.', 'Low to high: E A D G B E.', 'Let each one ring until the next.'] },
   { id: 'w1-03', world: 1, order: 3, title: 'Stop the Ring', goal: 'Play a note, then silence it on purpose.', type: 'notes',
-    bpm: 70, bars: 4, timing: 'easy', tone: 'Clean', seq: '1.0 r 1.0 r | 1.0 r 1.0 r | 1.0 r 1.0 r | 1.0 r 1.0 r', step: 1,
+    bpm: 70, bars: 4, timing: 'easy', tone: 'Clean', backing: { feel: 'ballad', chords: ['A5'], parts: DRUMS, level: 0.5 },
+    seq: '1.0 r 1.0 r | 1.0 r 1.0 r | 1.0 r 1.0 r | 1.0 r 1.0 r', step: 1,
     pass: 60, stars: [60, 80, 95], xp: 40,
     tips: ['On electric, strings keep ringing. Muting is half of sounding clean.',
       'Stop a note by touching it lightly with your fretting fingers or the side of your picking hand.', 'Silence counts as a note here.'] },
   { id: 'w1-04', world: 1, order: 4, boss: true, title: 'Spark Show', goal: 'Open strings, muting and your first fretted notes together.', type: 'notes',
-    bpm: 80, bars: 4, timing: 'easy', tone: 'Clean', seq: '0.0 r 1.0 r | 2.0 r 3.0 r | 4.5 4.5 5.5 5.5 | 4.5 r 5.5*2', step: 1,
+    bpm: 80, bars: 4, timing: 'easy', tone: 'Clean', backing: { feel: 'ballad', chords: ['E5', 'E5', 'A5', 'A5'], parts: GROOVE, level: 0.6 },
+    seq: '0.0 r 1.0 r | 2.0 r 3.0 r | 4.5 4.5 5.5 5.5 | 4.5 r 5.5*2', step: 1,
     pass: 65, stars: [65, 82, 95], xp: 100,
     tips: ['Fretted notes: press just behind the 5th fret wire, not on top of it.', 'Use down-up picking on the repeated notes.'] },
 
   // ---- World 2: Fret Finder ----
   { id: 'w2-01', world: 2, order: 1, title: 'Spider Walk', goal: 'One finger per fret, clean notes.', type: 'notes',
-    bpm: 60, bars: 4, timing: 'easy', tone: 'Clean', seq: '0.5 0.6 0.7 0.8 | 1.5 1.6 1.7 1.8 | 2.5 2.6 2.7 2.8 | 3.5 3.6 3.7 3.8', step: 1,
+    bpm: 60, bars: 4, timing: 'easy', tone: 'Clean', backing: { feel: 'pop', chords: ['A5'], parts: DRUMS, level: 0.55 },
+    seq: '0.5 0.6 0.7 0.8 | 1.5 1.6 1.7 1.8 | 2.5 2.6 2.7 2.8 | 3.5 3.6 3.7 3.8', step: 1,
     pass: 65, stars: [65, 82, 95], xp: 50,
     tips: ['Index on 5, middle 6, ring 7, pinky 8.', 'Keep your fingers hovering close to the strings.', 'Thumb behind the neck for this one.'] },
   { id: 'w2-02', world: 2, order: 2, title: 'One-String Song', goal: 'Play a melody by moving along one string.', type: 'notes',
-    bpm: 80, bars: 4, timing: 'easy', tone: 'Clean', seq: '4.5 4.5 4.6 4.8 | 4.8 4.6 4.5 4.3 | 4.1 4.1 4.3 4.5 | 4.5*1.5 4.3*0.5 4.3*2', step: 1,
+    bpm: 80, bars: 4, timing: 'easy', tone: 'Clean', backing: { feel: 'ballad', chords: ['C', 'G', 'C', 'G'], parts: FULL, level: 0.65 },
+    seq: '4.5 4.5 4.6 4.8 | 4.8 4.6 4.5 4.3 | 4.1 4.1 4.3 4.5 | 4.5*1.5 4.3*0.5 4.3*2', step: 1,
     pass: 65, stars: [65, 82, 95], xp: 50,
     tips: ['All on the B string. Frets 1=C 3=D 5=E 6=F 8=G.', 'If it sounds off, check the fret before speeding up.', 'This is "Ode to Joy" by Beethoven.'] },
   { id: 'w2-03', world: 2, order: 3, title: 'Octave Hunter', goal: 'Learn the octave shape. It finds any root on the neck.', type: 'notes',
-    bpm: 80, bars: 5, timing: 'easy', tone: 'Clean', seq: '0.5*2 2.7*2 | 0.8*2 2.10*2 | 0.3*2 2.5*2 | 1.3*2 3.5*2 | 1.5*2 3.7*2', step: 1,
+    bpm: 80, bars: 5, timing: 'easy', tone: 'Clean', backing: { feel: 'pop', chords: ['A5', 'C5', 'G5', 'C5', 'D5'], parts: GROOVE, level: 0.65 },
+    seq: '0.5*2 2.7*2 | 0.8*2 2.10*2 | 0.3*2 2.5*2 | 1.3*2 3.5*2 | 1.5*2 3.7*2', step: 1,
     pass: 65, stars: [65, 82, 95], xp: 60,
     tips: ['Octave shape: two strings up, two frets up.', 'Mute the string in between with the underside of your index finger.',
       "You'll use this to find the home note in every jam."] },
   { id: 'w2-05', world: 2, order: 4, title: 'First Jam', goal: 'Your first freestyle: two notes, your rhythm, a real band.', type: 'improv',
-    bpm: 80, bars: 8, timing: 'easy', tone: 'Clean', backing: { feel: 'pop', chords: ['Am', 'F'] },
+    bpm: 80, bars: 8, timing: 'easy', tone: 'Clean', backing: { feel: 'pop', chords: ['Am', 'F'], level: 0.75 },
     improv: { key: 9, scale: null, allowedPcs: [9, 0], boxFret: 5, minNotes: 6, weights: { inScale: 50, phrases: 25, space: 25 } },
     pass: 50, stars: [50, 70, 88], xp: 60,
-    tips: ['Only two notes: A and C. Play them in any rhythm you like.', 'A: low E fret 5 or D string fret 7. C: low E fret 8 or G string fret 5.',
+    tips: ['Only two notes: A and C. Play them in any rhythm you like.', 'A: the open A string, low E fret 5 or D string fret 7. C: G string fret 5 or low E fret 8.',
       'Play a little, rest a little. There are no wrong rhythms here.'] },
   { id: 'w2-04', world: 2, order: 5, boss: true, title: 'Full Ode', goal: 'A whole melody, accurate and steady.', type: 'notes',
-    bpm: 90, bars: 8, timing: 'normal', tone: 'Clean',
+    bpm: 90, bars: 8, timing: 'normal', tone: 'Clean', backing: { feel: 'pop', chords: ['C', 'G', 'C', 'G', 'C', 'G', 'C', 'C'], parts: FULL, level: 0.75 },
     seq: '4.5 4.5 4.6 4.8 | 4.8 4.6 4.5 4.3 | 4.1 4.1 4.3 4.5 | 4.5*1.5 4.3*0.5 4.3*2 | 4.5 4.5 4.6 4.8 | 4.8 4.6 4.5 4.3 | 4.1 4.1 4.3 4.5 | 4.3*1.5 4.1*0.5 4.1*2', step: 1,
     pass: 70, stars: [70, 85, 95], xp: 120,
     tips: ['Phrase two ends differently. Listen for it.', 'Relax. Tension makes you rush.'] },
 
   // ---- World 3: Strum Stomp ----
   { id: 'w3-01', world: 3, order: 1, title: 'Strum Engine', goal: 'A pendulum strumming hand: downs, then down-ups.', type: 'chords',
-    bpm: 80, bars: 4, timing: 'easy', tone: 'Clean',
+    bpm: 80, bars: 4, timing: 'easy', tone: 'Clean', backing: { feel: 'pop', chords: ['Em'], parts: GROOVE, level: 0.7 },
     chordBars: [...bars('Em', 'D_D_D_D_', 2), ...bars('Em', 'DUDUDUDU', 2)],
     pass: 65, stars: [65, 80, 92], xp: 50,
     tips: ['Your hand swings down-up like a pendulum, even when it only hits going down.', 'Upstrums: just the top 3–4 strings, lighter.', 'Loose wrist.'] },
   { id: 'w3-02', world: 3, order: 2, title: 'Backbeat Scratch', goal: 'Muted "chk" hits on 2 and 4, the guitar\'s snare drum.', type: 'rhythm',
-    bpm: 80, bars: 4, timing: 'easy', tone: 'Clean',
+    bpm: 80, bars: 4, timing: 'easy', tone: 'Clean', backing: { feel: 'pop', chords: ['E5'], parts: GROOVE, level: 0.7 },
     chordBars: [...bars('E5', 'D_x_D_x_', 2, E5), ...bars('E5', 'D_xUD_xU', 2, E5)],
     pass: 65, stars: [65, 80, 92], xp: 50,
     tips: ['E5: the open low E, plus the A and D strings at fret 2. Strum only those three.', 'For x: release the pressure and lay your fretting hand lightly across all six strings, then strum the same way.',
@@ -89,7 +99,7 @@ export const LESSONS: Lesson[] = [
     tips: ['Top three strings only: Am is frets 5 5 5, D is frets 7 7 5.', 'Hit on 2 and 4 only.',
       "Right after the hit, ease off the pressure to choke it. Think 'chk', not 'strummm'."] },
   { id: 'w3-05', world: 3, order: 4, title: 'Open Chord Swap', goal: 'Learn the open G, D and C chords, and change between them in time.', type: 'chords',
-    bpm: 70, bars: 8, timing: 'easy', tone: 'Clean',
+    bpm: 70, bars: 8, timing: 'easy', tone: 'Clean', backing: { feel: 'ballad', chords: ['G', 'G', 'D', 'D', 'C', 'C', 'G', 'G'], parts: GROOVE, level: 0.7 },
     chordBars: [...bars('G', 'D_D_D_D_', 2), ...bars('D', 'D_D_D_D_', 2), ...bars('C', 'D_D_D_D_', 2), ...bars('G', 'D_D_D_D_', 2)],
     pass: 65, stars: [65, 80, 92], xp: 60,
     tips: ['G: low E fret 3, A string fret 2, high e fret 3. The middle strings ring open.',
@@ -104,18 +114,18 @@ export const LESSONS: Lesson[] = [
 
   // ---- World 4: Power Stomp ----
   { id: 'w4-01', world: 4, order: 1, title: 'Power Pair', goal: 'Two-finger power chords, with the other strings muted.', type: 'chords',
-    bpm: 80, bars: 4, timing: 'easy', tone: 'Classic rock',
+    bpm: 80, bars: 4, timing: 'easy', tone: 'Classic rock', backing: { feel: 'pop', chords: ['E5', 'A5', 'E5', 'A5'], parts: GROOVE, level: 0.8 },
     chordBars: [{ chord: 'E5', frets: E5, strum: 'D_D_D_D_' }, { chord: 'A5', frets: A5o, strum: 'D_D_D_D_' }, { chord: 'E5', frets: E5, strum: 'D_D_D_D_' }, { chord: 'A5', frets: A5o, strum: 'D_D_D_D_' }],
     pass: 65, stars: [65, 80, 92], xp: 60,
     tips: ['Two or three strings only. Mute the rest with the underside of your index finger.', 'With gain on, keep strums small and controlled.', 'Same shape, one string over.'] },
   { id: 'w4-02', world: 4, order: 2, title: 'Power Moves', goal: 'Slide one frozen shape around the neck.', type: 'chords',
-    bpm: 85, bars: 4, timing: 'easy', tone: 'Classic rock',
+    bpm: 85, bars: 4, timing: 'easy', tone: 'Classic rock', backing: { feel: 'pop', chords: ['G5', 'A5', 'C5', 'D5'], parts: GROOVE, level: 0.8 },
     chordBars: [{ chord: 'G5', frets: POWER.G5, strum: 'D_D_D_D_' }, { chord: 'A5', frets: POWER.A5, strum: 'D_D_D_D_' },
       { chord: 'C5', frets: POWER.C5, strum: 'DDDDDDDD' }, { chord: 'D5', frets: POWER.D5, strum: 'DDDDDDDD' }],
     pass: 65, stars: [65, 80, 92], xp: 60,
     tips: ['Freeze the shape and move the whole hand.', "Ease off the pressure (don't let go) while moving.", 'Root on low E: 3=G 5=A 8=C. Root on the A string: 5=D.'] },
   { id: 'w4-03', world: 4, order: 3, title: 'Chug & Riff', goal: 'Palm-muted chugs, then a single-note riff.', type: 'notes',
-    bpm: 90, bars: 4, timing: 'easy', tone: 'Classic rock',
+    bpm: 90, bars: 4, timing: 'easy', tone: 'Classic rock', backing: { feel: 'pop', chords: ['E5'], parts: GROOVE, level: 0.8 },
     seq: '0.0 0.0P 0.0P 0.0P 0.0 0.0P 0.0P 0.0P | 0.0 0.0P 0.0P 0.0P 0.0 0.0P 0.0 0.0 | 0.0 0.0 0.3 0.0 0.5 0.0 0.3 0.0 | 0.0 0.0 0.3 0.0 1.2 - 1.0 -', step: 0.5,
     pass: 65, stars: [65, 80, 92], starExtra: { kind: 'palmMute', share: 0.6 }, xp: 70,
     tips: ['Palm mute: rest the edge of your picking hand where the strings leave the bridge.', 'Too far forward and the note dies. Too far back and it rings.', 'The riff uses only E minor pentatonic notes.'] },
@@ -128,7 +138,7 @@ export const LESSONS: Lesson[] = [
 
   // ---- World 5: Pentatonic Playground ----
   { id: 'w5-01', world: 5, order: 1, title: 'Meet the Box', goal: 'Play the 12-note box up and down.', type: 'notes',
-    bpm: 70, bars: 6, timing: 'easy', tone: 'Clean',
+    bpm: 70, bars: 6, timing: 'easy', tone: 'Clean', backing: { feel: 'ballad', chords: ['Am'], parts: GROOVE, level: 0.75 },
     seq: '0.5 0.8 1.5 1.7 2.5 2.7 3.5 3.7 4.5 4.8 5.5 5.8 | 5.5 4.8 4.5 3.7 3.5 2.7 2.5 1.7 1.5 0.8 0.5*2', step: 1,
     pass: 65, stars: [65, 82, 95], xp: 60,
     tips: ['Two notes per string: index on 5, ring or pinky on 7 or 8.', 'The highlighted dots are A, home.', 'The notes: A C D E G.'] },
@@ -139,7 +149,7 @@ export const LESSONS: Lesson[] = [
     tips: ['A is home. Every jam can end here.', 'E fits too: a safe neighbour.',
       'The two lower A notes are your octave shape again. The high A is on the high e string, fret 5.'] },
   { id: 'w5-03', world: 5, order: 3, title: 'Threes', goal: 'A scale sequence for finger independence.', type: 'notes',
-    bpm: 70, bars: 4, timing: 'easy', tone: 'Clean',
+    bpm: 70, bars: 4, timing: 'easy', tone: 'Clean', backing: { feel: 'pop', chords: ['Am'], parts: GROOVE, level: 0.75 },
     seq: '0.5 0.8 1.5  0.8 1.5 1.7  1.5 1.7 2.5  1.7 2.5 2.7  2.5 2.7 3.5  2.7 3.5 3.7  3.5 3.7 4.5  3.7 4.5 4.8  4.5 4.8 5.5  4.8 5.5 5.8*2 -', step: 0.5,
     pass: 65, stars: [65, 82, 95], xp: 70,
     tips: ['Up two, back one. Accuracy before speed.', 'Keep the 8ths even and count "1 & 2 &". The groups of three run across the beat, and that is fine.',
@@ -157,23 +167,23 @@ export const LESSONS: Lesson[] = [
 
   // ---- World 6: Expression ----
   { id: 'w6-01', world: 6, order: 1, title: 'Hammer & Pull', goal: 'Sound two notes with one pick stroke.', type: 'notes',
-    bpm: 70, bars: 4, timing: 'easy', tone: 'Blues crunch',
+    bpm: 70, bars: 4, timing: 'easy', tone: 'Blues crunch', backing: { feel: 'ballad', chords: ['Am'], parts: GROOVE, level: 0.75 },
     seq: '3.5 h3.7 - - 2.5 h2.7 - - | 4.5 h4.8 - - 1.5 h1.7 - - | 3.7 p3.5 - - 2.7 p2.5 - - | 4.8 p4.5 - - 1.7 p1.5 - -', step: 0.5,
     pass: 65, stars: [65, 80, 92], starExtra: { kind: 'legato', share: 0.5 }, xp: 70,
     tips: ['Pick the first note, then hammer or pull the second one half a beat later.', 'Hammer: bring your finger down fast, right behind the fret.',
       "Pull: flick slightly down off the string. Don't just lift."] },
   { id: 'w6-02', world: 6, order: 2, title: 'Slide Over', goal: 'Slide to a target, and step outside the box.', type: 'notes',
-    bpm: 70, bars: 4, timing: 'easy', tone: 'Blues crunch',
+    bpm: 70, bars: 4, timing: 'easy', tone: 'Blues crunch', backing: { feel: 'ballad', chords: ['Am'], parts: GROOVE, level: 0.75 },
     seq: '3.5 /3.7*2 - | 3.7 /3.9*2 - | 4.8 /4.10*2 - | 2.7 /2.5*2 -', step: 1,
     pass: 65, stars: [65, 80, 92], starExtra: { kind: 'glide', share: 0.5 }, xp: 70,
     tips: ['Keep pressing while you slide. That keeps the note alive.', 'G string fret 9 (E) and B string fret 10 (A) are outside the box and still fit.'] },
   { id: 'w6-03', world: 6, order: 3, title: 'Bend to Pitch', goal: 'Bend in tune by matching a reference note.', type: 'notes',
-    bpm: 70, bars: 4, timing: 'easy', tone: 'Blues crunch',
+    bpm: 70, bars: 4, timing: 'easy', tone: 'Blues crunch', backing: { feel: 'ballad', chords: ['Am'], parts: FULL, level: 0.7 },
     seq: '3.9*2 3.7^2*2 | 3.9*2 3.7^2*2 | 4.10*2 4.8^2*2 | 4.10*2 4.8^2*2', step: 1,
     pass: 60, stars: [60, 78, 90], xp: 80,
     tips: ['Play the target note first, then bend until it matches.', 'Push with your ring finger, with middle and index behind it.', 'Under-bending is the usual miss. Go further than feels right.'] },
   { id: 'w6-04', world: 6, order: 4, title: 'Wobble', goal: 'Vibrato on held notes.', type: 'notes',
-    bpm: 70, bars: 4, timing: 'easy', tone: 'Blues crunch',
+    bpm: 70, bars: 4, timing: 'easy', tone: 'Blues crunch', backing: { feel: 'ballad', chords: ['Am', 'Am', 'Am', 'Dm'], parts: GROOVE, level: 0.7 },
     seq: '2.7~*3 r | 4.5~*3 r | 5.5~*3 r | 3.7~*3 r', step: 1,
     pass: 60, stars: [60, 78, 90], xp: 70,
     tips: ['Small, even bends up and back, from the wrist, like turning a doorknob.', 'Start slow and wide, then smooth it out.', 'Vibrato makes a note sing.'] },
@@ -186,11 +196,13 @@ export const LESSONS: Lesson[] = [
   // ---- World 7: Call & Response ----
   { id: 'w7-01', world: 7, order: 1, title: 'Echo Rhythm', goal: 'Hear a rhythm on A, then copy it in the next bar.', type: 'notes',
     bpm: 80, bars: 8, timing: 'easy', tone: 'Clean', octaveOk: true,
+    backing: { feel: 'pop', chords: ['Am'], parts: GROOVE, level: 0.7, onListen: 'drums' },
     calls: { mode: 'echo-rhythm', pos: { s: 2, f: 7 }, calls: ['X_X_X___', 'X_XXX___', '__X_X_X_', 'XX__X_X_'] },
     pass: 65, stars: [65, 80, 92], xp: 70,
     tips: ["Listen, then copy. Don't play during the call.", "Count '1 & 2 & 3 & 4 &' under your breath.", 'Any A works: D string fret 7 is shown.'] },
   { id: 'w7-02', world: 7, order: 2, title: 'Echo Notes', goal: 'Copy short melodies by ear.', type: 'notes',
     bpm: 80, bars: 8, timing: 'easy', tone: 'Clean', octaveOk: true,
+    backing: { feel: 'ballad', chords: ['Am'], parts: GROOVE, level: 0.7, onListen: 'drums' },
     calls: { mode: 'echo-notes', showUntil: 2, calls: ['2.7*2 3.5*2 3.7*4', '3.7*2 3.5*2 2.7*4', '2.7 3.5 3.7 4.5*2 3.7*2 -', '4.5 3.7 3.5 2.7*5'] },
     pass: 65, stars: [65, 80, 92], xp: 80,
     tips: ['Only four notes: A C D E, inside four frets.', 'Sing it in your head first.', 'The last two are ear only. Trust your ears.'] },
@@ -358,6 +370,16 @@ export function validateLessons(): string[] {
       })
     }
     for (const sym of l.backing?.chords ?? []) if (badChord(sym)) errs.push(p + `backing chord "${sym}" does not parse`)
+    const b = l.backing
+    if (l.type === 'sync') {
+      if (b) errs.push(p + 'the sync lesson must stay click-only')
+    } else if (!b) errs.push(p + 'needs a backing band')
+    if (b) {
+      if (!b.chords.length) errs.push(p + 'backing has no chords')
+      if (b.level !== undefined && !(b.level > 0 && b.level <= 1)) errs.push(p + `backing level ${b.level} is outside 0–1`)
+      if (b.parts && !b.parts.drums && !b.parts.bass && !b.parts.keys) errs.push(p + 'backing plays no parts')
+      if (b.onListen && b.onListen !== 'all' && !l.calls && !l.improv?.callResponse) errs.push(p + 'onListen without listen bars')
+    }
     for (const [sym, frets] of Object.entries(l.shapes ?? {})) {
       if (badChord(sym)) errs.push(p + `shape key "${sym}" does not parse`)
       errs.push(...shapeProblems(sym, frets).map((m) => p + m))

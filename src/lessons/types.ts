@@ -5,10 +5,21 @@ export type ExerciseType = 'sync' | 'notes' | 'chords' | 'rhythm' | 'improv'
 export type Timing = 'easy' | 'normal' | 'tight'
 export type Tech = 'hammer' | 'pull' | 'slide' | 'bend' | 'vibrato' | 'pm'
 export type FeelId = 'pop' | 'ballad' | 'blues' | 'funk' | 'reggae'
+export type BandPart = 'drums' | 'bass' | 'keys'
+
+/** The lesson's band. One chord per bar, looped. */
+export interface BackingSpec {
+  feel: FeelId
+  chords: string[]
+  parts?: Partial<Record<BandPart, boolean>> // default: all three; when given, a missing part is off
+  level?: number // band volume 0–1, default 1 (World 1 plays softer)
+  onListen?: 'all' | 'drums' | 'none' // the band in listen (call) bars; default 'all'
+}
 export type ScaleId = 'minorPent' | 'blues' | 'majorPent' | 'minor' | 'major' | 'dorian' | 'mixolydian'
 /** Names of built-in presets in audio/tone.ts PRESETS. */
 export type ToneHint = 'Clean' | 'Blues crunch' | 'Classic rock'
-export type Speed = 0.7 | 0.85 | 1
+/** Play speed as a share of the lesson tempo: 0.6–1.15 in 0.05 steps (below 1 = practice speed). */
+export type Speed = number
 export type Stars = 0 | 1 | 2 | 3
 
 // ---- Authoring (data.ts) ----------------------------------------------------
@@ -71,7 +82,7 @@ export interface Lesson {
   tone: ToneHint
   click?: boolean // clicks during the chart; default: true when there is no backing
   octaveOk?: boolean
-  backing?: { feel: FeelId; chords: string[] } // one chord per bar, looped
+  backing?: BackingSpec
   seq?: string // notes lessons
   step?: number // beats per seq unit
   shapes?: Record<string, number[]> // chord-token shape overrides
@@ -278,6 +289,12 @@ export interface LessonRecord {
   lastPlayed: number
   last?: LastAttempt // the previous run, for "better than last time" lines
   flat?: number // runs in a row without a new best score
+  speed?: number // next Auto speed (speed trainer)
+  topSpeed?: number // fastest passed speed
+  overdrive?: boolean // passed at 100% with a top score: Auto may go up to 115%
+  miss?: number // failed runs in a row since the last pass or slow-down
+  lastPass?: number // time of the last passed run (review schedule)
+  box?: number // review step 0–4: due REVIEW_DAYS[box] days after lastPass
 }
 
 export interface LastAttempt {
@@ -285,6 +302,26 @@ export interface LastAttempt {
   spreadMs: number | null
   bpm: number
   bestChain: number
+}
+
+export type PlanKind = 'warmup' | 'review' | 'new' | 'jam'
+
+export interface PlanStep {
+  kind: PlanKind
+  lessonId: string
+  min: number // rough minutes, for the label
+  state: 'todo' | 'done' | 'skipped'
+  why: string // one short line: why this lesson today
+  from: { best: number; stars: Stars; speed: number } // the record when the set was made
+  score?: number // best score in this step today
+  speed?: number // speed of that run
+}
+
+/** Today's practice set: made once per practice day (dayKey). */
+export interface DayPlan {
+  day: string
+  steps: PlanStep[]
+  bonus: boolean // the set's XP bonus was given
 }
 
 export interface Progress {
@@ -300,6 +337,8 @@ export interface Progress {
   stats: { bendsInTune: number }
   recentFacts: string[] // fact ids shown on the last result cards, oldest first (max 10)
   totalSec: number // judged playing time, all lessons
+  plan: DayPlan | null
+  planStreak: { days: number; last: string } // last = dayKey of the last finished set
   created: number
 }
 
@@ -321,6 +360,7 @@ export interface ApplyOutcome {
   worldUnlocked: WorldId | null
   streakNote: string | null
   factLines: FactLine[] // fun lines from facts/facts.json, chosen once per run
+  speed: { played: number; next: number; topBefore: number; topAfter: number } | null // null for the sync lesson
 }
 
 export interface FactLine {
@@ -367,7 +407,7 @@ export interface SyncOutcome {
 export type InputSource = 'cable' | 'mic'
 
 export interface Prefs {
-  speed: Speed
+  speedPick: { lessonId: string; speed: Speed } | null // a manual speed for one lesson; null = Auto
   easyTiming: boolean
   backingOn: boolean
   keyboard: boolean // force keyboard input even with a guitar connected

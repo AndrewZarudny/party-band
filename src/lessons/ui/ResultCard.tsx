@@ -6,6 +6,7 @@ import { VERDICT_LABEL } from '../scoring'
 import { DINO_STAGES, levelFor } from '../progress'
 import { ACHIEVEMENTS } from '../achievements'
 import { WORLDS, lessonById } from '../data'
+import { MIN_SPEED, pct } from '../speed'
 import { Dino } from './Dino'
 import { STAR } from './LessonMap'
 
@@ -169,6 +170,7 @@ export function ResultCard({
   lesson,
   result,
   outcome,
+  pick,
   onNext,
   onAgain,
   onSlower,
@@ -178,6 +180,8 @@ export function ResultCard({
   lesson: Lesson
   result: LessonResult
   outcome: ApplyOutcome
+  /** This lesson's manual speed, null on Auto. */
+  pick: number | null
   onNext: (() => void) | null
   onAgain: () => void
   onSlower: () => void
@@ -306,6 +310,26 @@ export function ResultCard({
             </div>
           )}
           <p className="ls-coach">{result.coachTip}</p>
+          {outcome.speed && (
+            <p className="ls-muted">
+              Played at <b className="ls-num">{pct(outcome.speed.played)}</b>.{' '}
+              {pick === null ? (
+                <>
+                  Next time: <b className="ls-num">{pct(outcome.speed.next)}</b>.
+                </>
+              ) : (
+                <>
+                  Next time: <b className="ls-num">{pct(pick)}</b> (your pick). Auto would play <b className="ls-num">{pct(outcome.speed.next)}</b>.
+                </>
+              )}
+              {outcome.speed.topAfter > outcome.speed.topBefore && (
+                <>
+                  {' '}New top speed: <b className="ls-num">{pct(outcome.speed.topAfter)}</b>.
+                </>
+              )}
+              {result.passed && outcome.speed.played < 1 && ' Pass at 100% for the 3rd star.'}
+            </p>
+          )}
           {showResync && (
             <button className="ls-btn small" onClick={onResync}>
               Re-sync
@@ -366,7 +390,7 @@ export function ResultCard({
         <button ref={onNext ? undefined : primary} className={`ls-btn ${onNext ? '' : 'primary'}`} onClick={onAgain}>
           Again
         </button>
-        {lesson.type !== 'sync' && (
+        {lesson.type !== 'sync' && result.speed > MIN_SPEED && (
           <button className="ls-btn" onClick={onSlower}>
             Slower practice
           </button>

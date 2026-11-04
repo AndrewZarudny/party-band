@@ -1,10 +1,11 @@
 // Lessons tab settings, kept in localStorage.
-import type { Prefs, Speed } from './types'
+import type { Prefs } from './types'
+import { cleanSpeed } from './speed'
 
 const KEY = 'lessons-prefs'
 
 export const DEFAULT_PREFS: Prefs = {
-  speed: 1,
+  speedPick: null,
   easyTiming: false,
   backingOn: true,
   keyboard: false,
@@ -18,10 +19,17 @@ export const DEFAULT_PREFS: Prefs = {
   age: null,
 }
 
-const SPEEDS: Speed[] = [0.7, 0.85, 1]
 const ZOOMS: Prefs['zoom'][] = [0.75, 1, 1.25]
 
 const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d)
+
+/** A saved manual speed for one lesson; null = Auto. */
+function pickOf(v: unknown): Prefs['speedPick'] {
+  if (!v || typeof v !== 'object') return null
+  const o = v as Record<string, unknown>
+  const speed = cleanSpeed(o.speed)
+  return typeof o.lessonId === 'string' && speed !== undefined ? { lessonId: o.lessonId, speed } : null
+}
 
 function normalize(raw: unknown): Prefs {
   const d = DEFAULT_PREFS
@@ -29,7 +37,8 @@ function normalize(raw: unknown): Prefs {
   const o = raw as Record<string, unknown>
   const nudge = typeof o.visualNudgeMs === 'number' && isFinite(o.visualNudgeMs) ? Math.max(-100, Math.min(100, Math.round(o.visualNudgeMs))) : d.visualNudgeMs
   return {
-    speed: SPEEDS.find((s) => s === o.speed) ?? d.speed,
+    // Old saved `speed` values are ignored on purpose: everyone starts on Auto once.
+    speedPick: pickOf(o.speedPick),
     easyTiming: bool(o.easyTiming, d.easyTiming),
     backingOn: bool(o.backingOn, d.backingOn),
     keyboard: bool(o.keyboard, d.keyboard),

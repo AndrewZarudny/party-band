@@ -1829,6 +1829,267 @@
   }
 }
 
+/* ---- Today's set: a setlist taped to the amp ------------------------------------- */
+
+.lessons {
+  --ls-set-bg: var(--paper);
+  --ls-set-ink: var(--ink);
+  --ls-set-muted: color-mix(in srgb, var(--ink) 65%, var(--paper));
+  --ls-set-edge: var(--line);
+  --ls-set-rule: color-mix(in srgb, var(--ink) 14%, var(--paper));
+  --ls-set-staff: color-mix(in srgb, var(--ink) 8%, transparent);
+  --ls-set-tape: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.lessons .ls-set {
+  position: relative;
+  background: var(--ls-set-bg);
+  color: var(--ls-set-ink);
+  border: 1px solid var(--ls-set-edge);
+  border-radius: 6px;
+  padding: 22px 18px 16px;
+  /* Faint staff lines, like .ls-continue. */
+  background-image: repeating-linear-gradient(to bottom, transparent 0 13px, var(--ls-set-staff) 13px 14px);
+  background-position: 0 8px;
+}
+.lessons .ls-set.card {
+  margin: 22px 0 8px;
+  transform: rotate(-0.4deg);
+}
+.lessons .ls-set.full {
+  margin-top: 18px;
+}
+/* A strip of tape holding the list up. */
+.lessons .ls-set.card::before,
+.lessons .ls-set.full::before {
+  content: '';
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  width: 88px;
+  height: 18px;
+  margin-left: -44px;
+  background: var(--ls-set-tape);
+  transform: rotate(1.5deg);
+  border-radius: 2px;
+}
+.lessons .ls-set .ls-btn.ghost {
+  color: var(--ls-set-ink);
+  border-color: var(--ls-set-rule);
+}
+.lessons .ls-set .ls-btn.ghost:hover:not(:disabled) {
+  border-color: var(--ls-set-muted);
+}
+.lessons .ls-set .ls-link {
+  color: var(--ls-set-ink);
+}
+.lessons .ls-set button:focus-visible {
+  outline-color: var(--ls-set-ink);
+}
+.lessons .ls-set-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+.lessons .ls-set-h {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ls-set-ink);
+}
+.lessons .ls-set-total {
+  margin-left: auto;
+  font-size: var(--fs-ui);
+  font-weight: 600;
+  color: var(--ls-set-muted);
+}
+.lessons .ls-set-streak {
+  display: flex;
+  flex-basis: 100%;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-ui);
+  color: var(--ls-set-muted);
+}
+.lessons .ls-set-streak b {
+  color: var(--ls-set-ink);
+}
+.lessons .ls-set .ls-foot {
+  width: 18px;
+  height: 18px;
+  fill: var(--ls-set-muted);
+}
+.lessons .ls-set-intro,
+.lessons .ls-set-quiet {
+  margin-top: 6px;
+  font-size: var(--fs-ui);
+  color: var(--ls-set-muted);
+}
+.lessons .ls-set-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.lessons .ls-set-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 4px 6px 4px 8px;
+  border-bottom: 1px solid var(--ls-set-rule);
+}
+.lessons .ls-set-row:last-child {
+  border-bottom: 0;
+}
+/* The next step to play: a fret wire on its left. */
+.lessons .ls-set-row.next {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.lessons .ls-set-n {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 31px;
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: var(--ls-set-ink);
+}
+.lessons .ls-set-n > span {
+  position: relative;
+  line-height: 1;
+}
+.lessons .ls-set-row.done .ls-set-n > span {
+  margin-top: -5px;
+  font-size: 15px;
+  color: var(--ls-set-bg);
+}
+.lessons .ls-set-pick {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.lessons .ls-set-pick path {
+  fill: var(--ls-set-ink);
+}
+.lessons .ls-set-row.pop .ls-set-pick {
+  animation: ls-set-pop 300ms var(--ls-pop) both;
+}
+@keyframes ls-set-pop {
+  from {
+    transform: scale(0.6);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+.lessons .ls-set-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  min-width: 0;
+}
+.lessons .ls-set-open {
+  display: grid;
+  flex: 1 1 200px;
+  min-width: 0;
+  min-height: 44px;
+  align-content: center;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.lessons .ls-set-name {
+  font-weight: 700;
+  font-size: var(--fs-body);
+}
+.lessons .ls-set-open:hover .ls-set-name {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.lessons .ls-set-why {
+  font-size: var(--fs-ui);
+  color: var(--ls-set-muted);
+}
+.lessons .ls-set-acts {
+  display: flex;
+  gap: 6px;
+}
+.lessons .ls-set-acts .ls-btn {
+  min-height: 44px;
+}
+.lessons .ls-set-min {
+  font-size: var(--fs-ui);
+  font-weight: 600;
+  color: var(--ls-set-muted);
+}
+.lessons .ls-set-row.done .ls-set-min {
+  color: var(--ls-set-ink);
+  font-weight: 700;
+}
+.lessons .ls-set-row.skipped .ls-set-n,
+.lessons .ls-set-row.skipped .ls-set-open,
+.lessons .ls-set-row.skipped .ls-set-min {
+  color: var(--ls-set-muted);
+}
+.lessons .ls-set-row.skipped .ls-set-name {
+  text-decoration: line-through;
+}
+.lessons .ls-set-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin-top: 14px;
+}
+.lessons .ls-set-done {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+.lessons .ls-set-done-h {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+}
+.lessons .ls-set-better {
+  margin: 0;
+  padding-left: 18px;
+  font-size: var(--fs-ui);
+}
+.lessons .ls-set.strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  font-size: var(--fs-body);
+}
+@media (max-width: 520px) {
+  .lessons .ls-set {
+    padding: 20px 12px 14px;
+  }
+  .lessons .ls-set-row {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    gap: 2px 8px;
+    padding-left: 6px;
+  }
+  /* The card keeps rows short on a phone; the set screen shows every why line. */
+  .lessons .ls-set.card .ls-set-why {
+    display: none;
+  }
+}
+
 /* ---- Reduced motion: end states, no movement --------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
@@ -1842,6 +2103,9 @@
   }
   .lessons .ls-node.current .ls-node-pick::after {
     opacity: 0.5;
+  }
+  .lessons .ls-set.card {
+    transform: none;
   }
   .lessons .ls-grow-old,
   .lessons .ls-grow-dust,

@@ -17,15 +17,10 @@ import { KEYBOARD_DEVICE, deviceKey, loadLatency, micWarning } from '../calibrat
 import { clicksMuted } from '../clock'
 import { DINO_STAGES, dinoStageFor } from '../progress'
 import { connectSource } from '../source'
+import { MANUAL_SPEEDS, autoSpeed, pct, pickFor, speedCap, speedLimits } from '../speed'
 import { Dino } from './Dino'
 import { InputPicker } from './InputPicker'
 import { StarGlyph, StarPips } from './LessonMap'
-
-const SPEEDS: { v: Speed; label: string }[] = [
-  { v: 0.7, label: '70%' },
-  { v: 0.85, label: '85%' },
-  { v: 1, label: '100%' },
-]
 
 function NotesPreview({ run, zoom }: { run: LessonRun; zoom: number }) {
   const ref = useRef<HTMLCanvasElement>(null)
@@ -144,14 +139,29 @@ export function LessonIntro({
   const [, bump] = useState(0)
   const startRef = useRef<HTMLButtonElement>(null)
 
+  // Speed trainer: Auto unless the player picked a speed for this lesson.
+  const rec = progress.lessons[lesson.id]
+  const auto = autoSpeed(lesson, rec)
+  const lim = speedLimits(lesson)
+  const autoHint =
+    lesson.type === 'improv'
+      ? `Jams play at full speed. Auto slows the band only under ${lim.down}%, and goes back up after a pass.`
+      : `Auto goes up after a ${lim.up}% run and down under ${lim.down}%.`
+  const pick = pickFor(prefs, lesson.id)
+  const speed = pick ?? auto
+  const speedOptions: { v: 'auto' | Speed; label: string }[] = [
+    { v: 'auto', label: `Auto (${pct(auto)})` },
+    ...MANUAL_SPEEDS.filter((s) => s <= speedCap(rec)).map((s) => ({ v: s, label: pct(s) })),
+  ]
+
   // The constructor is pure: safe to build one just for the preview.
   const preview = useMemo(() => {
     try {
-      return new LessonRun({ lesson, speed: prefs.speed, easyTiming: prefs.easyTiming, backingOn: prefs.backingOn, keyboard: prefs.keyboard })
+      return new LessonRun({ lesson, speed, easyTiming: prefs.easyTiming, backingOn: prefs.backingOn, keyboard: prefs.keyboard })
     } catch {
       return null
     }
-  }, [lesson, prefs.speed, prefs.easyTiming, prefs.backingOn, prefs.keyboard])
+  }, [lesson, speed, prefs.easyTiming, prefs.backingOn, prefs.keyboard])
 
   useEffect(() => {
     startRef.current?.focus()
@@ -176,9 +186,7 @@ export function LessonIntro({
     connectSource(prefs.input, prefs.micId).catch(() => onConnect())
   }
   const muted = clicksMuted()
-  const rec = progress.lessons[lesson.id]
   const stage = dinoStageFor(progress)
-  const showSpeedNote = prefs.speed < 1
 
   return (
     <div className="ls-intro">
@@ -223,13 +231,24 @@ export function LessonIntro({
         <div className="ls-controls">
           <div className="ls-field">
             <span className="ls-field-label">Speed</span>
-            <Seg label="Speed" value={prefs.speed} options={SPEEDS} onPick={(v) => onPrefs({ ...prefs, speed: v })} />
-            {showSpeedNote && <small className="ls-muted">Practice: 75% XP, up to 2 <StarGlyph />
-                <span className="ls-sr">stars</span>
-              </small>}
+            <Seg
+              label="Speed"
+              value={pick ?? 'auto'}
+              options={speedOptions}
+              onPick={(v) => onPrefs({ ...prefs, speedPick: v === 'auto' ? null : { lessonId: lesson.id, speed: v } })}
+            />
+            {pick === null && <small className="ls-muted">{autoHint}</small>}
+            {speed < 1 && (
+              <small className="ls-muted">
+                Practice speed: 75% XP, up to 2 <StarGlyph />
+                <span className="ls-sr">stars</span>. Pass at 100% for all 3.
+              </small>
+            )}
           </div>
           <Switch on={prefs.easyTiming} set={(v) => onPrefs({ ...prefs, easyTiming: v })} label="Easy timing" note="wider windows, 80% XP" />
-          {lesson.backing && <Switch on={prefs.backingOn} set={(v) => onPrefs({ ...prefs, backingOn: v })} label="Band" />}
+          {lesson.backing && (
+            <Switch on={prefs.backingOn} set={(v) => onPrefs({ ...prefs, backingOn: v })} label="Band" note={prefs.input === 'mic' ? 'Use headphones' : 'Off: click only'} />
+          )}
           <div className="ls-tone">
             <span>
               Suggested tone: <b>{lesson.tone}</b>

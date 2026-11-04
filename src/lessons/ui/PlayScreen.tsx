@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChartEvent, ChordEv, Cosmetic, DinoMood, Lesson, LessonResult, NoteEv, Prefs, RunState, Verdict } from '../types'
+import type { ChartEvent, ChordEv, Cosmetic, DinoMood, Lesson, LessonResult, NoteEv, Prefs, RunState, Speed, Verdict } from '../types'
 import { LessonRun, autoplayFromUrl } from '../run'
+import { MIN_SPEED } from '../speed'
 import { VERDICT_LABEL } from '../scoring'
 import { chordPcs, scalePcsOf } from '../improv'
 import { engine } from '../../audio/engine'
@@ -73,6 +74,7 @@ function PauseIcon() {
 export function PlayScreen({
   lesson,
   prefs,
+  speed,
   stage,
   cosmetics,
   onPrefs,
@@ -84,6 +86,8 @@ export function PlayScreen({
 }: {
   lesson: Lesson
   prefs: Prefs
+  /** Share of the lesson tempo for this run (the speed trainer's pick). */
+  speed: Speed
   stage: number
   cosmetics: Cosmetic[]
   onPrefs: (p: Prefs) => void
@@ -112,9 +116,9 @@ export function PlayScreen({
   const [improv, setImprov] = useState<{ chord: string; chips: { beat: number; midi: number; kind: 'chord' | 'scale' | 'out' }[] }>({ chord: '', chips: [] })
 
   // Latest props for callbacks that live as long as a run.
-  const live = useRef({ lesson, prefs, listen, onEnd, onPrefs })
+  const live = useRef({ lesson, prefs, listen, onEnd, onPrefs, speed })
   useEffect(() => {
-    live.current = { lesson, prefs, listen, onEnd, onPrefs }
+    live.current = { lesson, prefs, listen, onEnd, onPrefs, speed }
   })
 
   const dinoRef = useRef<HTMLDivElement>(null)
@@ -143,7 +147,7 @@ export function PlayScreen({
     const isListen = live.current.listen
     const r = new LessonRun({
       lesson,
-      speed: p.speed,
+      speed: live.current.speed,
       easyTiming: p.easyTiming,
       backingOn: p.backingOn,
       keyboard: p.keyboard,
@@ -430,7 +434,7 @@ export function PlayScreen({
                     <button className="ls-btn primary" onClick={restart}>
                       Restart
                     </button>
-                    {prefs.speed > 0.7 && (
+                    {speed > MIN_SPEED && (
                       <button className="ls-btn" onClick={onSlower}>
                         Slower
                       </button>

@@ -38,9 +38,34 @@ export const isMergeKey = (k: string) => k in MERGERS || k === PRACTICE_KEY
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 
+const dayOf = (x: unknown) => (x && typeof x === 'object' && typeof (x as Item).day === 'string' ? String((x as Item).day) : '')
+const doneSteps = (x: unknown) => {
+  const s = x && typeof x === 'object' ? (x as Item).steps : null
+  return Array.isArray(s) ? s.filter((t) => t && typeof t === 'object' && (t as Item).state === 'done').length : 0
+}
+
+/** Today's set from two copies: the later day wins; on the same day the one with more done steps, keeping a given bonus. */
+function mergePlan(a: unknown, b: unknown): unknown {
+  const da = dayOf(a)
+  const db = dayOf(b)
+  if (!da && !db) return null
+  if (da !== db) return da > db ? a : b
+  const win = doneSteps(a) >= doneSteps(b) ? a : b
+  return { ...(win as Item), bonus: (a as Item).bonus === true || (b as Item).bonus === true }
+}
+
+/** The plan streak with the later last day; on the same day, the longer one. */
+function mergeStreak(a: unknown, b: unknown): unknown {
+  const la = dayOf({ day: (a as Item | null)?.last })
+  const lb = dayOf({ day: (b as Item | null)?.last })
+  if (la !== lb) return la > lb ? a : b
+  return num((a as Item | null)?.days) >= num((b as Item | null)?.days) ? (a ?? null) : (b ?? null)
+}
+
 /**
  * Two copies of the same player's lessons progress: the one with more XP is the base, each lesson keeps the
- * record that was played more, achievements are combined. Null when a side is unreadable.
+ * record that was played more, achievements are combined, today's set and the plan streak take the later day.
+ * Null when a side is unreadable.
  */
 export function mergeLessonsProgress(a: string, b: string): string | null {
   try {
@@ -55,7 +80,14 @@ export function mergeLessonsProgress(a: string, b: string): string | null {
       if (better) lessons[id] = r
     }
     const achievements = { ...((other.achievements as Record<string, number>) ?? {}), ...((base.achievements as Record<string, number>) ?? {}) }
-    return JSON.stringify({ ...base, lessons, achievements, totalSec: Math.max(num(base.totalSec), num(other.totalSec)) })
+    return JSON.stringify({
+      ...base,
+      lessons,
+      achievements,
+      totalSec: Math.max(num(base.totalSec), num(other.totalSec)),
+      plan: mergePlan(base.plan, other.plan),
+      planStreak: mergeStreak(base.planStreak, other.planStreak) ?? { days: 0, last: '' },
+    })
   } catch {
     return null
   }

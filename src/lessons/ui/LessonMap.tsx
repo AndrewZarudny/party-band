@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import type { Progress, Stars, WorldDef } from '../types'
+import type { DayPlan, Progress, Stars, WorldDef } from '../types'
 import { WORLDS, lessonById } from '../data'
 import { DINO_STAGES, dayKey, dinoStageFor, eggCracked, isPassed, isUnlocked, levelFor, nextLesson, starsInWorld, streakStatus, worldUnlocked } from '../progress'
+import { planDone } from '../plan'
 import { ACHIEVEMENTS } from '../achievements'
 import { Dino } from './Dino'
+import { TodayCard } from './TodayPlan'
 
 // A guitar pick, point down. The node shape, star pips and bullets all reuse it.
 const PICK = 'M20 41C13 34 3 23 3 13.5 3 6 10.5 2.5 20 2.5S37 6 37 13.5C37 23 27 34 20 41Z'
@@ -51,7 +53,7 @@ function LockGlyph() {
   )
 }
 
-function FootGlyph() {
+export function FootGlyph() {
   return (
     <svg className="ls-foot" viewBox="0 0 24 24" aria-hidden>
       <path d="M12 21c-3.2 0-5.5-2.2-5.5-5 0-2.6 2.4-4.6 5.5-4.6s5.5 2 5.5 4.6c0 2.8-2.3 5-5.5 5Z" />
@@ -174,12 +176,20 @@ export function LessonMap({
   onAchievements,
   onSettings,
   onRename,
+  plan,
+  onPlanSwap,
+  onPlanSkip,
+  onToday,
 }: {
   progress: Progress
   onOpen: (id: string) => void
   onAchievements: () => void
   onSettings: () => void
   onRename: (name: string) => void
+  plan: DayPlan | null
+  onPlanSwap: (i: number) => void
+  onPlanSkip: (i: number) => void
+  onToday: () => void
 }) {
   const [now] = useState(() => new Date())
   const stage = dinoStageFor(progress)
@@ -190,6 +200,9 @@ export function LessonMap({
   const current = nextLesson(progress)
   const currentLesson = current ? lessonById(current) : undefined
   const earned = Object.keys(progress.achievements).length
+  // Today's set leads the home screen; Continue returns once the set is done (or there is none).
+  const showSet = !!plan && plan.steps.length > 0
+  const setDone = showSet && planDone(plan)
 
   return (
     <div className="ls-home">
@@ -225,13 +238,15 @@ export function LessonMap({
         </div>
       </header>
 
-      {currentLesson && (
+      {showSet && <TodayCard progress={progress} plan={plan} onOpen={onOpen} onSwap={onPlanSwap} onSkip={onPlanSkip} onToday={onToday} />}
+
+      {currentLesson && (!showSet || setDone) && (
         <div className="ls-continue">
           <div>
             <p className="ls-continue-label">Continue: {currentLesson.title}</p>
             <p className="ls-muted">{currentLesson.goal}</p>
           </div>
-          <button className="ls-btn primary" onClick={() => onOpen(currentLesson.id)} autoFocus>
+          <button className="ls-btn primary" onClick={() => onOpen(currentLesson.id)} autoFocus={!showSet || setDone}>
             Play
           </button>
         </div>
