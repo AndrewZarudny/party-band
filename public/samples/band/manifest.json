@@ -1,0 +1,998 @@
+{
+  "version": 1,
+  "instruments": {
+    "drums": {
+      "pieces": {
+        "kick": {
+          "layers": [
+            {
+              "vel": 48,
+              "files": [
+                "drums/kick_v1_r1.ogg",
+                "drums/kick_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 79,
+              "files": [
+                "drums/kick_v2_r1.ogg",
+                "drums/kick_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 111,
+              "files": [
+                "drums/kick_v3_r1.ogg",
+                "drums/kick_v3_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "drums/kick_v4_r1.ogg",
+                "drums/kick_v4_r2.ogg"
+              ]
+            }
+          ]
+        },
+        "snare": {
+          "layers": [
+            {
+              "vel": 48,
+              "files": [
+                "drums/snare_v1_r1.ogg",
+                "drums/snare_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 79,
+              "files": [
+                "drums/snare_v2_r1.ogg",
+                "drums/snare_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 111,
+              "files": [
+                "drums/snare_v3_r1.ogg",
+                "drums/snare_v3_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "drums/snare_v4_r1.ogg",
+                "drums/snare_v4_r2.ogg"
+              ]
+            }
+          ]
+        },
+        "hatClosed": {
+          "layers": [
+            {
+              "vel": 54,
+              "files": [
+                "drums/hatClosed_v1_r1.ogg",
+                "drums/hatClosed_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 73,
+              "files": [
+                "drums/hatClosed_v2_r1.ogg",
+                "drums/hatClosed_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 109,
+              "files": [
+                "drums/hatClosed_v3_r1.ogg",
+                "drums/hatClosed_v3_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "drums/hatClosed_v4_r1.ogg",
+                "drums/hatClosed_v4_r2.ogg"
+              ]
+            }
+          ]
+        },
+        "hatOpen": {
+          "layers": [
+            {
+              "vel": 54,
+              "files": [
+                "drums/hatOpen_v1_r1.ogg",
+                "drums/hatOpen_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 73,
+              "files": [
+                "drums/hatOpen_v2_r1.ogg",
+                "drums/hatOpen_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 109,
+              "files": [
+                "drums/hatOpen_v3_r1.ogg",
+                "drums/hatOpen_v3_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "drums/hatOpen_v4_r1.ogg",
+                "drums/hatOpen_v4_r2.ogg"
+              ]
+            }
+          ]
+        },
+        "ride": {
+          "layers": [
+            {
+              "vel": 48,
+              "files": [
+                "drums/ride_v1_r1.ogg",
+                "drums/ride_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 79,
+              "files": [
+                "drums/ride_v2_r1.ogg",
+                "drums/ride_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 111,
+              "files": [
+                "drums/ride_v3_r1.ogg",
+                "drums/ride_v3_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "drums/ride_v4_r1.ogg",
+                "drums/ride_v4_r2.ogg"
+              ]
+            }
+          ]
+        },
+        "crash": {
+          "layers": [
+            {
+              "vel": 51,
+              "files": [
+                "drums/crash_v1_r1.ogg",
+                "drums/crash_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 76,
+              "files": [
+                "drums/crash_v2_r1.ogg",
+                "drums/crash_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 102,
+              "files": [
+                "drums/crash_v3_r1.ogg",
+                "drums/crash_v3_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "drums/crash_v4_r1.ogg",
+                "drums/crash_v4_r2.ogg"
+              ]
+            }
+          ]
+        },
+        "rimshot": {
+          "layers": [
+            {
+              "vel": 42,
+              "files": [
+                "drums/rimshot_v1_r1.ogg",
+                "drums/rimshot_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 85,
+              "files": [
+                "drums/rimshot_v2_r1.ogg",
+                "drums/rimshot_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 106,
+              "files": [
+                "drums/rimshot_v3_r1.ogg",
+                "drums/rimshot_v3_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "drums/rimshot_v4_r1.ogg",
+                "drums/rimshot_v4_r2.ogg"
+              ]
+            }
+          ]
+        },
+        "tomHigh": {
+          "layers": [
+            {
+              "vel": 54,
+              "files": [
+                "drums/tomHigh_v1_r1.ogg",
+                "drums/tomHigh_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 73,
+              "files": [
+                "drums/tomHigh_v2_r1.ogg",
+                "drums/tomHigh_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 109,
+              "files": [
+                "drums/tomHigh_v3_r1.ogg",
+                "drums/tomHigh_v3_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "drums/tomHigh_v4_r1.ogg",
+                "drums/tomHigh_v4_r2.ogg"
+              ]
+            }
+          ]
+        },
+        "tomLow": {
+          "layers": [
+            {
+              "vel": 54,
+              "files": [
+                "drums/tomLow_v1_r1.ogg",
+                "drums/tomLow_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 73,
+              "files": [
+                "drums/tomLow_v2_r1.ogg",
+                "drums/tomLow_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 109,
+              "files": [
+                "drums/tomLow_v3_r1.ogg",
+                "drums/tomLow_v3_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "drums/tomLow_v4_r1.ogg",
+                "drums/tomLow_v4_r2.ogg"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "bass": {
+      "zones": [
+        {
+          "root": 28,
+          "lo": 23,
+          "hi": 29,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "bass/b28_v1_r1.ogg",
+                "bass/b28_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "bass/b28_v2_r1.ogg",
+                "bass/b28_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "bass/b28_v3_r1.ogg",
+                "bass/b28_v3_r2.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 30,
+          "lo": 30,
+          "hi": 31,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "bass/b30_v1_r1.ogg",
+                "bass/b30_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "bass/b30_v2_r1.ogg",
+                "bass/b30_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "bass/b30_v3_r1.ogg",
+                "bass/b30_v3_r2.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 33,
+          "lo": 32,
+          "hi": 34,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "bass/b33_v1_r1.ogg",
+                "bass/b33_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "bass/b33_v2_r1.ogg",
+                "bass/b33_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "bass/b33_v3_r1.ogg",
+                "bass/b33_v3_r2.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 36,
+          "lo": 35,
+          "hi": 37,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "bass/b36_v1_r1.ogg",
+                "bass/b36_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "bass/b36_v2_r1.ogg",
+                "bass/b36_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "bass/b36_v3_r1.ogg",
+                "bass/b36_v3_r2.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 39,
+          "lo": 38,
+          "hi": 40,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "bass/b39_v1_r1.ogg",
+                "bass/b39_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "bass/b39_v2_r1.ogg",
+                "bass/b39_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "bass/b39_v3_r1.ogg",
+                "bass/b39_v3_r2.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 42,
+          "lo": 41,
+          "hi": 43,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "bass/b42_v1_r1.ogg",
+                "bass/b42_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "bass/b42_v2_r1.ogg",
+                "bass/b42_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "bass/b42_v3_r1.ogg",
+                "bass/b42_v3_r2.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 45,
+          "lo": 44,
+          "hi": 46,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "bass/b45_v1_r1.ogg",
+                "bass/b45_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "bass/b45_v2_r1.ogg",
+                "bass/b45_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "bass/b45_v3_r1.ogg",
+                "bass/b45_v3_r2.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 48,
+          "lo": 47,
+          "hi": 49,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "bass/b48_v1_r1.ogg",
+                "bass/b48_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "bass/b48_v2_r1.ogg",
+                "bass/b48_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "bass/b48_v3_r1.ogg",
+                "bass/b48_v3_r2.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 51,
+          "lo": 50,
+          "hi": 52,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "bass/b51_v1_r1.ogg",
+                "bass/b51_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "bass/b51_v2_r1.ogg",
+                "bass/b51_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "bass/b51_v3_r1.ogg",
+                "bass/b51_v3_r2.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 54,
+          "lo": 53,
+          "hi": 55,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "bass/b54_v1_r1.ogg",
+                "bass/b54_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "bass/b54_v2_r1.ogg",
+                "bass/b54_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "bass/b54_v3_r1.ogg",
+                "bass/b54_v3_r2.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 57,
+          "lo": 56,
+          "hi": 62,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "bass/b57_v1_r1.ogg",
+                "bass/b57_v1_r2.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "bass/b57_v2_r1.ogg",
+                "bass/b57_v2_r2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "bass/b57_v3_r1.ogg",
+                "bass/b57_v3_r2.ogg"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "keys": {
+      "name": "Wurlitzer EP200",
+      "zones": [
+        {
+          "root": 45,
+          "lo": 36,
+          "hi": 46,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "keys/k45_v1.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "keys/k45_v2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "keys/k45_v3.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 48,
+          "lo": 47,
+          "hi": 49,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "keys/k48_v1.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "keys/k48_v2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "keys/k48_v3.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 51,
+          "lo": 50,
+          "hi": 52,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "keys/k51_v1.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "keys/k51_v2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "keys/k51_v3.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 54,
+          "lo": 53,
+          "hi": 55,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "keys/k54_v1.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "keys/k54_v2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "keys/k54_v3.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 57,
+          "lo": 56,
+          "hi": 58,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "keys/k57_v1.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "keys/k57_v2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "keys/k57_v3.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 60,
+          "lo": 59,
+          "hi": 61,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "keys/k60_v1.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "keys/k60_v2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "keys/k60_v3.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 63,
+          "lo": 62,
+          "hi": 64,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "keys/k63_v1.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "keys/k63_v2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "keys/k63_v3.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 66,
+          "lo": 65,
+          "hi": 67,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "keys/k66_v1.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "keys/k66_v2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "keys/k66_v3.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 69,
+          "lo": 68,
+          "hi": 70,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "keys/k69_v1.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "keys/k69_v2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "keys/k69_v3.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 72,
+          "lo": 71,
+          "hi": 73,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "keys/k72_v1.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "keys/k72_v2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "keys/k72_v3.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 75,
+          "lo": 74,
+          "hi": 76,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "keys/k75_v1.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "keys/k75_v2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "keys/k75_v3.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 78,
+          "lo": 77,
+          "hi": 79,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "keys/k78_v1.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "keys/k78_v2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "keys/k78_v3.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 81,
+          "lo": 80,
+          "hi": 82,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "keys/k81_v1.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "keys/k81_v2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "keys/k81_v3.ogg"
+              ]
+            }
+          ]
+        },
+        {
+          "root": 84,
+          "lo": 83,
+          "hi": 96,
+          "layers": [
+            {
+              "vel": 64,
+              "files": [
+                "keys/k84_v1.ogg"
+              ]
+            },
+            {
+              "vel": 100,
+              "files": [
+                "keys/k84_v2.ogg"
+              ]
+            },
+            {
+              "vel": 127,
+              "files": [
+                "keys/k84_v3.ogg"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "credits": [
+    {
+      "name": "Unruly Drums",
+      "author": "Karoryfer Samples (Karoryfer Lecolds)",
+      "licence": "CC0 1.0 Universal",
+      "url": "https://github.com/sfzinstruments/karoryfer.unruly-drums",
+      "licenceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "changes": "Selected hits (4 velocity layers, 2 round robins per piece), close and overhead mics mixed to mono, trimmed, faded, normalised, converted to Ogg Vorbis."
+    },
+    {
+      "name": "Growlybass",
+      "author": "Karoryfer Samples (Karoryfer Lecolds)",
+      "licence": "CC0 1.0 Universal",
+      "url": "https://github.com/sfzinstruments/karoryfer.growlybass",
+      "licenceUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "changes": "Selected sustained notes (3 velocity layers, 2 round robins), E1 notes re-tuned 25 cents down, trimmed to 2.5 s with a fade, normalised, converted to Ogg Vorbis."
+    },
+    {
+      "name": "Wurlitzer EP200 Electric Piano (Greg Sullivan E-Pianos)",
+      "author": "Greg Sullivan (http://www.sullivang.net/); SFZ mapping by kinwie",
+      "licence": "CC BY 3.0 Unported",
+      "url": "https://github.com/sfzinstruments/GregSullivan.E-Pianos",
+      "licenceUrl": "https://creativecommons.org/licenses/by/3.0/",
+      "changes": "Samples were trimmed to 3 s with a fade, re-pitched onto a 3-semitone grid, level-matched, normalised and converted from FLAC to Ogg Vorbis."
+    },
+    {
+      "name": "Groove MIDI Dataset",
+      "author": "Google LLC (Magenta)",
+      "licence": "CC BY 4.0",
+      "url": "https://magenta.tensorflow.org/datasets/groove",
+      "licenceUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "changes": "Groove timing and velocity templates extracted (median per 8th-note slot per style); no MIDI files are included."
+    }
+  ]
+}

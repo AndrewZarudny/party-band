@@ -33,9 +33,11 @@ import { BandSetup, MemberCard } from '../components/BandCards'
 import type { CardContext } from '../components/BandCards'
 import type { Instrument, Member, RolePref } from '../music/band'
 import { INSTRUMENTS, loadBand, saveBand } from '../music/band'
+import { holdReload, practice } from '../account/activity'
 import { FEELS, keysVoicing } from '../music/parts'
 import { BackingBand } from '../audio/backing'
 import type { BackingPart } from '../audio/backing'
+import { BandSoundSwitch } from '../components/BandSound'
 import type { KeysVoicing } from '../music/parts'
 
 interface Played {
@@ -55,7 +57,7 @@ function loadPrefs() {
 }
 
 /** Free jamming (view "jam") or playing the band's songs (view "songs"); one engine serves both tabs. */
-export function JamMode({ view = 'jam', active = true }: { view?: 'jam' | 'songs'; active?: boolean }) {
+export function JamMode({ view = 'jam', active = true, suspend = false }: { view?: 'jam' | 'songs'; active?: boolean; suspend?: boolean }) {
   const prefs = useMemo(loadPrefs, [])
   const [keyRoot, setKeyRoot] = useState<number>((prefs.keyRoot as number) ?? 9)
   const [scaleId, setScaleId] = useState<string>((prefs.scaleId as string) ?? 'minorPent')
@@ -82,6 +84,18 @@ export function JamMode({ view = 'jam', active = true }: { view?: 'jam' | 'songs
 
   // Live session: while one runs, tonight's band is you plus whoever joined from their phone.
   const [liveMembers, setLiveMembers] = useState<SessionMember[] | null>(null)
+  // Account updates from elsewhere wait while the jam plays or bandmates are connected.
+  const live = !!liveMembers
+  useEffect(() => {
+    holdReload('jam', running)
+    holdReload('live', live)
+    const stopPractice = practice('jam', running)
+    return () => {
+      holdReload('jam', false)
+      holdReload('live', false)
+      stopPractice?.()
+    }
+  }, [running, live])
   const [liveRoles, setLiveRoles] = useState<Record<string, RolePref>>(() => {
     try {
       return JSON.parse(localStorage.getItem('live-roles') ?? '{}') as Record<string, RolePref>
@@ -242,6 +256,8 @@ export function JamMode({ view = 'jam', active = true }: { view?: 'jam' | 'songs
       /* already stopped */
     }
     clock.current.recSrc = null
+    // Silence the band at once (a finished song's last chord rings out).
+    if (!clock.current.finished) backing.current?.stop()
     if (playLog.current) {
       logEnd(playLog.current, (songBeatRef.current * 60) / settings.current.bpm, clock.current.finished)
       playLog.current = null
@@ -252,6 +268,11 @@ export function JamMode({ view = 'jam', active = true }: { view?: 'jam' | 'songs
     setEighth(null)
     setCountIn(0)
   }, [])
+
+  // The Lessons tab has its own clock and band: stop the jam so they don't play over each other.
+  useEffect(() => {
+    if (suspend && running) stop()
+  }, [suspend, running, stop])
 
   /** Starts the jam, from the top or from beat `fromBeat` (jumping to a section of a song). */
   const start = useCallback(async (fromBeat = 0) => {
@@ -798,6 +819,7 @@ export function JamMode({ view = 'jam', active = true }: { view?: 'jam' | 'songs
               </button>
             ))}
           {backingOn && <input type="range" min={0} max={1} step={0.05} value={backingVol} onChange={(e) => setBackingVol(Number(e.target.value))} title="Backing volume" />}
+          {backingOn && <BandSoundSwitch />}
         </div>
         <Toggle on={auto} set={setAuto} label="Auto-advance" />
         <button className="btn primary" onClick={() => (running ? stop() : start())}>

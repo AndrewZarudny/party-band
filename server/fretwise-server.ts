@@ -10,6 +10,7 @@ import { z } from 'zod'
 import type { Cost, Feature, ModelId } from './ai'
 import { aiError, costSummary, getClient, runJson } from './ai'
 import { handleSession, isLocal } from './session'
+import { handleAccounts } from './accounts'
 
 const GP_EXT = /\.(gp|gp3|gp4|gp5|gpx|gp7|gp8|musicxml|mxl|nam|zip)$/i
 const DOWNLOADS = path.join(os.homedir(), 'Downloads')
@@ -474,7 +475,7 @@ export function fretwiseServer(): Plugin {
       const sse = downloadsWatcher()
 
       // On this Mac, the app always runs at localhost: songs, tones and history are kept per address
-      // in the browser, so opening the Wi-Fi address here would show an empty app.
+      // in the browser unless signed in, so opening the Wi-Fi address here would show an empty app.
       server.middlewares.use((req, res, next) => {
         const host = (req.headers.host ?? '').split(':')[0]
         const page = req.method === 'GET' && !req.url?.startsWith('/join') && (req.headers.accept ?? '').includes('text/html')
@@ -486,12 +487,14 @@ export function fretwiseServer(): Plugin {
         next()
       })
 
-      // Other devices on the Wi-Fi may only use the live-session endpoints. Everything else
+      // Other devices on the Wi-Fi may only use the live-session and account endpoints (accounts need a
+      // password and keep each player's songs, files and settings in .cache/accounts/). Everything else
       // (AI calls on your API key, the Downloads folder, the TONE3000 relay) answers to this Mac only.
       server.middlewares.use(async (req, res, next) => {
         if (!req.url?.startsWith('/api/')) return next()
         try {
           if (await handleSession(req, res, server.config.server.port ?? 5173)) return
+          if (await handleAccounts(req, res)) return
         } catch (err) {
           return json(res, 500, { error: String(err) })
         }

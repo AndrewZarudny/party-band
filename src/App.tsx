@@ -6,16 +6,29 @@ import { handleCallback } from './tone3000/client'
 import { SongMode } from './modes/SongMode'
 import { JamMode } from './modes/JamMode'
 import { TunerMode } from './modes/TunerMode'
+import { LessonsMode } from './modes/LessonsMode'
 import { AudioPanel, AudioStatus } from './components/AudioPanel'
+import { AccountMenu } from './account/ui/AccountMenu'
+import { ThemeToggle } from './components/ThemeToggle'
 
-type Mode = 'song' | 'jam' | 'songs' | 'tune'
+type Mode = 'song' | 'jam' | 'songs' | 'tune' | 'lessons'
 
 export default function App() {
-  const [mode, setMode] = useState<Mode>(() => (localStorage.getItem('mode') as Mode) || 'song')
+  const [mode, setMode] = useState<Mode>(() => {
+    try {
+      return (localStorage.getItem('mode') as Mode) || 'song'
+    } catch {
+      return 'song'
+    }
+  })
   const [panel, setPanel] = useState(false)
   const pick = (m: Mode) => {
     setMode(m)
-    localStorage.setItem('mode', m)
+    try {
+      localStorage.setItem('mode', m)
+    } catch {
+      /* storage unavailable */
+    }
   }
   // The header button already shows the active tone's name.
   const onToneLabel = useCallback(() => {}, [])
@@ -58,8 +71,13 @@ export default function App() {
           <button className={mode === 'tune' ? 'on' : ''} onClick={() => pick('tune')}>
             Tuner
           </button>
+          <button className={mode === 'lessons' ? 'on' : ''} onClick={() => pick('lessons')}>
+            Lessons
+          </button>
         </nav>
         <AudioStatus onOpen={() => setPanel(true)} />
+        <ThemeToggle />
+        <AccountMenu />
       </header>
       {e.running && e.needsResume && (
         <button className="resume-bar" onClick={() => void engine.ensureContext()}>
@@ -73,11 +91,16 @@ export default function App() {
         </div>
         {/* One jam engine (clock, band, live session) serves both the Jam and Songs tabs. */}
         <div hidden={mode !== 'jam' && mode !== 'songs'} className="mode-wrap">
-          <JamMode view={mode === 'songs' ? 'songs' : 'jam'} active={mode === 'jam' || mode === 'songs'} />
+          <JamMode view={mode === 'songs' ? 'songs' : 'jam'} active={mode === 'jam' || mode === 'songs'} suspend={mode === 'lessons'} />
         </div>
         {mode === 'tune' && (
           <div className="mode-wrap">
             <TunerMode onConnect={() => setPanel(true)} />
+          </div>
+        )}
+        {mode === 'lessons' && (
+          <div className="mode-wrap">
+            <LessonsMode onConnect={() => setPanel(true)} />
           </div>
         )}
       </main>

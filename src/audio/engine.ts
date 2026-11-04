@@ -125,6 +125,24 @@ class NoteTracker {
   }
 }
 
+// Lessons' attack detector (tune on the Scarlett). Works on the ~48 kHz timeBuf.
+const ONSET_NEW = 256 // newest window, ~5 ms
+const ONSET_OLD = 1024 // reference window before it, ~21 ms
+const ONSET_HOP = 64
+const ONSET_MIN_RATIO = 1.3 // emitted at or above this; Lessons applies its own 1.4 / 1.6
+const ONSET_MIN_ENERGY = 1e-7 // mean squared first difference; also the floor for the reference window
+const ONSET_SAMPLE_K = 4 // a sample counts as the attack start when d² > K × reference energy
+// Lessons' chord check: bins outside this band are ignored. Below ~150 Hz semitones are < 2 bins apart
+// at 8192 points, so the low root's pitch class comes from its harmonics instead.
+const CHROMA_MIN_HZ = 150
+const CHROMA_MAX_HZ = 2100
+const CHROMA_FLOOR_DB = -85
+export interface OnsetFrame {
+  ratio: number // energy of the newest 5 ms vs the 21 ms before (first-difference, i.e. high-passed)
+  energy: number
+  ageSec: number // how long before the end of this frame's buffer the attack started
+}
+
 export interface DeviceInfo {
   id: string
   label: string
@@ -154,6 +172,14 @@ export class GuitarEngine {
   private gR!: GainNode
   private input!: GainNode
   private analyser!: AnalyserNode
+  /** Lessons: a new pick or strum attack, emitted at most once per frame, right after `level`. */
+  readonly onset = new Emitter<OnsetFrame>()
+  private onsetSum = new Float64Array(2049)
+  private onsetLastT = 0
+  // Lessons' chord check: a longer window (8192 samples ≈ 170 ms, ~5.9 Hz bins), made on first use.
+  private chromaAn: AnalyserNode | null = null
+  private chromaSpec = new Float32Array(0)
+  private chromaPc = new Int8Array(0)
   private gateGain!: GainNode
   private preHp!: BiquadFilterNode
   private preMid!: BiquadFilterNode
@@ -551,6 +577,86 @@ export class GuitarEngine {
     osc.stop(when + 0.07)
   }
 
+  /** Finds the strongest new attack in the samples that arrived since the last frame. */
+  private detectOnset(sr: number) {
+    const x = this.timeBuf
+    const n = x.length
+    const S = this.onsetSum // S[i] = Σ d[j]² for j < i, d[j] = x[j] − x[j−1]
+    S[0] = 0
+    S[1] = 0
+    for (let i = 1; i < n; i++) {
+      const d = x[i] - x[i - 1]
+      S[i + 1] = S[i] + d * d
+    }
+    const now = this.ctx!.currentTime
+    const fresh = Math.round((now - this.onsetLastT) * sr)
+    this.onsetLastT = now
+    const from = Math.max(ONSET_NEW + ONSET_OLD, n - Math.max(ONSET_HOP, fresh))
+    let best = 0
+    let bestEnd = -1
+    let bestOld = 0
+    for (let p = from; p <= n; p += ONSET_HOP) {
+      const eNew = (S[p] - S[p - ONSET_NEW]) / ONSET_NEW
+      const eOld = Math.max(ONSET_MIN_ENERGY, (S[p - ONSET_NEW] - S[p - ONSET_NEW - ONSET_OLD]) / ONSET_OLD)
+      const r = eNew / eOld
+      if (eNew > ONSET_MIN_ENERGY && r > best) {
+        best = r
+        bestEnd = p
+        bestOld = eOld
+      }
+    }
+    if (bestEnd < 0 || best < ONSET_MIN_RATIO) return
+    let idx = bestEnd - ONSET_NEW
+    for (let i = idx; i < bestEnd; i++) {
+      const d = x[i] - x[i - 1]
+      if (d * d > ONSET_SAMPLE_K * bestOld) {
+        idx = i
+        break
+      }
+    }
+    this.onset.emit({ ratio: best, energy: (S[bestEnd] - S[bestEnd - ONSET_NEW]) / ONSET_NEW, ageSec: (n - idx) / sr })
+  }
+
+  /**
+   * Pitch-class profile of the dry guitar over the last ~170 ms, written into `out`
+   * (12 bins, C = 0, L2-normalised). False when there's no input or nothing loud enough.
+   */
+  chroma(out: Float32Array): boolean {
+    if (!this.ctx || !this.running) return false
+    if (!this.chromaAn) {
+      const a = this.ctx.createAnalyser()
+      a.fftSize = 8192
+      a.smoothingTimeConstant = 0
+      this.input.connect(a)
+      this.chromaAn = a
+      this.chromaSpec = new Float32Array(a.frequencyBinCount)
+      this.chromaPc = new Int8Array(a.frequencyBinCount)
+      const sr = this.ctx.sampleRate
+      for (let k = 0; k < a.frequencyBinCount; k++) {
+        const f = (k * sr) / a.fftSize
+        this.chromaPc[k] = f < CHROMA_MIN_HZ || f > CHROMA_MAX_HZ ? -1 : ((Math.round(freqToMidiFloat(f)) % 12) + 12) % 12
+      }
+    }
+    this.chromaAn.getFloatFrequencyData(this.chromaSpec)
+    out.fill(0)
+    let total = 0
+    for (let k = 1; k < this.chromaSpec.length - 1; k++) {
+      const p = this.chromaPc[k]
+      const db = this.chromaSpec[k]
+      // Spectral peaks only, so leakage into neighbouring bins doesn't smear the notes.
+      if (p < 0 || db < CHROMA_FLOOR_DB || db < this.chromaSpec[k - 1] || db < this.chromaSpec[k + 1]) continue
+      const m = Math.pow(10, db / 20)
+      out[p] += Math.sqrt(m)
+      total += m
+    }
+    if (total < 1e-4) return false
+    let s = 0
+    for (let i = 0; i < 12; i++) s += out[i] * out[i]
+    s = Math.sqrt(s) || 1
+    for (let i = 0; i < 12; i++) out[i] /= s
+    return true
+  }
+
   private buildGraph(ctx: AudioContext) {
     const biquad = (type: BiquadFilterType, freq: number, q = 0.707, gain = 0) => {
       const f = ctx.createBiquadFilter()
@@ -718,6 +824,7 @@ export class GuitarEngine {
     for (let i = 0; i < this.timeBuf.length; i++) sum += this.timeBuf[i] * this.timeBuf[i]
     const rms = Math.sqrt(sum / this.timeBuf.length)
     this.level.emit(rms)
+    this.detectOnset(this.ctx.sampleRate / k)
 
     // Noise gate with hysteresis.
     const gateRms = this.tone.gate > 0 ? 0.0006 * Math.pow(1.6, this.tone.gate) : 0

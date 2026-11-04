@@ -4,6 +4,7 @@ import type { DeviceInfo, InputChannel } from '../audio/engine'
 import { useEngineState, useLevel, useNoteOn, usePitch } from '../audio/hooks'
 import type { SelectResult } from '../tone3000/client'
 import { ToneBuilder } from './ToneBuilder'
+import { BandSoundSection } from './BandSound'
 import { midiName } from '../music/theory'
 
 const DEVICE_KEY = 'audio-devices'
@@ -165,6 +166,8 @@ export function AudioPanel({ onClose, t3kResult, onT3kDone }: { onClose: () => v
         </section>
 
         <ToneBuilder t3kResult={t3kResult} onT3kDone={onT3kDone} />
+
+        <BandSoundSection />
       </div>
     </div>
   )

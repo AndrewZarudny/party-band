@@ -1,0 +1,369 @@
+/* Pebble the dino. Transform/opacity animations only; all off under reduced motion. */
+
+.dino {
+  display: block;
+  overflow: visible;
+  flex: none;
+  --d-ease: cubic-bezier(0.45, 0, 0.55, 1);
+  --d-pop: cubic-bezier(0.3, 0.7, 0.4, 1);
+}
+.dino .d-disc {
+  fill: var(--panel-2);
+}
+/* The sleepy z z sit on the disc: follow the theme's muted ink (overrides the hex fill). */
+.dino .fx-z {
+  fill: var(--muted);
+}
+
+/* Every moving part turns around its own box. */
+.dino .d-fig,
+.dino .d-breath,
+.dino .d-tail,
+.dino .d-arm,
+.dino .d-lids > *,
+.dino .d-pupils,
+.dino .d-plates,
+.dino .d-body,
+.dino .d-shadow,
+.dino .fx-z text,
+.dino .fx-note,
+.dino .fx-roar {
+  transform-box: fill-box;
+}
+.dino .d-fig,
+.dino .d-breath {
+  transform-origin: 50% 100%;
+}
+.dino .d-shadow,
+.dino .d-body {
+  transform-origin: 50% 50%;
+}
+.dino .d-tail {
+  transform-origin: 100% 35%;
+}
+.dino .d-arm {
+  transform-origin: 20% 50%;
+  transition: transform 140ms var(--d-pop);
+}
+.dino .d-lids > * {
+  transform-origin: 50% 0;
+  transform: scaleY(0);
+}
+.dino .d-pupils,
+.dino .d-plates {
+  transition: transform 220ms var(--d-pop);
+}
+.dino .d-fig {
+  transition: transform 260ms var(--d-pop);
+}
+
+/* Hidden until a mood asks for them */
+.dino .d-closed,
+.dino .d-plates-hi,
+.dino .d-fx > *,
+.dino .d-mouth > * {
+  display: none;
+}
+.dino .d-plates-hi {
+  opacity: 0;
+}
+.dino .d-mouth > .m-base {
+  display: inline;
+}
+
+/* ---- idle: breathe, blink, tail sway ---- */
+.dino .d-breath {
+  animation: d-breathe 2.4s var(--d-ease) infinite;
+}
+.dino .d-lids > * {
+  animation: d-blink 4.5s linear infinite;
+}
+.dino .d-lids > :nth-child(2) {
+  animation-delay: 0.03s;
+}
+.dino .d-tail {
+  animation: d-tail 1.8s var(--d-ease) infinite;
+}
+.dino.stage-0 .d-fig,
+.dino.stage-1 .d-fig {
+  animation: d-egg-wobble 3s var(--d-ease) infinite;
+}
+.dino.stage-0 .d-breath,
+.dino.stage-1 .d-breath {
+  animation: none;
+}
+.dino .d-orbit {
+  transform-box: view-box;
+  transform-origin: 60px 60px;
+  animation: d-orbit 28s linear infinite;
+}
+
+/* ---- focus: count-in, eyes narrowed, leaning in ---- */
+.dino.mood-focus .d-lids > * {
+  animation: none;
+  transform: scaleY(0.4);
+}
+.dino.mood-focus .d-fig {
+  transform: rotate(3deg);
+}
+
+/* ---- happy: hop with a little squash, smile, arms up ---- */
+.dino.mood-happy .d-fig {
+  animation: d-hop 0.45s var(--d-pop) 1;
+}
+.dino.mood-happy .d-shadow {
+  animation: d-shadow-hop 0.45s var(--d-pop) 1;
+}
+/* the guitar players keep their hands on the guitar */
+.dino.mood-happy:not(.stage-7):not(.stage-8) .d-arm {
+  transform: rotate(-48deg);
+}
+.dino.mood-happy .d-mouth > .m-base,
+.dino.mood-proud .d-mouth > .m-base {
+  display: none;
+}
+.dino.mood-happy .d-mouth > .m-smile,
+.dino.mood-proud .d-mouth > .m-smile {
+  display: inline;
+}
+
+/* ---- hyped: roar active ---- */
+.dino.mood-hyped .d-mouth > .m-base,
+.dino.stage-6.mood-happy .d-mouth > .m-smile {
+  display: none;
+}
+.dino.mood-hyped .d-mouth > .m-open,
+.dino.stage-6.mood-happy .d-mouth > .m-open {
+  display: inline;
+}
+.dino.mood-hyped .d-plates-hi {
+  display: inline;
+  animation: d-flash 0.6s var(--d-ease) infinite alternate;
+}
+.dino.mood-hyped .d-fx > .fx-roar {
+  display: inline;
+  animation: d-roar 0.6s var(--d-ease) infinite;
+}
+.dino.stage-6.mood-hyped .d-fx > .fx-notes,
+.dino.stage-6.mood-happy .d-fx > .fx-notes {
+  display: inline;
+}
+.dino .fx-note {
+  animation: d-float 2.5s var(--d-ease) infinite;
+}
+.dino .fx-note + .fx-note {
+  animation-delay: -1.1s;
+}
+
+/* ---- oops: a quick wobble and a sweat drop ---- */
+.dino.mood-oops .d-fig {
+  animation: d-wobble 0.35s var(--d-ease) 1;
+}
+.dino.mood-oops .d-mouth > .m-base,
+.dino.mood-sad .d-mouth > .m-base {
+  display: none;
+}
+.dino.mood-oops .d-mouth > .m-oops,
+.dino.mood-sad .d-mouth > .m-oops,
+.dino.mood-oops .d-fx > .fx-sweat {
+  display: inline;
+}
+
+/* ---- sad: plates droop, eyes down ---- */
+.dino.mood-sad .d-plates {
+  transform: translateY(1.6px) scale(0.9);
+}
+.dino.mood-sad .d-pupils {
+  transform: translate(-0.6px, 1.6px);
+}
+.dino.mood-sad .d-fig {
+  transform: rotate(2.5deg);
+}
+
+/* ---- sleepy: eyes shut, z z ---- */
+.dino.mood-sleepy .d-lids > * {
+  animation: none;
+  transform: scaleY(1);
+}
+.dino.mood-sleepy .d-lids,
+.dino.mood-sleepy .d-pupils {
+  display: none;
+}
+.dino.mood-sleepy .d-closed,
+.dino.mood-sleepy .d-fx > .fx-z {
+  display: inline;
+}
+.dino.mood-sleepy .d-eyes > ellipse {
+  fill: #93b46a;
+  stroke: none;
+}
+.dino.mood-sleepy .d-breath {
+  animation-duration: 3.6s;
+}
+.dino.mood-sleepy.stage-0 .d-fig,
+.dino.mood-sleepy.stage-1 .d-fig {
+  animation: none;
+}
+.dino .fx-z text {
+  animation: d-float 2.5s var(--d-ease) infinite;
+}
+.dino .fx-z text + text {
+  animation-delay: -1.25s;
+}
+
+/* ---- proud: chest out and a small bow ---- */
+.dino.mood-proud .d-body {
+  transform: scaleX(1.05);
+}
+.dino.mood-proud .d-fig {
+  animation: d-bow 1.3s var(--d-pop) 0.15s 1 both;
+}
+
+@keyframes d-breathe {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(1.03);
+  }
+}
+@keyframes d-blink {
+  0%,
+  95% {
+    transform: scaleY(0);
+  }
+  96.5%,
+  97.5% {
+    transform: scaleY(1);
+  }
+  99%,
+  100% {
+    transform: scaleY(0);
+  }
+}
+@keyframes d-tail {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+}
+@keyframes d-egg-wobble {
+  0%,
+  66%,
+  100% {
+    transform: rotate(0deg);
+  }
+  72% {
+    transform: rotate(-4deg);
+  }
+  79% {
+    transform: rotate(3.5deg);
+  }
+  86% {
+    transform: rotate(-2deg);
+  }
+  93% {
+    transform: rotate(1deg);
+  }
+}
+/* squash on take-off, stretch in the air, squash on landing */
+@keyframes d-hop {
+  0% {
+    transform: translateY(0) scale(1.05, 0.95);
+  }
+  40% {
+    transform: translateY(-10px) scale(0.97, 1.04);
+  }
+  78% {
+    transform: translateY(0) scale(1.05, 0.95);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes d-shadow-hop {
+  40% {
+    transform: scale(0.78);
+    opacity: 0.6;
+  }
+}
+@keyframes d-wobble {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-8deg);
+  }
+  55% {
+    transform: rotate(7deg);
+  }
+  80% {
+    transform: rotate(-3deg);
+  }
+}
+@keyframes d-roar {
+  0% {
+    opacity: 0.35;
+    transform: translateX(0);
+  }
+  60% {
+    opacity: 1;
+    transform: translateX(2px);
+  }
+  100% {
+    opacity: 0.35;
+    transform: translateX(0);
+  }
+}
+@keyframes d-flash {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.9;
+  }
+}
+@keyframes d-float {
+  0% {
+    opacity: 0;
+    transform: translate(0, 2px);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(4px, -9px);
+  }
+}
+@keyframes d-bow {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  45% {
+    transform: rotate(7deg) translateY(1px);
+  }
+}
+@keyframes d-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dino,
+  .dino * {
+    animation: none !important;
+    transition: none !important;
+  }
+  /* a still z z still reads as asleep */
+  .dino .fx-z text {
+    opacity: 1;
+  }
+}

@@ -1,0 +1,457 @@
+// One play-through of a lesson: clock, band, input, judging and the end result.
+// The constructor is pure (LessonIntro uses it for previews); start() does all the side effects.
+import type { Autoplay, ChartEvent, Chart, InputFrame, InputOnset, JudgeResult, KeyName, Lesson, LessonResult, LiveHud, PlayedNote, RunState, Speed } from './types'
+import { engine } from '../audio/engine'
+import { BackingBand } from '../audio/backing'
+import { FEELS, keysVoicing } from '../music/parts'
+import type { KeysVoicing } from '../music/parts'
+import { STANDARD_TUNING, parseChord } from '../music/theory'
+import type { Chord, FretPos } from '../music/theory'
+import { boxNotes, makePhrase } from '../music/phrase'
+import { buildChart } from './charts'
+import { AudioClock, LessonClock } from './clock'
+import type { Tick } from './clock'
+import { LessonInput } from './input'
+import { KEYBOARD_DEVICE, defaultKeyOffsetMs, defaultOffsetMs, deviceKey, loadLatency } from './calibration'
+import { readChroma } from './chroma'
+import { LeadVoice } from './synth'
+import { Judge, STRUM_SHIFT_MS, voteMidi, windowsFor } from './judge'
+import { ChainMeter, buildResult } from './scoring'
+import { TechSpotter, analyseImprov, chordPcs, noteKind, scalePcsOf } from './improv'
+
+const END_PAD_SEC = 0.4
+const VOTE_SEC = 0.1
+const ARP_SEC = 0.025 // listen mode: per-string delay of a strummed chord
+const PLAYED_KEPT = 64
+const SLOPPY_JITTER = 0.14
+const SLOPPY_WRONG = 0.15
+const SLOPPY_SKIP = 0.1
+
+export interface RunOpts {
+  lesson: Lesson
+  speed: Speed
+  easyTiming: boolean
+  backingOn: boolean
+  keyboard: boolean
+  mic?: boolean // a microphone source: room noise needs a firmer attack before it counts
+  listen?: boolean // demo playback by LeadVoice, no judging, no result
+  autoplay?: Autoplay | null
+}
+
+type Played = { beat: number; midi: number; kind: 'chord' | 'scale' | 'out' }
+
+/** DEV only: ?lessons-autoplay=perfect|sloppy|silent */
+export function autoplayFromUrl(): Autoplay | null {
+  if (!import.meta.env.DEV || typeof location === 'undefined') return null
+  const v = new URLSearchParams(location.search).get('lessons-autoplay')
+  return v === 'perfect' || v === 'sloppy' || v === 'silent' ? v : null
+}
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
+
+export class LessonRun {
+  readonly lesson: Lesson
+  readonly chart: Chart
+  readonly bpm: number
+  readonly secPerBeat: number
+  state: RunState = 'idle'
+  hud: LiveHud = { chain: 0, bestChain: 0, roar: false, points: 0, last: null, lastPlayed: null, bend: null }
+  calibrated = false
+  played: Played[] = []
+  onJudge: ((r: JudgeResult, milestone: string | null) => void) | null = null
+  onEnd: ((r: LessonResult) => void) | null = null
+  onState: ((s: RunState) => void) | null = null
+
+  private opts: RunOpts
+  private aclock: AudioClock | null = null
+  private clock: LessonClock | null = null
+  private input: LessonInput | null = null
+  private judge: Judge | null = null
+  private chain = new ChainMeter()
+  private spotter: TechSpotter | null = null
+  private lead: LeadVoice | null = null
+  private band: BackingBand | null = null
+  private offSec = 0
+  private useEngine = false
+  private raf = 0
+  private chromaBuf = new Float32Array(12)
+  private autoQueue: { t: number; midi: number | null }[] = []
+  private improvQueue: InputOnset[] = []
+  private improvFrames: InputFrame[] = []
+  private improvNotes: PlayedNote[] = []
+  private box: FretPos[] = []
+  private scalePcs: number[] = []
+
+  constructor(o: RunOpts) {
+    this.opts = o
+    this.lesson = o.lesson
+    this.bpm = Math.round(o.lesson.bpm * o.speed)
+    this.secPerBeat = 60 / this.bpm
+    this.chart = buildChart(o.lesson)
+  }
+
+  async start(): Promise<void> {
+    if (this.state !== 'idle') return
+    const o = this.opts
+    const lesson = this.lesson
+    const ctx = await engine.ensureContext()
+    if ((this.state as RunState) !== 'idle') return // stopped while waiting
+    const listen = !!o.listen
+    const autoplay = listen ? null : o.autoplay !== undefined ? o.autoplay : autoplayFromUrl()
+    const keyboardMode = o.keyboard || !engine.running
+    const useEngine = engine.running && !keyboardMode && !autoplay && !listen
+    this.useEngine = useEngine
+
+    // The run's one offset: every input time and the judge clock are corrected by it.
+    let offMs = 0
+    let pitchLagMs = 35
+    if (autoplay || listen) this.calibrated = true
+    else if (keyboardMode) {
+      const cal = loadLatency(KEYBOARD_DEVICE)
+      offMs = cal?.offsetMs ?? defaultKeyOffsetMs()
+      this.calibrated = !!cal
+    } else {
+      const cal = loadLatency(deviceKey())
+      offMs = cal ? cal.offsetMs : defaultOffsetMs()
+      pitchLagMs = cal ? cal.pitchLagMs : 35
+      this.calibrated = !!cal
+    }
+    this.offSec = offMs / 1000
+
+    const spb = this.secPerBeat
+    const improv = lesson.type === 'improv' && lesson.improv ? lesson.improv : null
+    if (improv) {
+      this.scalePcs = scalePcsOf(improv)
+      this.box = boxNotes(this.scalePcs, [], improv.boxFret)
+      this.spotter = new TechSpotter()
+    }
+    this.aclock = new AudioClock(ctx)
+    this.lead = new LeadVoice(ctx)
+    const backing = lesson.backing
+    if (o.backingOn && backing) this.band = new BackingBand(ctx, ctx.destination)
+    const chords: (Chord | null)[] = backing ? backing.chords.map((s) => parseChord(s)) : []
+    const voicings: (KeysVoicing | null)[] = []
+    let prev: number[] | null = null
+    for (const c of chords) {
+      const v: KeysVoicing | null = c ? keysVoicing(c, prev) : null
+      if (v) prev = v.right
+      voicings.push(v)
+    }
+    const swing = !!backing && !!FEELS[backing.feel]?.swing
+
+    this.clock = new LessonClock()
+    this.clock.run(ctx, {
+      bpm: this.bpm,
+      countInBeats: lesson.countInBeats ?? 4,
+      totalBeats: this.chart.totalBeats,
+      swing,
+      click: lesson.click ?? !backing,
+      onTick: (k) => this.onTick(k, chords, voicings, listen),
+    })
+
+    if (!listen) {
+      const minGapSec = this.chart.minGapBeats * spb
+      this.input = new LessonInput({
+        clock: this.aclock,
+        offsetMs: offMs,
+        pitchLagMs,
+        onsetRatio: (lesson.type === 'chords' || lesson.type === 'rhythm' ? 1.4 : 1.6) + (o.mic ? 0.2 : 0),
+        absRms: o.mic ? 0.004 : undefined,
+        refractoryMs: Number.isFinite(minGapSec) ? clamp(0.45 * minGapSec * 1000, 40, 90) : 90,
+        keyboard: keyboardMode,
+        useEngine,
+      })
+      if (!improv) {
+        const input = this.input
+        this.judge = new Judge(this.chart, {
+          start: this.clock.start,
+          secPerBeat: spb,
+          windows: windowsFor(lesson.timing, o.easyTiming, this.calibrated),
+          octaveOk: !!lesson.octaveOk,
+          restGate: () => input.peakMedian(),
+          listenBars: this.chart.listenBars,
+        })
+      }
+      this.input.onOnset((on) => this.handleOnset(on))
+      this.input.onFrame((f) => this.handleFrame(f))
+      this.input.setKeyHint((t, key) => this.keyHint(t, key))
+      this.input.start()
+      if (autoplay) this.autoQueue = this.planAutoplay(autoplay)
+    }
+
+    if (import.meta.env.DEV) {
+      const clock = this.clock
+      const w = window as unknown as { __fretwiseLessons?: unknown }
+      w.__fretwiseLessons = {
+        run: this,
+        inject: (midi: number | null, beat: number) => this.input?.inject({ t: clock.timeOfBeat(beat), midi, source: 'auto' }),
+      }
+    }
+
+    this.setState('countin')
+    this.raf = requestAnimationFrame(this.loop)
+  }
+
+  /** Stopped by the user or unmount: no result. Idempotent. */
+  stop() {
+    this.band?.stop() // silent at once, also notes scheduled ahead
+    this.release()
+    if (this.state !== 'ended' && this.state !== 'stopped') this.setState('stopped')
+  }
+
+  /** Corrected audio time: what the judge and analysers line up with. */
+  now(): number {
+    return this.aclock ? this.aclock.now() - this.offSec : 0
+  }
+
+  /** Beat to draw at, from the uncorrected clock minus the output delay, plus the display nudge. */
+  visualBeat(nudgeMs: number): number {
+    if (!this.aclock || !this.clock) return -(this.lesson.countInBeats ?? 4)
+    return this.clock.beatAt(this.aclock.now() - engine.latencyMs / 1000 + nudgeMs / 1000)
+  }
+
+  result(id: number): JudgeResult | undefined {
+    return this.judge?.results.get(id)
+  }
+
+  pendingEvent(): ChartEvent | null {
+    return this.judge ? this.judge.pending(this.now()) : null
+  }
+
+  // ---- internals ----
+
+  private setState(s: RunState) {
+    this.state = s
+    this.onState?.(s)
+  }
+
+  private release() {
+    this.clock?.stop()
+    cancelAnimationFrame(this.raf)
+    this.raf = 0
+    this.input?.stop()
+    this.lead?.stopAll()
+    this.band = null // no further playStep; at the natural end the last notes ring out
+    this.autoQueue = []
+    if (import.meta.env.DEV && typeof window !== 'undefined') {
+      const w = window as unknown as { __fretwiseLessons?: { run?: unknown } }
+      if (w.__fretwiseLessons?.run === this) delete w.__fretwiseLessons
+    }
+  }
+
+  private beatAt(t: number) {
+    return this.clock ? this.clock.beatAt(t) : 0
+  }
+
+  private onTick(k: Tick, chords: (Chord | null)[], voicings: (KeysVoicing | null)[], listen: boolean) {
+    if (k.beat < 0 || k.beat >= this.chart.totalBeats) return
+    const spb = this.secPerBeat
+    const bar = Math.floor(k.beat / 4)
+    const backing = this.lesson.backing
+    if (this.band && backing && chords.length) {
+      const i = bar % chords.length
+      const c = chords[i]
+      const v = voicings[i]
+      if (c && v) this.band.playStep(k.t, k.step, 30 / this.bpm, c, FEELS[backing.feel], v, { drums: true, bass: true, keys: true })
+    }
+    const lead = this.lead
+    if (!lead) return
+    const inThis = (beat: number) => beat >= k.beat && beat < k.beat + 0.5
+    for (const c of this.chart.calls) {
+      if (inThis(c.beat)) lead.note(k.t + (c.beat - k.beat) * spb, c.midi, c.dur * spb)
+    }
+    if (!listen) return
+    for (const e of this.chart.events) {
+      if (!inThis(e.beat)) continue
+      const t = k.t + (e.beat - k.beat) * spb
+      if (e.kind === 'note') lead.note(t, e.midi, e.dur * spb)
+      else if (e.kind === 'chord') {
+        const strings = e.frets.map((f, s) => (f >= 0 ? STANDARD_TUNING[s] + f : -1)).filter((m) => m >= 0)
+        if (e.dir === 'U') strings.reverse()
+        strings.forEach((m, i) => lead.note(t + i * ARP_SEC, m, e.dur * spb, 0.7))
+      }
+    }
+  }
+
+  private handleOnset(on: InputOnset) {
+    this.judge?.onset(on)
+    if (this.spotter) {
+      this.spotter.onset(on, this.beatAt(on.t))
+      if (on.source !== 'glide') this.improvQueue.push(on)
+    }
+  }
+
+  private handleFrame(f: InputFrame) {
+    this.judge?.frame(f)
+    if (this.spotter) {
+      this.spotter.frame(f, this.beatAt(f.t))
+      this.improvFrames.push(f)
+      while (this.improvFrames.length && this.improvFrames[0].t < f.t - 2) this.improvFrames.shift()
+    }
+  }
+
+  private loop = () => {
+    if (this.state === 'stopped' || this.state === 'ended' || !this.clock) return
+    this.raf = requestAnimationFrame(this.loop)
+    const now = this.now()
+    if (this.state === 'countin' && this.clock.beatAt(now) >= 0) this.setState('playing')
+
+    // Autoplay: inject each planned onset once its time has come, at its exact time.
+    while (this.autoQueue.length && this.autoQueue[0].t <= now) {
+      const a = this.autoQueue.shift()!
+      this.input?.inject({ t: a.t, midi: a.midi, source: 'auto' })
+    }
+
+    if (this.judge) {
+      for (const r of this.judge.tick(now)) {
+        const m = this.chain.push(r, now)
+        this.syncHud(r)
+        this.onJudge?.(r, m)
+      }
+      const ids = this.judge.chromaWindows(now)
+      // only a live guitar run reads chroma: an idle interface must not grade key or auto runs
+      if (this.useEngine && ids.length && readChroma(this.chromaBuf)) this.judge.addChroma(ids, this.chromaBuf)
+      this.hud.bend = this.judge.bendProgress(now)
+    }
+    if (this.spotter) this.processImprov(now)
+
+    if (now > this.clock.timeOfBeat(this.chart.totalBeats) + END_PAD_SEC) this.end(now)
+  }
+
+  private syncHud(r: JudgeResult) {
+    const h = this.hud
+    h.chain = this.chain.chain
+    h.bestChain = this.chain.best
+    h.roar = this.chain.roar
+    h.points = this.chain.points
+    h.last = r.verdict
+    if (r.played !== undefined && r.played !== null) h.lastPlayed = r.played
+  }
+
+  private processImprov(now: number) {
+    while (this.improvQueue.length) {
+      const o = this.improvQueue[0]
+      const instant = o.source === 'key' || o.source === 'auto'
+      if (!instant && o.t + VOTE_SEC > now) break
+      this.improvQueue.shift()
+      const { midi } = voteMidi(this.improvFrames, o)
+      if (midi === null) continue
+      const beat = this.beatAt(o.t)
+      this.improvNotes.push({ t: o.t, beat, midi, legato: o.source === 'pitch' })
+      this.played.push({ beat, midi, kind: noteKind(midi, this.chordAt(beat) || null, this.scalePcs) })
+      if (this.played.length > PLAYED_KEPT) this.played.shift()
+      this.hud.lastPlayed = midi
+    }
+  }
+
+  private chordAt(beat: number): string {
+    const tl = this.chart.chordTimeline
+    if (!tl.length) return ''
+    return tl[clamp(Math.floor(beat / 4), 0, tl.length - 1)].symbol
+  }
+
+  private end(now: number) {
+    const lesson = this.lesson
+    const listen = !!this.opts.listen
+    let result: LessonResult | null = null
+    if (!listen) {
+      const summary = this.judge ? this.judge.finish() : null
+      this.chain.end(now)
+      if (this.spotter) this.processImprov(Infinity)
+      const backing = lesson.backing
+      const swing = !!backing && !!FEELS[backing.feel]?.swing
+      const improv = lesson.improv && this.spotter ? analyseImprov(lesson.improv, this.chart, this.improvNotes, this.spotter.hits, swing) : null
+      result = buildResult({
+        lesson,
+        chart: this.chart,
+        summary,
+        improv,
+        chain: this.chain,
+        bpm: this.bpm,
+        speed: this.opts.speed,
+        easyTiming: this.opts.easyTiming,
+        secPerBeat: this.secPerBeat,
+        playedSec: this.chart.totalBeats * this.secPerBeat,
+        calibrated: this.calibrated,
+      })
+    }
+    this.release()
+    this.setState('ended')
+    if (result) this.onEnd?.(result)
+  }
+
+  // ---- keyboard and autoplay ----
+
+  private keyHint(t: number, key: KeyName): number | null {
+    if (this.lesson.type === 'improv') {
+      const box = this.box
+      if (!box.length) return null
+      if (key === 'hit') return box[Math.floor(Math.random() * box.length)].midi
+      if (key[0] === 's') return box[(Number(key.slice(1)) - 1) % box.length].midi
+      return null
+    }
+    const ev = this.judge?.pending(t) ?? null
+    if (ev && ev.kind === 'chord' && ev.power && key === 'hit') {
+      // same root the autoplay plan sends, so a power chord can get full credit
+      const s = ev.frets.findIndex((f) => f >= 0)
+      return s >= 0 ? STANDARD_TUNING[s] + ev.frets[s] : null
+    }
+    if (!ev || ev.kind !== 'note') return null
+    if (key === 'hit') return ev.midi
+    if (key === 'wrong') return ev.midi + 1
+    if (key[0] === 's') {
+      const s = 6 - Number(key.slice(1))
+      return ev.string === s ? ev.midi : STANDARD_TUNING[s]
+    }
+    return null
+  }
+
+  private planAutoplay(mode: Autoplay): { t: number; midi: number | null }[] {
+    if (mode === 'silent' || !this.clock) return []
+    const clock = this.clock
+    const plan: { t: number; midi: number | null }[] = []
+    const improv = this.lesson.improv
+    if (this.lesson.type === 'improv' && improv) {
+      // Scale phrases of 3–5 eighths with a beat's rest between, never in call bars.
+      const listen = new Set(this.chart.listenBars)
+      const total = this.chart.totalBeats
+      let b = 0
+      while (b < total) {
+        const bar = Math.floor(b / 4)
+        if (listen.has(bar)) {
+          b = (bar + 1) * 4
+          continue
+        }
+        const n = 3 + Math.floor(Math.random() * 3)
+        const phrase = makePhrase(this.box, this.scalePcs, chordPcs(this.chordAt(b)), improv.endPcs ?? [improv.key], n)
+        let i = 0
+        for (; i < phrase.length; i++) {
+          const nb = b + i * 0.5
+          if (nb >= total || listen.has(Math.floor(nb / 4))) break
+          plan.push({ t: clock.timeOfBeat(nb), midi: phrase[i].midi })
+        }
+        b += Math.max(1, i) * 0.5 + 1
+      }
+      return plan
+    }
+    const sloppy = mode === 'sloppy'
+    for (const e of this.chart.events) {
+      if (e.kind === 'rest') continue
+      if (sloppy && Math.random() < SLOPPY_SKIP) continue
+      let t = clock.timeOfBeat(e.beat)
+      let midi: number | null = null
+      if (e.kind === 'note') midi = e.midi
+      else if (e.kind === 'chord' && e.power) {
+        const s = e.frets.findIndex((f) => f >= 0)
+        midi = s >= 0 ? STANDARD_TUNING[s] + e.frets[s] : null
+      }
+      if (e.kind !== 'note') t -= STRUM_SHIFT_MS / 1000
+      if (sloppy) {
+        t += (Math.random() * 2 - 1) * SLOPPY_JITTER
+        if (midi !== null && Math.random() < SLOPPY_WRONG) midi += 1
+      }
+      plan.push({ t, midi })
+    }
+    return plan.sort((a, b) => a.t - b.t)
+  }
+}

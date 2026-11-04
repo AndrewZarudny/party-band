@@ -1,0 +1,253 @@
+/* Practice time: the account menu's block and the "Your practice" dialog. */
+
+.prac-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Menu block */
+.prac-card {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.prac-card h3 {
+  margin: 0;
+  font-size: var(--fs-ui);
+  font-weight: 600;
+}
+.prac-figs {
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0;
+}
+.prac-figs div,
+.prac-stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.prac-figs dt,
+.prac-stats dt {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.prac-figs dd,
+.prac-stats dd {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+/* This week: seven short bars, the ones that reached the streak goal in gold. */
+.prac-week {
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.prac-week li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.prac-week-bar {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  height: 34px;
+  border-bottom: 1px solid var(--line);
+}
+.prac-week-bar i {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  border-radius: 2px 2px 0 0;
+  background: var(--muted);
+  opacity: 0.55;
+}
+.prac-week-bar i.met {
+  background: var(--accent);
+  opacity: 1;
+}
+.prac-week-day {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+.prac-week li.today .prac-week-day {
+  color: var(--text);
+  font-weight: 600;
+}
+.prac-week li.future .prac-week-bar {
+  border-bottom-style: dashed;
+}
+
+/* Guest: the practice button in the top bar. */
+.prac-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.prac-btn:hover,
+.prac-btn[aria-expanded='true'] {
+  color: var(--text);
+  border-color: var(--muted);
+}
+.prac-btn svg {
+  flex: none;
+}
+.prac-guest-note {
+  color: var(--muted);
+}
+
+/* Dialog */
+.acct-dialog.prac-dialog {
+  width: min(640px, 100%);
+}
+.prac-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin: 18px 0 0;
+}
+.prac-stats dd {
+  font-size: var(--fs-h2);
+}
+.prac-stats dd.prac-note {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.prac-chart {
+  margin: 20px 0 0;
+}
+.prac-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.prac-chart figcaption {
+  margin-top: 8px;
+  font-size: var(--fs-ui);
+}
+.prac-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.prac-base {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+.prac-goal {
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  opacity: 0.8;
+}
+.prac-axis {
+  fill: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.prac-hit {
+  fill: transparent;
+}
+.prac-chart g:hover .prac-hit {
+  fill: rgb(var(--text-rgb) / 0.06);
+}
+.prac-chart g.today .prac-axis {
+  fill: var(--text);
+}
+
+/* One colour per activity, from the fretboard's own marker palette. */
+.prac-k-lessons {
+  fill: var(--next);
+  background: var(--next);
+}
+.prac-k-songs {
+  fill: var(--scale);
+  background: var(--scale);
+}
+.prac-k-jam {
+  fill: var(--accent);
+  background: var(--accent);
+}
+.prac-k-guitar {
+  fill: var(--played);
+  background: var(--played);
+}
+
+.prac-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+}
+.prac-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.prac-legend span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.prac-sw {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.prac-sw-goal {
+  height: 0;
+  width: 14px;
+  border-radius: 0;
+  border-top: 1px dashed var(--accent);
+}
+.prac-how {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  max-width: 62ch;
+}
+
+@media (max-width: 520px) {
+  .prac-stats {
+    grid-template-columns: repeat(2, 1fr);
+    row-gap: 16px;
+  }
+  .prac-btn .prac-btn-text {
+    display: none;
+  }
+}

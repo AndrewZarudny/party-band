@@ -88,7 +88,7 @@ function MarkerDot({ m, x, y, flats, open }: { m: Marker; x: number; y: number; 
     <g className={`mk mk-${m.kind}`} opacity={m.opacity ?? 1}>
       <circle cx={x} cy={y} r={r} />
       {showText && (
-        <text x={x} y={y + 4} textAnchor="middle">
+        <text x={x} y={y + (m.kind === 'scale' ? 4 : 5)} textAnchor="middle">
           {label}
         </text>
       )}

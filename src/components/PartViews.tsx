@@ -72,14 +72,24 @@ export function Keyboard({ right, left, scale, from = 36, to = 83, flats }: { ri
   const H = 78
   const xOfWhite = (n: number) => whites.indexOf(n) * kw
   const fill = (n: number, black: boolean) =>
-    right.includes(n) ? 'var(--chord)' : n === left ? 'var(--root)' : scale?.includes(pc(n)) ? (black ? '#3d5a99' : '#bcd0f7') : black ? '#1b1b1b' : '#f4f1ea'
+    right.includes(n)
+      ? 'var(--chord)'
+      : n === left
+        ? 'var(--root)'
+        : scale?.includes(pc(n))
+          ? black
+            ? 'color-mix(in srgb, var(--scale) 55%, var(--ink))'
+            : 'color-mix(in srgb, var(--scale) 40%, var(--paper))'
+          : black
+            ? 'var(--ink)'
+            : 'var(--paper)'
   const blacks: number[] = []
   for (let n = from; n <= to; n++) if (!WHITE.includes(pc(n))) blacks.push(n)
   return (
     <svg className="keyboard" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
       {whites.map((n) => (
         <g key={n}>
-          <rect x={xOfWhite(n)} y={0} width={kw - 1} height={H} rx={2} fill={fill(n, false)} stroke="#555" strokeWidth={0.5} />
+          <rect x={xOfWhite(n)} y={0} width={kw - 1} height={H} rx={2} fill={fill(n, false)} stroke="var(--line)" strokeWidth={0.5} />
           {(right.includes(n) || n === left) && (
             <text x={xOfWhite(n) + kw / 2 - 0.5} y={H - 6} textAnchor="middle" className="kb-label">
               {noteName(n, flats)}

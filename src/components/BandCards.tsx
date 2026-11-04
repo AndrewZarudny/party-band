@@ -282,7 +282,7 @@ function AccompanyPart({ m, ctx }: { m: Member; ctx: CardContext }) {
         {next && (
           <div className="mc-next-chord">
             <span>next</span>
-            <ChordDiagram shape={guitarShape(next)} name={next.symbol} size={0.8} />
+            <ChordDiagram shape={guitarShape(next)} name={next.symbol} size={1} />
           </div>
         )}
       </div>

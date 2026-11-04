@@ -1,4 +1,8 @@
 // Personal song library: imported Guitar Pro files kept in IndexedDB.
+import type { RecordStore } from '../account/notify'
+import { noteRecord } from '../account/notify'
+
+export type { RecordStore }
 
 export interface SongEntry {
   id: string
@@ -50,15 +54,22 @@ async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRe
   })
 }
 
+/** Runs the change, then tells the account sync which record changed. */
+const noted = <T,>(p: Promise<T>, store: RecordStore, id: string) =>
+  p.then((r) => {
+    noteRecord(store, id)
+    return r
+  })
+
 export const listSongs = () => run<SongEntry[]>('readonly', (s) => s.getAll())
-export const saveSong = (e: SongEntry) => run('readwrite', (s) => s.put(e))
-export const deleteSong = (id: string) => run('readwrite', (s) => s.delete(id))
+export const saveSong = (e: SongEntry) => noted(run('readwrite', (s) => s.put(e)), 'songs', e.id)
+export const deleteSong = (id: string) => noted(run('readwrite', (s) => s.delete(id)), 'songs', id)
 
 export const getCapture = (id: string) => run<CaptureEntry | undefined>('readonly', (s) => s.get(id), CAPTURES)
 export const listCaptures = () => run<CaptureEntry[]>('readonly', (s) => s.getAll(), CAPTURES)
-export const saveCapture = (c: CaptureEntry) => run('readwrite', (s) => s.put(c), CAPTURES)
+export const saveCapture = (c: CaptureEntry) => noted(run('readwrite', (s) => s.put(c), CAPTURES), 'captures', c.id)
 
-/** The user's own copy of a song, to jam along with (kept only in this browser). */
+/** The user's own copy of a song, to jam along with (follows the account when signed in). */
 export interface RecordingEntry {
   id: string // "title|artist", lower case
   fileName: string
@@ -71,5 +82,16 @@ export interface RecordingEntry {
 
 export const recordingId = (title: string, artist: string) => `${title}|${artist}`.toLowerCase()
 export const getRecording = (id: string) => run<RecordingEntry | undefined>('readonly', (s) => s.get(id), RECORDINGS)
-export const saveRecording = (r: RecordingEntry) => run('readwrite', (s) => s.put(r), RECORDINGS)
-export const deleteRecording = (id: string) => run('readwrite', (s) => s.delete(id), RECORDINGS)
+export const saveRecording = (r: RecordingEntry) => noted(run('readwrite', (s) => s.put(r), RECORDINGS), 'recordings', r.id)
+export const deleteRecording = (id: string) => noted(run('readwrite', (s) => s.delete(id), RECORDINGS), 'recordings', id)
+
+// ---- For the account sync: same stores, no change notes -------------------------------
+
+export type AnyEntry = SongEntry | CaptureEntry | RecordingEntry
+
+export const rawGet = (store: RecordStore, id: string) => run<AnyEntry | undefined>('readonly', (s) => s.get(id), store)
+export const rawGetAll = (store: RecordStore) => run<AnyEntry[]>('readonly', (s) => s.getAll(), store)
+export const rawKeys = (store: RecordStore) => run<IDBValidKey[]>('readonly', (s) => s.getAllKeys(), store)
+export const rawPut = (store: RecordStore, entry: AnyEntry) => run('readwrite', (s) => s.put(entry), store)
+export const rawDelete = (store: RecordStore, id: string) => run('readwrite', (s) => s.delete(id), store)
+export const rawClear = (store: RecordStore) => run('readwrite', (s) => s.clear(), store)

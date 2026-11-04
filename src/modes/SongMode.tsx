@@ -18,6 +18,7 @@ import type { SongEntry } from '../music/library'
 import { STANDARD_TUNING, midiName, nearestPosition, pc } from '../music/theory'
 import type { BeatLike } from '../music/tunings'
 import { TUNINGS, describeTuning, isUniformShift, refinger, setSongTuning, tuningLabel } from '../music/tunings'
+import { holdReload, practice } from '../account/activity'
 
 interface Conversion {
   to: number[] // low → high
@@ -98,6 +99,15 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
   const [ready, setReady] = useState(false)
   const [loadPct, setLoadPct] = useState(0)
   const [playing, setPlaying] = useState(false)
+  // Account updates from elsewhere wait while the song plays.
+  useEffect(() => {
+    holdReload('song', playing)
+    const stopPractice = practice('songs', playing)
+    return () => {
+      holdReload('song', false)
+      stopPractice?.()
+    }
+  }, [playing])
   const [speed, setSpeed] = useState(100)
   const [metronome, setMetronome] = useState(false)
   const metroLevel = useEngineState().metronomeLevel

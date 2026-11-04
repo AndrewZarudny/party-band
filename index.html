@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Fretwise</title>
+    <!-- Apply the saved light/dark choice before first paint (src/theme.ts writes it). -->
+    <script>
+      try {
+        var t = localStorage.getItem('fretwise-theme')
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

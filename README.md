@@ -69,6 +69,12 @@ Each player gets a card for the current chord:
 
 **Backing track:** turn on **Backing track** and press Space. You get one bar of count-in clicks, then drums, bass and electric-piano chords play your progression in the chosen feel (with swing for the blues shuffle). By default it plays only the parts nobody in tonight's band covers (e.g. drums + bass when you have a keys player). Click a part to switch it on or off; the slider sets the volume. It follows the chord strip, including manual ←/→ changes.
 
+**Real band / Synth:** the backing band (in Jam and in Lessons) plays recorded instruments by default: an acoustic drum kit, a Jazz bass and a Wurlitzer electric piano, with timing and accents taken from real drummers' grooves for each feel. Next to the backing controls (or under **Guitar & tone → Backing band**) you can switch to **Synth**, the older built-in sounds. The choice is remembered on this device.
+- The samples (about 4 MB, 180 Ogg files in `public/samples/band/`) load the first time the band plays, which takes well under a second locally. Until they are decoded, and in browsers that can't play Ogg Vorbis (older Safari), each part plays the synth sound instead, so the band is never silent.
+- Beat 1 of every bar is exactly on the grid. The other hits are pushed or pulled by at most 15 ms to follow the drummer's feel, for example a laid-back ballad or the swung "a" of the blues shuffle. Tempo, speed (0.7×, 0.85×), chords, part switches and lesson scoring work exactly as with the synth.
+- Credits: the e-piano samples (Greg Sullivan, CC BY 3.0) and the groove data (Magenta Groove MIDI Dataset, CC BY 4.0) require attribution. It is shown under **Guitar & tone → Backing band → Credits** and in [CREDITS.md](CREDITS.md). The drums and bass are CC0.
+- To rebuild the samples or grooves from the original packs, see [scripts/samples/README.md](scripts/samples/README.md). The code is in `src/audio/backing.ts` and `src/audio/sampler/`.
+
 Keys: `Space` start/stop, `←`/`→` change chord (turn off Auto-advance to follow the band by hand), `N` new phrase.
 
 ### Songs tab
@@ -176,3 +182,32 @@ Phrases you've played move to the right under **Earlier**. Pin any phrase (📌)
 ## Tuner
 
 A needle that highlights the nearest string, for standard, drop, lowered and open tunings (DADGAD, open G/D/E). It defaults to the tuning the open song needs, including after a conversion. The amp is muted while you tune.
+
+## Lessons
+
+A path from "I can strum a bit on acoustic" to jamming freely on electric: 36 short lessons in 8 worlds (electric basics and muting, single notes, rhythm, power chords and riffs, the minor pentatonic, bends/slides/hammer-ons, call and response, freestyle over the band). Every world ends with a boss lesson.
+
+- **Your dino, Pebble**, starts as an egg and grows one stage each time you beat a world's boss (9 stages). It reacts while you play. Name it on the first visit.
+- **Levels and XP** come from stars (1–3 per lesson), clean runs, chains of good hits and the daily goal. Replays the same day earn less, a better score always pays in full. A daily streak keeps going with up to two "nest eggs" for missed days.
+- **The runway** reads like tab: one lane per string (high e on top), fret numbers on the notes, scrolling to the gold line. "Nailed it / Good / Early / Late / Missed / Wrong note".
+- **Sync first** ("Tap In", 20 s): pluck the open A on each click so the app learns your setup's delay. Do it again after changing audio devices. On Windows this matters, since browser audio there has more delay.
+- **Speed 70/85/100%** and **Easy timing** make a lesson easier (for less XP).
+- **No guitar?** "Try with the keyboard": Space plays the expected note, Esc pauses. For testing, `?lessons-autoplay=perfect` (or `sloppy`, `silent`) plays lessons by itself.
+- **Listen to: Guitar cable / Microphone** on each lesson's start screen. The cable listens to the Scarlett's instrument input; the mic is for an acoustic or an amp in the room (amp sound off, use headphones). "Hearing: A2" shows what the app picks up. A wrong note shows "heard X, wanted Y" under the runway.
+- **After each lesson Pebble says** one or two lines comparing your run with real research and records (tapping-study timing by age, song tempos, guitar legends, dinosaurs). Every line comes from a checked source; **Where's this from?** shows it. Add your age in Settings if you like; "timing age" lines only show to adults.
+- Progress is kept in this browser, and in your account when you're signed in. **Settings → Export / Import** also backs it up.
+
+Chords are checked from the sound's note content, so a slightly wrong shape costs some credit but still passes. Strum direction is shown, not judged.
+
+## Accounts
+
+**Sign in** (top right) to keep everything in an account: songs and tabs, recordings, tones and presets, history, band, lyrics and timings, phrases, and lessons. Sign in from any browser on this computer, or from a device on your Wi-Fi, and it's all there.
+
+- Accounts live on this computer only, in `.cache/accounts.json` and `.cache/accounts/` (git-ignored). Passwords are stored as scrypt hashes. On the Wi-Fi the connection is plain http, so use a password you don't use anywhere else.
+- Changes save about a second after you make them; offline changes go up when the app can reach the server again. A green dot by your name means everything is saved.
+- Signing in from a browser that already has guest data: the account's data wins, and the guest data is kept in a local backup. Signing up keeps what this browser has.
+- Signing out clears your data from this browser (it stays in the account). Audio devices, latency sync and the theme stay with the browser.
+
+## Theme
+
+The top bar's toggle picks **match device**, **light** or **dark**. Both themes are tuned for long practice: softer text contrast than pure white on black, desaturated note colours that stay distinct for colour-blind players, and larger text.
