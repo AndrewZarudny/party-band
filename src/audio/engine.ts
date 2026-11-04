@@ -380,6 +380,11 @@ export class GuitarEngine {
     this.state.emit()
   }
 
+  /** The processed guitar sound (amp, cab and effects), for recording a take. Null before audio starts. */
+  get output(): AudioNode | null {
+    return this.ctx ? this.out : null
+  }
+
   get latencyMs(): number {
     if (!this.ctx) return 0
     const c = this.ctx as AudioContext & { outputLatency?: number }

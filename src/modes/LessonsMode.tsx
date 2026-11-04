@@ -20,8 +20,9 @@ import { AchievementsPanel } from '../lessons/ui/AchievementsPanel'
 import { PlayScreen } from '../lessons/ui/PlayScreen'
 import { PlanStrip, TodayScreen } from '../lessons/ui/TodayPlan'
 import { Dino } from '../lessons/ui/Dino'
+import { SkillsHome } from '../skills/ui/SkillsHome'
 
-type Screen = 'welcome' | 'home' | 'today' | 'intro' | 'sync' | 'play' | 'results' | 'achievements' | 'settings'
+type Screen = 'welcome' | 'home' | 'today' | 'intro' | 'sync' | 'play' | 'results' | 'achievements' | 'settings' | 'skills'
 
 const SYNC_ID = 'w1-01'
 
@@ -265,6 +266,13 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
         onBack={goHome}
       />
     )
+  } else if (screen === 'skills') {
+    // Skill games may add a little XP to the saved progress: read it again on the way back.
+    const back = () => {
+      setProgress(loadProgress())
+      goHome()
+    }
+    body = <SkillsHome keyboard={keyboard} onConnect={onConnect} onBack={back} />
   } else if (screen === 'achievements') {
     body = <AchievementsPanel progress={progress} onEquip={(c) => updateProgress({ ...progress, cosmetics: c })} onClose={goHome} />
   } else if (screen === 'settings') {
@@ -290,6 +298,7 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
         onPlanSwap={(i) => updateProgress(swapStep(progress, i, new Date()))}
         onPlanSkip={(i) => updateProgress(skipStep(progress, i))}
         onToday={() => setScreen('today')}
+        onSkills={() => setScreen('skills')}
       />
     )
   }
