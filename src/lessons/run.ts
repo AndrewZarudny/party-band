@@ -21,6 +21,7 @@ import { ChainMeter, buildResult } from './scoring'
 import { TechSpotter, analyseImprov, chordPcs, noteKind, scalePcsOf } from './improv'
 
 const END_PAD_SEC = 0.4
+const END_GUARD_SEC = 0.2 // endAt(): a beat closer than this is already scheduled (lookahead 0.12 s)
 const VOTE_SEC = 0.1
 const ARP_SEC = 0.025 // listen mode: per-string delay of a strummed chord
 const PLAYED_KEPT = 64
@@ -39,6 +40,7 @@ export interface RunOpts {
   mic?: boolean // a microphone source: room noise needs a firmer attack before it counts
   listen?: boolean // demo playback by LeadVoice, no judging, no result
   autoplay?: Autoplay | null
+  chart?: Chart // a prepared chart (loops); default buildChart(lesson)
 }
 
 type Played = { beat: number; midi: number; kind: 'chord' | 'scale' | 'out' }
@@ -63,6 +65,8 @@ export class LessonRun {
   played: Played[] = []
   onJudge: ((r: JudgeResult, milestone: string | null) => void) | null = null
   onEnd: ((r: LessonResult) => void) | null = null
+  /** A reported result's post checks are done (loops wait for it before calling a pass clean). */
+  onSettle: ((eventId: number) => void) | null = null
   onState: ((s: RunState) => void) | null = null
 
   private opts: RunOpts
@@ -85,13 +89,14 @@ export class LessonRun {
   private box: FretPos[] = []
   private scalePcs: number[] = []
   private listenBars = new Set<number>()
+  private endBeat = Infinity
 
   constructor(o: RunOpts) {
     this.opts = o
     this.lesson = o.lesson
     this.bpm = Math.round(o.lesson.bpm * o.speed)
     this.secPerBeat = 60 / this.bpm
-    this.chart = buildChart(o.lesson)
+    this.chart = o.chart ?? buildChart(o.lesson)
   }
 
   async start(): Promise<void> {
@@ -224,8 +229,28 @@ export class LessonRun {
     return this.judge?.results.get(id)
   }
 
+  /** The result for `id` is reported and final (no post check still to run). */
+  settled(id: number): boolean {
+    return this.state === 'ended' ? this.judge?.results.has(id) === true : this.judge?.settled(id) === true
+  }
+
   pendingEvent(): ChartEvent | null {
     return this.judge ? this.judge.pending(this.now()) : null
+  }
+
+  /** Where the run ends: the chart's end, or earlier after endAt(). */
+  get lastBeat(): number {
+    return Math.min(this.endBeat, this.chart.totalBeats)
+  }
+
+  /** Loops: end the run at `beat` (a pass boundary) instead of the chart's end.
+   *  False when that beat is already scheduled or isn't earlier than the current end. */
+  endAt(beat: number): boolean {
+    if (!this.clock || !this.aclock || beat >= this.lastBeat) return false
+    if (this.clock.timeOfBeat(beat) - END_GUARD_SEC < this.aclock.now()) return false
+    this.endBeat = beat
+    this.clock.limit(beat)
+    return true
   }
 
   // ---- internals ----
@@ -254,7 +279,7 @@ export class LessonRun {
   }
 
   private onTick(k: Tick, chords: (Chord | null)[], voicings: (KeysVoicing | null)[], listen: boolean) {
-    if (k.beat < 0 || k.beat >= this.chart.totalBeats) return
+    if (k.beat < 0 || k.beat >= this.lastBeat) return
     const spb = this.secPerBeat
     const bar = Math.floor(k.beat / 4)
     const backing = this.lesson.backing
@@ -328,6 +353,7 @@ export class LessonRun {
         this.syncHud(r)
         this.onJudge?.(r, m)
       }
+      for (const id of this.judge.takeSettled()) this.onSettle?.(id)
       const ids = this.judge.chromaWindows(now)
       // only a live guitar run reads chroma: an idle interface must not grade key or auto runs
       if (this.useEngine && ids.length && readChroma(this.chromaBuf)) this.judge.addChroma(ids, this.chromaBuf)
@@ -335,7 +361,7 @@ export class LessonRun {
     }
     if (this.spotter) this.processImprov(now)
 
-    if (now > this.clock.timeOfBeat(this.chart.totalBeats) + END_PAD_SEC) this.end(now)
+    if (now > this.clock.timeOfBeat(this.lastBeat) + END_PAD_SEC) this.end(now)
   }
 
   private syncHud(r: JudgeResult) {
@@ -391,7 +417,7 @@ export class LessonRun {
         speed: this.opts.speed,
         easyTiming: this.opts.easyTiming,
         secPerBeat: this.secPerBeat,
-        playedSec: this.chart.totalBeats * this.secPerBeat,
+        playedSec: this.lastBeat * this.secPerBeat,
         calibrated: this.calibrated,
       })
     }

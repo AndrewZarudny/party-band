@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import type { ApplyOutcome, Cosmetic, FactLine, ImprovMetric, Lesson, LessonResult, Verdict } from '../types'
 import { factById } from '../facts/pick'
@@ -7,6 +7,9 @@ import { DINO_STAGES, levelFor } from '../progress'
 import { ACHIEVEMENTS } from '../achievements'
 import { WORLDS, lessonById } from '../data'
 import { MIN_SPEED, pct } from '../speed'
+import { buildChart } from '../charts'
+import { hardRange } from '../loop'
+import { BarStrip } from './BarStrip'
 import { Dino } from './Dino'
 import { STAR } from './LessonMap'
 
@@ -176,6 +179,7 @@ export function ResultCard({
   onSlower,
   onHome,
   onResync,
+  onLoop,
 }: {
   lesson: Lesson
   result: LessonResult
@@ -187,6 +191,8 @@ export function ResultCard({
   onSlower: () => void
   onHome: () => void
   onResync: () => void
+  /** Loop some bars of this lesson; null when the lesson can't loop (sync, improv). */
+  onLoop: ((from: number, to: number) => void) | null
 }) {
   const [still] = useState(reducedMotion)
   const grew = outcome.stageAfter > outcome.stageBefore
@@ -233,6 +239,9 @@ export function ResultCard({
   const world = outcome.worldUnlocked ? WORLDS.find((w) => w.id === outcome.worldUnlocked) : undefined
   // Picked once in applyResult and saved with progress, so a re-render shows the same lines.
   const factLines = outcome.factLines ?? []
+  const chart = useMemo(() => buildChart(lesson), [lesson])
+  const hard = useMemo(() => (result.barAcc ? hardRange(chart, result.barAcc) : null), [chart, result.barAcc])
+  const strip = !!onLoop && !!result.barAcc && result.barAcc.some((a) => a !== null)
 
   return (
     <div className={`ls-result ${still ? 'still' : ''} ${result.passed ? 'passed' : 'failed'}`}>
@@ -335,7 +344,11 @@ export function ResultCard({
               Re-sync
             </button>
           )}
-          {result.hardestBar !== null && <p className="ls-muted">Hardest bar: {result.hardestBar + 1}</p>}
+          {strip && result.barAcc ? (
+            <BarStrip acc={result.barAcc} listen={chart.listenBars} hard={hard} onLoop={onLoop} />
+          ) : (
+            result.hardestBar !== null && <p className="ls-muted">Hardest bar: {result.hardestBar + 1}</p>
+          )}
         </div>
 
         <div className="ls-result-col">

@@ -69,6 +69,27 @@ export class ChainMeter {
   }
 }
 
+/** Good enough for a clean loop pass: perfect, good or a clean stop, with no failed chord or technique check. */
+export function goodOrBetter(r: JudgeResult): boolean {
+  const v = r.verdict
+  return (v === 'perfect' || v === 'good' || v === 'clean-stop') && r.chordOk !== false && r.techOk !== false
+}
+
+/** Per bar: share of the bar's events played good or better; null for a bar with nothing to play. */
+export function barAccuracy(chart: Chart, results: JudgeResult[]): (number | null)[] {
+  const good = new Array<number>(chart.bars).fill(0)
+  const all = new Array<number>(chart.bars).fill(0)
+  const byId = new Map(chart.events.map((e) => [e.id, e]))
+  for (const r of results) {
+    const ev = byId.get(r.eventId)
+    if (!ev) continue
+    const bar = Math.min(chart.bars - 1, Math.floor(ev.beat / 4))
+    all[bar]++
+    if (goodOrBetter(r)) good[bar]++
+  }
+  return all.map((n, i) => (n ? good[i] / n : null))
+}
+
 export function noteScore(lesson: Lesson, s: JudgeSummary): number {
   const n = s.results.length
   const raw = n ? (100 * s.results.reduce((a, r) => a + r.credit, 0)) / n : 0
@@ -203,6 +224,8 @@ export function buildResult(a: {
     coachTip: tip,
     hardestBar,
     bendsInTune,
+    barAcc: summary ? barAccuracy(chart, results) : undefined,
+    results: summary ? results : undefined,
   }
 }
 

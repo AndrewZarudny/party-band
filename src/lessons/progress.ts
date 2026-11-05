@@ -4,6 +4,7 @@ import { LESSONS, WORLDS, lessonById } from './data'
 import { ACHIEVEMENTS, checkAchievements } from './achievements'
 import { MIN_GRADED, RECENT_MAX, pickLines, pushRecent } from './facts/pick'
 import { cleanSpeed, nextSpeed } from './speed'
+import { normalizeHeat } from './heat'
 
 const KEY = 'lessons-progress'
 const BAK = 'lessons-progress-bak'
@@ -113,6 +114,9 @@ function normalizeRecord(raw: unknown): LessonRecord | null {
   if (typeof o.miss === 'number') rec.miss = Math.max(0, Math.round(num(o.miss, 0)))
   if (typeof o.lastPass === 'number') rec.lastPass = o.lastPass
   if (typeof o.box === 'number') rec.box = Math.max(0, Math.min(REVIEW_DAYS.length - 1, Math.round(num(o.box, 0))))
+  if (typeof o.loops === 'number') rec.loops = Math.max(0, Math.round(num(o.loops, 0)))
+  const loopTop = cleanSpeed(o.loopTop)
+  if (loopTop !== undefined) rec.loopTop = loopTop
   return rec
 }
 
@@ -133,10 +137,11 @@ function normalizePlan(raw: unknown): DayPlan | null {
       min: num(x.min, 2),
       state: x.state === 'done' || x.state === 'skipped' ? x.state : 'todo',
       why: str(x.why, ''),
-      from: { best: num(from?.best, 0), stars: toStars(from?.stars), speed: num(from?.speed, 1) },
+      from: { best: num(from?.best, 0), stars: toStars(from?.stars), speed: num(from?.speed, 1), loops: num(from?.loops, 0) },
     }
     if (typeof x.score === 'number') step.score = x.score
     if (typeof x.speed === 'number') step.speed = x.speed
+    if (typeof x.drill === 'string' && /^[nct]:/.test(x.drill)) step.drill = x.drill
     steps.push(step)
   }
   return { day: o.day, steps, bonus: o.bonus === true }
@@ -170,6 +175,8 @@ function normalize(raw: unknown): Progress | null {
   p.plan = normalizePlan(o.plan)
   const ps = obj(o.planStreak)
   if (ps) p.planStreak = { days: num(ps.days, 0), last: str(ps.last, '') }
+  const heat = normalizeHeat(o.heat)
+  if (heat) p.heat = heat
   return p
 }
 

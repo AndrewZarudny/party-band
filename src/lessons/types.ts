@@ -270,6 +270,8 @@ export interface LessonResult {
   coachTip: string
   hardestBar: number | null // 0-based
   bendsInTune: number
+  barAcc?: (number | null)[] // per bar: share of events played good or better; null = nothing to play there. Not saved.
+  results?: JudgeResult[] // the judge's result per chart event, in event order. Not saved.
 }
 
 // ---- Progress -----------------------------------------------------------------
@@ -295,6 +297,8 @@ export interface LessonRecord {
   miss?: number // failed runs in a row since the last pass or slow-down
   lastPass?: number // time of the last passed run (review schedule)
   box?: number // review step 0–4: due REVIEW_DAYS[box] days after lastPass
+  loops?: number // finished loops with at least one clean pass (Loop the hard part, drills)
+  loopTop?: number // fastest clean loop pass, as a speed
 }
 
 export interface LastAttempt {
@@ -312,7 +316,8 @@ export interface PlanStep {
   min: number // rough minutes, for the label
   state: 'todo' | 'done' | 'skipped'
   why: string // one short line: why this lesson today
-  from: { best: number; stars: Stars; speed: number } // the record when the set was made
+  from: { best: number; stars: Stars; speed: number; loops?: number } // the record when the set was made
+  drill?: string // a trouble-spot drill (heat cell key); lessonId is then the lesson the spot was last seen in
   score?: number // best score in this step today
   speed?: number // speed of that run
 }
@@ -339,6 +344,7 @@ export interface Progress {
   totalSec: number // judged playing time, all lessons
   plan: DayPlan | null
   planStreak: { days: number; last: string } // last = dayKey of the last finished set
+  heat?: Heat // mistake heat map, rolling ~60 days (heat.ts)
   created: number
 }
 
@@ -379,6 +385,54 @@ export interface AchievementDef {
   name: string
   text: string
   cosmetic?: Cosmetic
+}
+
+// ---- Mistake heat (heat.ts) -----------------------------------------------------
+
+/** One heat cell. Counts decay with a 20-day half-life, applied up to day `d` (heat.ts dayNum).
+ *  Keys: 'n:<string>.<fret>' a note (string 0 = low E), 'c:<symbol>' a chord, 't:<type>' timing per lesson type. */
+export interface HeatCell {
+  n: number // judged events (timing cells: graded hits)
+  bad: number // missed or wrong; chords also when they rang wrong
+  wrong: number // wrong pitch; chords: rang, but not the chord
+  early: number // hits more than 35 ms early (note and chord cells: against the run's own average)
+  late: number
+  err: number // sum of errMs over graded hits (timing cells only, 0 elsewhere)
+  d: number // day number of the last update
+  l: string // lesson id the cell was last played in
+}
+export interface Heat {
+  v: 1
+  cells: Record<string, HeatCell>
+}
+
+// ---- Loops (loop.ts) ------------------------------------------------------------
+
+/** A practice loop: some bars of a lesson (or a generated drill) over and over, faster after each clean pass. */
+export interface LoopSpec {
+  kind: 'bars' | 'drill'
+  lesson: Lesson // the lesson the bars come from; for a drill, the generated lesson (not in LESSONS)
+  fromBar: number // 0-based, inclusive
+  toBar: number // inclusive
+  startSpeed: Speed
+  targetSpeed: Speed
+  title: string // 'Bars 5–6', 'Drill: G string fret 7'
+  sourceId: string // a real lesson id: gets the loop count, and is the heat cells' lesson
+  drillKey?: string // drills: the heat cell key (ticks today's drill warm-up)
+}
+export interface LoopPass {
+  speed: Speed
+  acc: number // 0–1, events good or better
+  clean: boolean // acc >= 0.9
+}
+export interface LoopSummary {
+  passes: LoopPass[]
+  clean: number // clean passes
+  topSpeed: Speed // fastest clean pass; 0 = none
+  reached: boolean // a clean pass at the target speed
+  results: JudgeResult[] // finished passes only; event ids of `chart`
+  chart: Chart // the segment chart (every segment of one loop has the same chart)
+  calibrated: boolean
 }
 
 // ---- Latency ------------------------------------------------------------------

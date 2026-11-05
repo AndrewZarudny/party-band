@@ -1,11 +1,13 @@
 // Today's set: a short daily practice plan (warm-up, what's due for review, one new lesson, a jam).
 // One set per practice day, stored in progress.plan. Every function is pure and returns new objects.
-import type { DayPlan, LessonResult, PlanKind, PlanStep, Progress } from './types'
+import type { DayPlan, LessonResult, LoopSummary, PlanKind, PlanStep, Progress } from './types'
 import { WORLDS, lessonById } from './data'
 import { dayKey, daysBetween, isPassed, isUnlocked, reviewDue } from './progress'
 import { autoSpeed, pct } from './speed'
+import { heatReady, spotLabel, topSpots } from './heat'
 
 export const PLAN_BONUS = 50
+const DRILL_MIN_SCORE = 0.2
 export const WARMUPS = ['w1-02', 'w2-01', 'w5-01', 'w5-03']
 export const KIND_LABEL: Record<PlanKind, string> = { warmup: 'Warm-up', review: 'Review', new: 'New', jam: 'Jam' }
 
@@ -93,8 +95,16 @@ function makeStep(p: Progress, kind: PlanKind, id: string, min: number, today: s
     min,
     state: 'todo',
     why: whyFor(p, kind, id, today),
-    from: { best: rec?.best ?? 0, stars: rec?.stars ?? 0, speed: lesson ? autoSpeed(lesson, rec) : 1 },
+    from: { best: rec?.best ?? 0, stars: rec?.stars ?? 0, speed: lesson ? autoSpeed(lesson, rec) : 1, loops: rec?.loops ?? 0 },
   }
+}
+
+/** Today's drill warm-up: the top trouble spot, once there is enough data and its lesson still exists. */
+function drillPick(p: Progress, now: Date): { key: string; lessonId: string; why: string } | null {
+  if (!heatReady(p.heat, now)) return null
+  const s = topSpots(p.heat, now, 1)[0]
+  if (!s || s.score < DRILL_MIN_SCORE || !lessonById(s.lessonId)) return null
+  return { key: s.key, lessonId: s.lessonId, why: `Your top trouble spot: ${spotLabel(s.key)}.` }
 }
 
 /** A fresh set for `now`'s practice day. */
@@ -115,13 +125,16 @@ export function makePlan(p: Progress, now: Date): DayPlan {
 
   // New first, so the other steps skip it.
   const newId = pick('new')[0]
-  const warm = pick('warmup')[0]
+  // The top trouble spot replaces the usual warm-up; its lesson can still be today's review or new lesson.
+  const drill = drillPick(p, now)
+  const warm = drill ? undefined : pick('warmup')[0]
   const { due } = reviewLists(p, today)
   const reviews = pick('review', due.filter((id) => !used.has(id)).length >= 2 ? 2 : 1)
   const jam = pick('jam')[0]
 
   const steps: PlanStep[] = []
-  if (warm) steps.push(makeStep(p, 'warmup', warm, MINUTES.warmup, today))
+  if (drill) steps.push({ ...makeStep(p, 'warmup', drill.lessonId, MINUTES.warmup, today), drill: drill.key, why: drill.why })
+  else if (warm) steps.push(makeStep(p, 'warmup', warm, MINUTES.warmup, today))
   for (const id of reviews) steps.push(makeStep(p, 'review', id, reviews.length === 1 ? 2 * MINUTES.review : MINUTES.review, today))
   if (newId) steps.push(makeStep(p, 'new', newId, MINUTES.new, today))
   if (jam) steps.push(makeStep(p, 'jam', jam, MINUTES.jam, today))
@@ -160,13 +173,32 @@ export function planAfterRun(p: Progress, lessonId: string, r: LessonResult, now
 
   const next = clone(p)
   const plan = next.plan as DayPlan
-  const step = plan.steps.find((s) => s.lessonId === lessonId)
+  const step = plan.steps.find((s) => s.lessonId === lessonId && !s.drill)
   if (!step) return same
+  return finishStep(next, step, r.score, r.speed, today)
+}
+
+/** A drill loop ticks today's drill step: score = its best pass. Same set bonus rule as a run. */
+export function planAfterLoop(p: Progress, drillKey: string, s: LoopSummary, now: Date): { progress: Progress; finished: boolean; bonus: number } {
+  const today = dayKey(now)
+  const same = { progress: p, finished: false, bonus: 0 }
+  if (!p.plan || p.plan.day !== today || !s.passes.length) return same
+  const next = clone(p)
+  const step = (next.plan as DayPlan).steps.find((x) => x.drill === drillKey)
+  if (!step) return same
+  const score = Math.round(100 * Math.max(...s.passes.map((x) => x.acc)))
+  const speed = s.topSpeed || s.passes[s.passes.length - 1].speed
+  return finishStep(next, step, score, speed, today)
+}
+
+/** Marks `step` (inside `next`) done; gives the bonus and counts the plan streak when it finishes the set. */
+function finishStep(next: Progress, step: PlanStep, score: number, speed: number, today: string): { progress: Progress; finished: boolean; bonus: number } {
+  const plan = next.plan as DayPlan
   const wasDone = planDone(plan)
   step.state = 'done'
-  if (step.score === undefined || r.score >= step.score) {
-    step.score = r.score
-    step.speed = r.speed
+  if (step.score === undefined || score >= step.score) {
+    step.score = score
+    step.speed = speed
   }
   if (wasDone || plan.bonus || !planDone(plan)) return { progress: next, finished: false, bonus: 0 }
 
@@ -234,12 +266,15 @@ export function improvements(p: Progress, plan: DayPlan): string[] {
       const d = rec.stars - s.from.stars
       lines.push(`${title}: +${d} star${d === 1 ? '' : 's'}`)
     }
+    const dl = (rec.loops ?? 0) - (s.from.loops ?? 0)
+    if (dl > 0) lines.push(`${title}: ${dl} loop${dl === 1 ? '' : 's'} locked in`)
     if (!isSync(s.lessonId)) {
       const sp = autoSpeed(lesson, rec)
       if (sp > s.from.speed) lines.push(`${title}: Auto speed ${pct(s.from.speed)} → ${pct(sp)}`)
     }
   }
-  return lines
+  // A drill step shares its lesson with another step at times: say each line once.
+  return [...new Set(lines)]
 }
 
 /** Plan streak in days; 0 when the last finished set is older than yesterday. */

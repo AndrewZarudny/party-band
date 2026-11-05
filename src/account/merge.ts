@@ -1,6 +1,7 @@
 // Lists that changed on two browsers are combined item by item instead of one copy replacing the other.
 import { songKey } from '../music/songLibrary'
 import { PRACTICE_KEY, mergePracticeRaw } from '../practice/data'
+import { HALF_LIFE_DAYS, MAX_CELLS } from '../lessons/heat'
 
 type Item = Record<string, unknown>
 
@@ -62,9 +63,30 @@ function mergeStreak(a: unknown, b: unknown): unknown {
   return num((a as Item | null)?.days) >= num((b as Item | null)?.days) ? (a ?? null) : (b ?? null)
 }
 
+/** Mistake heat from two copies: per cell the later day wins; on the same day the one with more events. */
+function mergeHeat(a: unknown, b: unknown): unknown {
+  const ca = (a as Item | null | undefined)?.cells as Record<string, Item> | undefined
+  const cb = (b as Item | null | undefined)?.cells as Record<string, Item> | undefined
+  if (!ca && !cb) return undefined
+  const cells: Record<string, Item> = { ...(cb ?? {}) }
+  for (const [k, x] of Object.entries(ca ?? {})) {
+    const o = cells[k]
+    if (!o || num(x.d) > num(o.d) || (num(x.d) === num(o.d) && num(x.n) >= num(o.n))) cells[k] = x
+  }
+  const keys = Object.keys(cells)
+  if (keys.length <= MAX_CELLS) return { v: 1, cells }
+  // Over the cap: keep the cells with the most events once faded to the newest day.
+  const newest = Math.max(...keys.map((k) => num(cells[k].d)))
+  const weight = (k: string) => num(cells[k].n) * 0.5 ** ((newest - num(cells[k].d)) / HALF_LIFE_DAYS)
+  const kept: Record<string, Item> = {}
+  for (const k of keys.sort((a, b) => weight(b) - weight(a)).slice(0, MAX_CELLS)) kept[k] = cells[k]
+  return { v: 1, cells: kept }
+}
+
 /**
  * Two copies of the same player's lessons progress: the one with more XP is the base, each lesson keeps the
- * record that was played more, achievements are combined, today's set and the plan streak take the later day.
+ * record that was played more, achievements are combined, today's set and the plan streak take the later day,
+ * heat cells take the later day. Loop counts live in lesson records and follow the record that wins.
  * Null when a side is unreadable.
  */
 export function mergeLessonsProgress(a: string, b: string): string | null {
@@ -87,6 +109,7 @@ export function mergeLessonsProgress(a: string, b: string): string | null {
       totalSec: Math.max(num(base.totalSec), num(other.totalSec)),
       plan: mergePlan(base.plan, other.plan),
       planStreak: mergeStreak(base.planStreak, other.planStreak) ?? { days: 0, last: '' },
+      heat: mergeHeat(base.heat, other.heat),
     })
   } catch {
     return null

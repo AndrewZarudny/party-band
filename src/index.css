@@ -45,6 +45,9 @@
   --ink: #1b1916;
   --on-accent: #1b1916;
   --on-target: #1b1916;
+  /* Accuracy fills (bar strip): the colour mixed into the panel, and lettering on it */
+  --heat-mix: 35%;
+  --on-heat: #d9d0c1;
   /* Deep oxblood for error fills and marks on paper */
   --oxblood: #b5584a;
   --oxblood-rgb: 181 88 74;
@@ -112,6 +115,8 @@
     --ink: #211d18;
     --on-accent: #fbf8f2;
     --on-target: #fbf8f2;
+    --heat-mix: 55%;
+    --on-heat: #211d18;
     --oxblood: #9b3427;
     --oxblood-rgb: 155 52 39;
     --wood: #3e2c22;
@@ -154,6 +159,8 @@
   --ink: #211d18;
   --on-accent: #fbf8f2;
   --on-target: #fbf8f2;
+  --heat-mix: 55%;
+  --on-heat: #211d18;
   --oxblood: #9b3427;
   --oxblood-rgb: 155 52 39;
   --wood: #3e2c22;

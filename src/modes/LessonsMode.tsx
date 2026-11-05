@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import '../lessons/lessons.css'
 import { engine } from '../audio/engine'
-import type { ApplyOutcome, Cosmetic, Lesson, LessonResult, Prefs, Progress, SyncOutcome } from '../lessons/types'
+import type { ApplyOutcome, Cosmetic, Lesson, LessonResult, LoopSpec, LoopSummary, Prefs, Progress, SyncOutcome } from '../lessons/types'
+import { buildChart } from '../lessons/charts'
+import { loopSpecFor, recordLoop } from '../lessons/loop'
+import { recordHeat } from '../lessons/heat'
+import { drillSpec } from '../lessons/drill'
 import { WORLDS, lessonById, validateLessons } from '../lessons/data'
 import { applyResult, dinoStageFor, isUnlocked, levelFor, loadProgress, nextLesson, recordSkip, saveProgress } from '../lessons/progress'
 import { pickFor, slowerSpeed, speedFor } from '../lessons/speed'
-import { planAfterRun, skipStep, swapStep, withTodayPlan } from '../lessons/plan'
+import { planAfterLoop, planAfterRun, skipStep, swapStep, withTodayPlan } from '../lessons/plan'
 import { openAccountDialog, useAccount } from '../account/session'
 import { loadPrefs, savePrefs } from '../lessons/prefs'
 import { syncResult } from '../lessons/scoring'
@@ -19,9 +23,11 @@ import { SettingsPanel } from '../lessons/ui/SettingsPanel'
 import { AchievementsPanel } from '../lessons/ui/AchievementsPanel'
 import { PlayScreen } from '../lessons/ui/PlayScreen'
 import { PlanStrip, TodayScreen } from '../lessons/ui/TodayPlan'
+import { LoopScreen } from '../lessons/ui/LoopScreen'
+import { HeatScreen } from '../lessons/ui/HeatScreen'
 import { Dino } from '../lessons/ui/Dino'
 
-type Screen = 'welcome' | 'home' | 'today' | 'intro' | 'sync' | 'play' | 'results' | 'achievements' | 'settings'
+type Screen = 'welcome' | 'home' | 'today' | 'intro' | 'sync' | 'play' | 'results' | 'achievements' | 'settings' | 'loop' | 'heat'
 
 const SYNC_ID = 'w1-01'
 
@@ -56,6 +62,7 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
   const [runKey, setRunKey] = useState(0)
   const [listen, setListen] = useState(false)
   const [last, setLast] = useState<{ result: LessonResult; outcome: ApplyOutcome; finishedSet: boolean } | null>(null)
+  const [loop, setLoop] = useState<{ spec: LoopSpec; back: Screen } | null>(null)
   const [staleEngine] = useState(() => import.meta.env.DEV && !engineHasLessons())
 
   useEffect(() => {
@@ -146,7 +153,9 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
 
   const finish = (l: Lesson, r: LessonResult) => {
     const now = new Date()
-    const outcome = applyResult(progress, l, r, now, { age: prefs.age })
+    // Mistake heat from this run's judged events (not sync or improv runs).
+    const heated = r.results && (l.type === 'notes' || l.type === 'chords' || l.type === 'rhythm') ? recordHeat(progress, l, buildChart(l), r.results, { sourceId: l.id, calibrated: r.calibrated === true, now }) : progress
+    const outcome = applyResult(heated, l, r, now, { age: prefs.age })
     const planned = planAfterRun(outcome.progress, l.id, r, now)
     updateProgress(planned.progress)
     // Fold the set bonus into the card's XP lines, total and level.
@@ -167,7 +176,42 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
     setScreen('sync')
   }
 
-  const onSyncDone = (o: SyncOutcome | null, skipped: boolean) => {
+  const startLoop = (spec: LoopSpec, back: Screen) => {
+    setLoop({ spec, back })
+    setRunKey((k) => k + 1)
+    setScreen('loop')
+  }
+
+  const openDrill = (key: string, back: Screen) => {
+    const spec = drillSpec(progress, key, new Date(), progress.plan?.steps.find((s) => s.drill === key)?.lessonId)
+    if (spec) startLoop(spec, back)
+  }
+
+  // A loop never gives XP or stars: it records heat, the loop count and (drills) today's drill step.
+  const endLoop = (s: LoopSummary | null, next: 'full' | 'back') => {
+    const cur = loop
+    setLoop(null)
+    if (!cur) return goHome()
+    const now = new Date()
+    if (s && s.results.length) {
+      let p = recordHeat(progress, cur.spec.lesson, s.chart, s.results, { sourceId: cur.spec.sourceId, calibrated: s.calibrated, now, loop: true })
+      p = recordLoop(p, cur.spec.sourceId, s)
+      if (cur.spec.drillKey && s.clean > 0) p = planAfterLoop(p, cur.spec.drillKey, s, now).progress
+      updateProgress(p)
+    }
+    if (next === 'full' && cur.spec.kind === 'bars') {
+      setLessonId(cur.spec.sourceId)
+      setLast(null)
+      setListen(false)
+      setRunKey((k) => k + 1)
+      setScreen('play')
+      return
+    }
+    if (cur.back === 'results' && !last) return goHome()
+    setScreen(cur.back)
+  }
+
+  const onSyncDone =(o: SyncOutcome | null, skipped: boolean) => {
     if (!syncLesson) {
       setScreen(syncBack)
       return
@@ -237,11 +281,15 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
         onConnect={onConnect}
       />
     )
+  } else if (screen === 'loop' && loop) {
+    body = <LoopScreen key={`loop-${runKey}`} spec={loop.spec} prefs={prefs} stage={stage} cosmetics={cosmetics} onExit={endLoop} onConnect={onConnect} />
+  } else if (screen === 'heat') {
+    body = <HeatScreen progress={progress} onDrill={(key) => openDrill(key, 'heat')} onBack={goHome} />
   } else if (screen === 'results' && lesson && last) {
     const next = nextAfter(last.outcome.progress, lesson.id)
     body = (
       <>
-        <PlanStrip progress={last.outcome.progress} lessonId={lesson.id} finished={last.finishedSet} onOpen={open} />
+        <PlanStrip progress={last.outcome.progress} lessonId={lesson.id} finished={last.finishedSet} onOpen={open} onDrill={(key) => openDrill(key, 'results')} />
         <ResultCard
           lesson={lesson}
           result={last.result}
@@ -252,6 +300,7 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
           onSlower={() => (lesson.type === 'sync' ? open(lesson.id) : playSlower(last.result.speed))}
           onHome={goHome}
           onResync={() => resync('home')}
+          onLoop={lesson.type === 'sync' || lesson.type === 'improv' ? null : (from, to) => startLoop(loopSpecFor(lesson, last.result, from, to), 'results')}
         />
       </>
     )
@@ -260,6 +309,7 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
       <TodayScreen
         progress={progress}
         onOpen={open}
+        onDrill={(key) => openDrill(key, 'today')}
         onSwap={(i) => updateProgress(swapStep(progress, i, new Date()))}
         onSkip={(i) => updateProgress(skipStep(progress, i))}
         onBack={goHome}
@@ -290,6 +340,8 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
         onPlanSwap={(i) => updateProgress(swapStep(progress, i, new Date()))}
         onPlanSkip={(i) => updateProgress(skipStep(progress, i))}
         onToday={() => setScreen('today')}
+        onDrill={(key) => openDrill(key, 'home')}
+        onHeat={() => setScreen('heat')}
       />
     )
   }

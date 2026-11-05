@@ -125,6 +125,7 @@ interface Match {
   stable: number
 }
 interface Post {
+  id: number // the event whose result it adjusts
   until: number
   run: () => void
 }
@@ -140,6 +141,7 @@ export class Judge {
   private queue: InputOnset[] = []
   private prov = new Map<number, Match>()
   private posts: Post[] = []
+  private settledIds: number[] = []
   private chroma = new Map<number, { from: number; to: number; frames: Float32Array[] }>()
   private openTech: { from: number; to: number }[] = []
   private openBend: { ev: NoteEv; to: number } | null = null
@@ -397,7 +399,7 @@ export class Judge {
       const to = Math.min(m.o.t + CHROMA_TO, v.next)
       if (e.chroma && to > from) {
         this.chroma.set(e.id, { from, to, frames: [] })
-        this.posts.push({ until: to, run: () => this.chordCheck(v, r, m) })
+        this.posts.push({ id: e.id, until: to, run: () => this.chordCheck(v, r, m) })
       } else this.chordCheck(v, r, m)
     } else if (e.kind === 'mute') {
       if (m.stable >= MUTE_STABLE && m.voted !== null) r.credit *= MUTE_RANG
@@ -428,15 +430,15 @@ export class Judge {
     const target = r.played ?? e.midi
     if (tech === 'bend' && e.bendTo !== undefined) {
       this.openBend = { ev: e, to: v.end }
-      this.posts.push({ until: v.end, run: () => this.bendCheck(v, e, r, o.t) })
+      this.posts.push({ id: e.id, until: v.end, run: () => this.bendCheck(v, e, r, o.t) })
     } else if (tech === 'vibrato') {
-      this.posts.push({ until: v.end, run: () => this.vibratoCheck(v, r, o.t, target) })
+      this.posts.push({ id: e.id, until: v.end, run: () => this.vibratoCheck(v, r, o.t, target) })
     } else if (tech === 'pm') {
       r.pmOk = null
-      this.posts.push({ until: o.t + PM_PEAK_SEC + PM_SEC, run: () => this.pmCheck(r, o.t) })
+      this.posts.push({ id: e.id, until: o.t + PM_PEAK_SEC + PM_SEC, run: () => this.pmCheck(r, o.t) })
     }
     if (e.dur >= SUSTAIN_BEATS && tech !== 'bend' && tech !== 'vibrato') {
-      this.posts.push({ until: v.end, run: () => this.sustainCheck(v, r, o.t, target) })
+      this.posts.push({ id: e.id, until: v.end, run: () => this.sustainCheck(v, r, o.t, target) })
     }
   }
 
@@ -446,6 +448,19 @@ export class Judge {
     if (!due.length) return
     this.posts = this.posts.filter((p) => t < p.until)
     for (const p of due) p.run()
+    for (const id of new Set(due.map((p) => p.id))) if (!this.posts.some((p) => p.id === id)) this.settledIds.push(id)
+  }
+
+  /** A reported result whose post checks (ringing chord, bend, mute, sustain) are all done. */
+  settled(id: number): boolean {
+    return this.results.has(id) && !this.prov.has(id) && !this.posts.some((p) => p.id === id)
+  }
+
+  /** Events whose last post check ran since the previous call. */
+  takeSettled(): number[] {
+    const out = this.settledIds
+    this.settledIds = []
+    return out
   }
 
   private framesIn(a: number, b: number): InputFrame[] {

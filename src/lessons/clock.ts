@@ -60,6 +60,7 @@ export class LessonClock {
   private timer = 0
   private active = false
   private totalBeats = 0
+  private endN = 0
 
   /** True from run() until stop(), or until the last beat has passed. */
   get running(): boolean {
@@ -72,16 +73,16 @@ export class LessonClock {
     this.ctx = ctx
     this.bpm = o.bpm
     this.totalBeats = o.totalBeats
+    this.endN = o.totalBeats * 2
     const spb = 60 / o.bpm
     const e = spb / 2 // seconds per 8th
     this.start = ctx.currentTime + lead + o.countInBeats * spb
     this.active = true
     let next = -o.countInBeats * 2
-    const end = o.totalBeats * 2
     const tick = () => {
       for (;;) {
         const n = next
-        if (n >= end) {
+        if (n >= this.endN) {
           window.clearInterval(this.timer)
           this.timer = 0
           return
@@ -101,6 +102,12 @@ export class LessonClock {
     }
     this.timer = window.setInterval(tick, TIMER_MS)
     tick()
+  }
+
+  /** Stops scheduling at `beat` (a loop ends early on a pass boundary). */
+  limit(beat: number) {
+    this.endN = Math.min(this.endN, Math.round(beat * 2))
+    this.totalBeats = Math.min(this.totalBeats, beat)
   }
 
   /** Clears the interval; idempotent. */

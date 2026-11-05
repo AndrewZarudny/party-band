@@ -3,11 +3,12 @@ import { useEffect, useState } from 'react'
 import type { DayPlan, PlanStep, Progress } from '../types'
 import { lessonById } from '../data'
 import { KIND_LABEL, PLAN_BONUS, improvements, nextStepIndex, planDone, planMinutes, planStreakNow, swapOptions } from '../plan'
+import { drillTitle } from '../heat'
 import { FootGlyph, PickMark } from './LessonMap'
 
 // Done rows seen on screen so far, so a row's pick pops only the first time it shows as done.
 let seenDone: Set<string> | null = null
-const doneKeys = (plan: DayPlan) => plan.steps.filter((s) => s.state === 'done').map((s) => `${plan.day}:${s.lessonId}`)
+const doneKeys = (plan: DayPlan) => plan.steps.filter((s) => s.state === 'done').map((s) => `${plan.day}:${s.drill ?? s.lessonId}`)
 
 /** Done rows that weren't on screen as done before this mount (none on the very first mount). */
 function useFreshDone(plan: DayPlan | null): Set<string> {
@@ -19,13 +20,17 @@ function useFreshDone(plan: DayPlan | null): Set<string> {
   return fresh
 }
 
-const stepTitle = (s: PlanStep) => lessonById(s.lessonId)?.title ?? s.lessonId
+const stepTitle = (s: PlanStep) => (s.drill ? drillTitle(s.drill) : (lessonById(s.lessonId)?.title ?? s.lessonId))
+
+/** Opens a step: a drill step opens its drill loop, any other its lesson. */
+const openWith = (s: PlanStep, onOpen: (id: string) => void, onDrill: (key: string) => void) => (s.drill ? onDrill(s.drill) : onOpen(s.lessonId))
 
 function SetRows({
   progress,
   plan,
   fresh,
   onOpen,
+  onDrill,
   onSwap,
   onSkip,
 }: {
@@ -33,6 +38,7 @@ function SetRows({
   plan: DayPlan
   fresh: Set<string>
   onOpen: (id: string) => void
+  onDrill: (key: string) => void
   onSwap: (i: number) => void
   onSkip: (i: number) => void
 }) {
@@ -45,15 +51,15 @@ function SetRows({
         const done = s.state === 'done'
         const score = done && s.score !== undefined ? `${Math.round(s.score)}%` : null
         const label = [title, kind.toLowerCase(), s.state === 'todo' ? null : s.state, score].filter(Boolean).join(', ')
-        const pop = fresh.has(`${plan.day}:${s.lessonId}`)
+        const pop = fresh.has(`${plan.day}:${s.drill ?? s.lessonId}`)
         return (
-          <li key={`${s.kind}-${s.lessonId}`} className={`ls-set-row ${s.state} ${i === next ? 'next' : ''} ${pop ? 'pop' : ''}`}>
+          <li key={`${s.kind}-${s.drill ?? s.lessonId}`} className={`ls-set-row ${s.state} ${i === next ? 'next' : ''} ${pop ? 'pop' : ''}`}>
             <span className="ls-set-n ls-num" aria-hidden>
               {done && <PickMark className="ls-set-pick" />}
               <span>{i + 1}</span>
             </span>
             <div className="ls-set-main">
-              <button className="ls-set-open" onClick={() => onOpen(s.lessonId)} aria-label={label}>
+              <button className="ls-set-open" onClick={() => openWith(s, onOpen, onDrill)} aria-label={label}>
                 <span className="ls-set-name">{title}</span>
                 <span className="ls-set-why">
                   {kind} · {s.why}
@@ -125,6 +131,7 @@ export function TodayCard({
   progress,
   plan,
   onOpen,
+  onDrill,
   onSwap,
   onSkip,
   onToday,
@@ -132,6 +139,7 @@ export function TodayCard({
   progress: Progress
   plan: DayPlan
   onOpen: (id: string) => void
+  onDrill: (key: string) => void
   onSwap: (i: number) => void
   onSkip: (i: number) => void
   onToday: () => void
@@ -159,10 +167,10 @@ export function TodayCard({
   return (
     <section className="ls-set card" aria-label="Today's set">
       <SetHead plan={plan} streak={streak} />
-      <SetRows progress={progress} plan={plan} fresh={fresh} onOpen={onOpen} onSwap={onSwap} onSkip={onSkip} />
+      <SetRows progress={progress} plan={plan} fresh={fresh} onOpen={onOpen} onDrill={onDrill} onSwap={onSwap} onSkip={onSkip} />
       <div className="ls-set-foot">
         {next ? (
-          <button className="ls-btn primary" onClick={() => onOpen(next.lessonId)} autoFocus>
+          <button className="ls-btn primary" onClick={() => openWith(next, onOpen, onDrill)} autoFocus>
             Play: {stepTitle(next)}
           </button>
         ) : (
@@ -180,12 +188,14 @@ export function TodayCard({
 export function TodayScreen({
   progress,
   onOpen,
+  onDrill,
   onSwap,
   onSkip,
   onBack,
 }: {
   progress: Progress
   onOpen: (id: string) => void
+  onDrill: (key: string) => void
   onSwap: (i: number) => void
   onSkip: (i: number) => void
   onBack: () => void
@@ -219,11 +229,11 @@ export function TodayScreen({
           <>
             <SetHead plan={plan} streak={done ? 0 : streak} />
             <p className="ls-set-intro">A warm-up, what's due for review, one new lesson, then a jam. Swap or skip anything.</p>
-            <SetRows progress={progress} plan={plan} fresh={fresh} onOpen={onOpen} onSwap={onSwap} onSkip={onSkip} />
+            <SetRows progress={progress} plan={plan} fresh={fresh} onOpen={onOpen} onDrill={onDrill} onSwap={onSwap} onSkip={onSkip} />
             {done && <SetDone progress={progress} plan={plan} streak={streak} />}
             {next && (
               <div className="ls-set-foot">
-                <button className="ls-btn primary" onClick={() => onOpen(next.lessonId)} autoFocus>
+                <button className="ls-btn primary" onClick={() => openWith(next, onOpen, onDrill)} autoFocus>
                   Play: {stepTitle(next)}
                 </button>
               </div>
@@ -238,10 +248,22 @@ export function TodayScreen({
 }
 
 /** One line above the result card when the run's lesson is in today's set. */
-export function PlanStrip({ progress, lessonId, finished, onOpen }: { progress: Progress; lessonId: string; finished: boolean; onOpen: (id: string) => void }) {
+export function PlanStrip({
+  progress,
+  lessonId,
+  finished,
+  onOpen,
+  onDrill,
+}: {
+  progress: Progress
+  lessonId: string
+  finished: boolean
+  onOpen: (id: string) => void
+  onDrill: (key: string) => void
+}) {
   const [now] = useState(() => new Date())
   const plan = progress.plan
-  if (!plan || !plan.steps.some((s) => s.lessonId === lessonId)) return null
+  if (!plan || !plan.steps.some((s) => s.lessonId === lessonId && !s.drill)) return null
   const streak = planStreakNow(progress, now)
   const kept = plan.steps.filter((s) => s.state !== 'skipped')
   const doneN = kept.filter((s) => s.state === 'done').length
@@ -264,7 +286,7 @@ export function PlanStrip({ progress, lessonId, finished, onOpen }: { progress: 
         </p>
       )}
       {next && (
-        <button className="ls-btn ghost small" onClick={() => onOpen(next.lessonId)}>
+        <button className="ls-btn ghost small" onClick={() => openWith(next, onOpen, onDrill)}>
           Next: {stepTitle(next)}
         </button>
       )}

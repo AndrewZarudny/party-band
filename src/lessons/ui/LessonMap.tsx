@@ -180,9 +180,13 @@ export function LessonMap({
   onPlanSwap,
   onPlanSkip,
   onToday,
+  onDrill,
+  onHeat,
 }: {
   progress: Progress
   onOpen: (id: string) => void
+  onDrill: (key: string) => void
+  onHeat: () => void
   onAchievements: () => void
   onSettings: () => void
   onRename: (name: string) => void
@@ -238,7 +242,7 @@ export function LessonMap({
         </div>
       </header>
 
-      {showSet && <TodayCard progress={progress} plan={plan} onOpen={onOpen} onSwap={onPlanSwap} onSkip={onPlanSkip} onToday={onToday} />}
+      {showSet && <TodayCard progress={progress} plan={plan} onOpen={onOpen} onDrill={onDrill} onSwap={onPlanSwap} onSkip={onPlanSkip} onToday={onToday} />}
 
       {currentLesson && (!showSet || setDone) && (
         <div className="ls-continue">
@@ -261,6 +265,9 @@ export function LessonMap({
       <footer className="ls-foot-bar">
         <button className="ls-btn ghost" onClick={onAchievements}>
           Achievements <span className="ls-num">{earned}/{ACHIEVEMENTS.length || 16}</span>
+        </button>
+        <button className="ls-btn ghost" onClick={onHeat}>
+          Trouble spots
         </button>
         <button className="ls-btn ghost" onClick={onSettings}>
           Settings
