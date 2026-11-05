@@ -7,6 +7,9 @@ import './account/account.css'
 import { relayPopupCallback } from './tone3000/client'
 import type { BootLoader } from './account/sync'
 import { bootAccount } from './account/sync'
+import { startFavicon } from './favicon'
+
+startFavicon()
 
 const join = /^\/join\/([A-Z0-9]{4})\/?$/i.exec(location.pathname)
 
