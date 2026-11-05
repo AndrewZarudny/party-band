@@ -497,6 +497,19 @@
   stroke: currentColor;
   stroke-width: 1.6;
 }
+.lessons .ls-flag {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+.lessons .ls-flag .ls-flag-pole {
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
 .lessons .ls-world.locked .ls-world-head h3 {
   color: var(--muted);
 }
@@ -642,6 +655,36 @@
 }
 .lessons .ls-node .ls-pips {
   margin-top: 1px;
+}
+/* Optional lessons: a quieter second row of smaller picks under the plan's path. */
+.lessons .ls-extra-h {
+  margin: 4px 0 0 32px;
+  font-size: var(--fs-ui);
+  font-weight: 600;
+  color: var(--muted);
+}
+.lessons .ls-path.extra {
+  grid-auto-columns: minmax(84px, 1fr);
+  margin-top: 6px;
+}
+.lessons .ls-path.extra::before {
+  top: 6px;
+  height: 37px;
+  border-left-width: 2px;
+}
+.lessons .ls-path.extra .ls-fret {
+  min-height: 92px;
+  border-right-width: 1px;
+}
+.lessons .ls-path.extra .ls-node-pick {
+  width: 36px;
+  height: 40px;
+}
+.lessons .ls-path.extra .ls-node-pick .ls-pick path {
+  stroke-width: 1.5;
+}
+.lessons .ls-world.extras .ls-extra-h {
+  display: none;
 }
 
 @keyframes ls-ring {
@@ -1585,6 +1628,24 @@
     width: 38px;
     height: 42px;
   }
+  .lessons .ls-extra-h {
+    margin-left: 14px;
+  }
+  .lessons .ls-path.extra::before {
+    top: 0;
+    height: auto;
+    width: 1px;
+  }
+  .lessons .ls-path.extra .ls-fret {
+    min-height: 0;
+  }
+  .lessons .ls-path.extra .ls-node-pick {
+    width: 30px;
+    height: 34px;
+  }
+  .lessons .ls-path.extra .ls-node-title {
+    font-size: var(--fs-body);
+  }
   .lessons .ls-node-title {
     font-size: 15px;
     max-width: none;
@@ -1966,6 +2027,32 @@
 .lessons .ls-set-row.done .ls-set-min {
   color: var(--ls-set-ink);
   font-weight: 700;
+}
+/* Why the step is here: plan, extra, review. Shown on the phone card too. */
+.lessons .ls-set-src {
+  font-size: var(--fs-ui);
+  color: var(--ls-set-muted);
+}
+/* A done step's score: "today 72%" or "cold 22%", the best ever under it when higher. */
+.lessons .ls-set-score {
+  display: grid;
+  justify-items: end;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.lessons .ls-set-score-k {
+  font-weight: 500;
+  color: var(--ls-set-muted);
+}
+.lessons .ls-set-ever {
+  font-size: var(--fs-ui);
+  font-weight: 500;
+  color: var(--ls-set-muted);
+}
+.lessons .ls-set-key {
+  margin: 8px 0 0;
+  font-size: var(--fs-ui);
+  color: var(--ls-set-muted);
 }
 .lessons .ls-set-row.skipped .ls-set-n,
 .lessons .ls-set-row.skipped .ls-set-open,

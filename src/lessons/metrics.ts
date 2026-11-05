@@ -3,7 +3,7 @@ import type { PainLevel, Progress } from './types'
 import type { SkillStats } from '../skills/data'
 import { median } from '../skills/data'
 import { CORE_PAIRS, RETIRE_AT } from '../skills/chords'
-import { WORLDS, lessonById } from './data'
+import { ORDER, lessonById } from './data'
 import { dayKey, daysBetween } from './progress'
 import { retentionGap, weekKey, weekStatus } from './review'
 
@@ -14,11 +14,10 @@ export const FRET_TARGET_STRINGS = [0, 1] // low E, A
 export const TIMING_MIN_HITS = 8 // a run needs this many graded hits to show on the timing chart
 export const STRING_LABELS = ['Low E', 'A', 'D', 'G', 'B', 'High E']
 
-/** Lesson ids in map order. */
-const MAP_ORDER: string[] = WORLDS.flatMap((w) => w.lessons)
+/** A lesson's place in map order. */
 const orderOf = (id: string) => {
-  const i = MAP_ORDER.indexOf(id)
-  return i < 0 ? MAP_ORDER.length : i
+  const i = ORDER.indexOf(id)
+  return i < 0 ? ORDER.length : i
 }
 const titleOf = (id: string) => lessonById(id)?.title ?? id
 

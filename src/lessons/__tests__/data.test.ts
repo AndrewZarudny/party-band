@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LEGACY_IDS, LESSONS, TWELVE_A7, TWELVE_E7, WORLDS, lessonById, validateLessons } from '../data'
+import { GROWTH, LEGACY_IDS, LESSONS, ORDER, PLAN_LESSONS, PLAN_PATH, STAGES, TWELVE_A7, TWELVE_E7, checkpointOf, lessonById, stageOf, validateLessons, whereLabel } from '../data'
 import { buildChart } from '../charts'
 import { FEELS } from '../../music/parts'
 
@@ -8,12 +8,14 @@ describe('lesson data', () => {
     expect(validateLessons()).toEqual([])
   })
 
-  it('every world lists known lessons, the boss last', () => {
-    for (const w of WORLDS) {
-      expect(w.lessons.length).toBeGreaterThan(0)
-      for (const id of w.lessons) expect(lessonById(id)?.world).toBe(w.id)
-      expect(lessonById(w.lessons[w.lessons.length - 1])?.boss).toBe(true)
+  it('every stage lists known lessons, its checkpoint last and the only boss', () => {
+    for (const s of STAGES) {
+      for (const id of [...s.core, ...s.extra]) expect(lessonById(id), id).toBeDefined()
+      const cp = checkpointOf(s)
+      if (s.weeks) expect(lessonById(cp ?? '')?.boss).toBe(true)
+      for (const id of [...s.core, ...s.extra]) expect(!!lessonById(id)?.boss, id).toBe(id === cp)
     }
+    expect(LESSONS.filter((l) => l.boss).map((l) => l.id)).toEqual(['w3-07', 'w3-10', 'w5-07', 'w6-05', 'w8-03', 'w8-12'])
   })
 
   it.each(LESSONS.map((l) => [l.id, l] as const))('%s builds a sound chart', (_id, l) => {
@@ -55,23 +57,63 @@ const NEW_IDS = ['w1-05', 'w2-06', 'w2-07', 'w3-06', 'w3-07', 'w3-09', 'w3-10', 
   'w7-05', 'w8-06', 'w8-07', 'w8-08', 'w8-09', 'w8-10', 'w8-11', 'w8-12']
 
 describe('blues and rock material', () => {
-  it('keeps every old lesson id in a world, and no id moved', () => {
+  it('keeps every old lesson id on the map, and no id moved', () => {
     expect(OLD_IDS).toHaveLength(37)
-    const listed = WORLDS.flatMap((w) => w.lessons)
-    for (const id of OLD_IDS) expect(listed).toContain(id)
+    for (const id of [...OLD_IDS, ...NEW_IDS]) expect(ORDER).toContain(id)
+    expect(ORDER).toHaveLength(LESSONS.length)
+    expect(new Set(ORDER).size).toBe(ORDER.length)
     expect(LEGACY_IDS).toEqual({})
   })
 
-  it('lists the new lessons in the stated order', () => {
-    const world = (id: number) => WORLDS.find((w) => w.id === id)!.lessons
-    expect(world(1)).toEqual(['w1-01', 'w1-02', 'w1-03', 'w1-05', 'w1-04'])
-    expect(world(2)).toEqual(['w2-01', 'w2-02', 'w2-03', 'w2-05', 'w2-06', 'w2-07', 'w2-04'])
-    expect(world(3)).toEqual(['w3-01', 'w3-02', 'w3-06', 'w3-07', 'w3-03', 'w3-05', 'w3-09', 'w3-10', 'w3-04'])
-    expect(world(4)).toEqual(['w4-01', 'w4-02', 'w4-03', 'w4-05', 'w4-06', 'w4-04'])
-    expect(world(5)).toEqual(['w5-01', 'w5-11', 'w5-02', 'w5-03', 'w5-04', 'w5-07', 'w5-08', 'w5-09', 'w5-06'])
-    expect(world(7)).toEqual(['w7-01', 'w7-02', 'w7-03', 'w7-05', 'w7-04'])
-    expect(world(8)).toEqual(['w8-01', 'w8-02', 'w8-03', 'w8-04', 'w8-06', 'w8-07', 'w8-08', 'w8-09', 'w8-10', 'w8-11', 'w8-12', 'w8-05'])
+  it('the map follows the 12-week plan: each stage in the stated order', () => {
+    const stage = (id: number) => STAGES.find((s) => s.id === id)!
+    expect(STAGES.map((s) => s.weeks)).toEqual([[1, 2], [3, 4], [5, 6], [7, 8], [9, 10], [11, 12], null])
+    expect(stage(1).core).toEqual(['w1-01', 'w1-05', 'w4-01', 'w3-06', 'w3-07'])
+    expect(stage(1).extra).toEqual(['w1-02', 'w1-03', 'w2-01', 'w3-02', 'w1-04', 'w2-05', 'w8-01'])
+    expect(stage(2).core).toEqual(['w3-09', 'w2-06', 'w2-03', 'w3-10'])
+    expect(stage(2).extra).toEqual(['w3-01'])
+    expect(stage(3).core).toEqual(['w5-01', 'w5-11', 'w7-02', 'w5-07'])
+    expect(stage(3).extra).toEqual(['w5-02', 'w5-03', 'w5-04', 'w7-01', 'w7-03', 'w8-02', 'w5-06'])
+    expect(stage(4).core).toEqual(['w6-01', 'w6-02', 'w6-03', 'w6-04', 'w3-05', 'w2-07', 'w7-05', 'w6-05'])
+    expect(stage(4).extra).toEqual(['w3-04', 'w7-04'])
+    expect(stage(5).core).toEqual(['w5-08', 'w5-09', 'w8-06', 'w8-07', 'w8-10', 'w8-03'])
+    expect(stage(5).extra).toEqual(['w4-02', 'w4-05', 'w4-06', 'w8-04'])
+    expect(stage(6).core).toEqual(['w8-11', 'w8-08', 'w8-09', 'w8-12'])
+    expect(stage(6).extra).toEqual(['w4-03', 'w4-04', 'w8-05'])
+    expect(stage(7).core).toEqual([])
+    expect(stage(7).extra).toEqual(['w2-02', 'w2-04', 'w3-03'])
     expect(LESSONS).toHaveLength(OLD_IDS.length + NEW_IDS.length)
+  })
+
+  it('the plan lists are derived from the stages', () => {
+    expect(PLAN_LESSONS).toEqual(STAGES.filter((s) => s.weeks).map((s) => s.core.filter((id) => id !== 'w1-01')))
+    expect(PLAN_PATH[0]).toBe('w1-01')
+    expect(PLAN_PATH).toContain('w8-03')
+    expect(PLAN_PATH.some((id) => lessonById(id)?.free)).toBe(false)
+    expect(GROWTH).toEqual(['w3-07', 'w3-10', 'w5-07', 'w6-05', 'w8-03', 'w8-12', 'w7-04', 'w8-05'])
+  })
+
+  it('the required path matches the plan: ear echo without bends in weeks 5–6, bent licks by ear after Bend to Pitch, Em in weeks 7–8', () => {
+    const echoes = (ids: string[]) => ids.filter((id) => lessonById(id)?.calls)
+    expect(echoes(PLAN_LESSONS[2])).toEqual(['w7-02'])
+    for (const id of echoes(PLAN_LESSONS[2])) for (const c of lessonById(id)!.calls!.calls) expect(c, id).not.toContain('^')
+    expect(echoes(PLAN_LESSONS[3])).toEqual(['w7-05'])
+    expect(PLAN_PATH.indexOf('w6-03')).toBeLessThan(PLAN_PATH.indexOf('w7-05'))
+    expect(PLAN_LESSONS[3].some((id) => lessonById(id)?.chordBars?.some((b) => b.chord === 'Em'))).toBe(true)
+    // The octave shape that later tips lean on is required, before box 1
+    expect(PLAN_PATH.indexOf('w2-03')).toBeGreaterThan(-1)
+    expect(PLAN_PATH.indexOf('w2-03')).toBeLessThan(PLAN_PATH.indexOf('w5-01'))
+  })
+
+  it('where a lesson sits: plan lesson, checkpoint, optional extra', () => {
+    expect(stageOf('w4-01')).toMatchObject({ core: true, pos: 2 })
+    expect(stageOf('w2-03')?.stage.id).toBe(2)
+    expect(whereLabel('w4-01')).toBe('Weeks 1–2, lesson 3')
+    expect(whereLabel('w3-07')).toBe('Weeks 1–2 checkpoint')
+    expect(whereLabel('w2-03')).toBe('Weeks 3–4, lesson 3')
+    expect(whereLabel('w5-07')).toBe('Weeks 5–6 checkpoint')
+    expect(whereLabel('w3-01')).toBe('Weeks 3–4 · optional extra')
+    expect(whereLabel('w3-03')).toBe('Optional extra')
   })
 
   it('new lessons sit at 60–95 BPM, in A or E', () => {
@@ -85,7 +127,7 @@ describe('blues and rock material', () => {
 
   it('free lessons are jams and never bosses', () => {
     const free = LESSONS.filter((l) => l.free)
-    expect(free.map((l) => l.id)).toEqual(['w8-06', 'w8-07', 'w8-08', 'w8-09', 'w8-10', 'w8-11', 'w8-12'])
+    expect(free.map((l) => l.id)).toEqual(['w8-06', 'w8-07', 'w8-08', 'w8-09', 'w8-10', 'w8-11'])
     for (const l of free) {
       expect(l.boss).toBeFalsy()
       expect(l.type).toBe('improv')

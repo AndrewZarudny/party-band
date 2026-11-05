@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { Progress, SessionDay } from '../types'
-import { applyResult, dayKey, importProgress, isUnlocked, levelFor, loadProgress, newProgress, nextLesson, recordSkip, saveProgress, starsInWorld, worldUnlocked } from '../progress'
-import { WORLDS, lessonById } from '../data'
+import { applyResult, dayKey, dinoStageFor, eggCracked, importProgress, isUnlocked, levelFor, loadProgress, newProgress, nextLesson, recordSkip, saveProgress, stageOpen, starsInStage } from '../progress'
+import { GROWTH, LESSONS, STAGES, lessonById } from '../data'
+import { legacyOpen, legacyStage } from '../legacyMap'
+import { newList } from '../session'
 import { bpmAt, tempoStep } from '../speed'
-import { at, rec, result } from './fixtures'
+import { at, oldMapSave, rec, result } from './fixtures'
 
 const by = (id: string) => lessonById(id)!
 const DAY = at('2026-11-04')
@@ -66,11 +68,12 @@ describe('applyResult: XP only for real gains', () => {
 
   it('keeps the best score and stars, and unlocks the next lesson', () => {
     const p = started()
-    expect(isUnlocked(p, 'w1-03')).toBe(false)
-    const o = applyResult(p, by('w1-02'), result({ score: 85, stars: 2, passed: true }), DAY, ctx)
-    expect(o.unlocked).toEqual(['w1-03'])
-    const o2 = applyResult(o.progress, by('w1-02'), result({ score: 70, stars: 1, passed: true }), DAY, ctx)
-    expect(o2.progress.lessons['w1-02']).toMatchObject({ best: 85, stars: 2, plays: 2 })
+    expect(isUnlocked(p, 'w4-01')).toBe(false)
+    const o = applyResult(p, by('w1-05'), result({ lessonId: 'w1-05', score: 85, stars: 2, passed: true }), DAY, ctx)
+    expect(o.unlocked).toEqual(['w4-01'])
+    expect(o.stageOpened).toBeNull()
+    const o2 = applyResult(o.progress, by('w1-05'), result({ lessonId: 'w1-05', score: 70, stars: 1, passed: true }), DAY, ctx)
+    expect(o2.progress.lessons['w1-05']).toMatchObject({ best: 85, stars: 2, plays: 2 })
     expect(o2.unlocked).toEqual([])
   })
 
@@ -133,43 +136,134 @@ describe('levels and unlocks', () => {
     expect(dayKey(new Date('2026-11-05T04:00:00'))).toBe('2026-11-05')
   })
 
-  it('nextLesson: Tap In first, then on through the map; a skipped Tap In never blocks', () => {
+  it('nextLesson: Tap In first, then the plan in order; a skipped Tap In never blocks', () => {
     let p = newProgress()
     expect(nextLesson(p)).toBe('w1-01')
-    expect(isUnlocked(p, 'w1-02')).toBe(false)
+    expect(isUnlocked(p, 'w1-05')).toBe(false)
     p = recordSkip(p, 'w1-01', DAY)
-    expect(nextLesson(p)).toBe('w1-02')
+    expect(nextLesson(p)).toBe('w1-05')
+    p = applyResult(p, by('w1-05'), result({ lessonId: 'w1-05', score: 92, passed: true }), DAY, ctx).progress
+    expect(nextLesson(p)).toBe('w4-01')
+    // An extra passed on the side never moves Continue.
     p = applyResult(p, by('w1-02'), result({ score: 92, passed: true }), DAY, ctx).progress
-    expect(nextLesson(p)).toBe('w1-03')
+    expect(nextLesson(p)).toBe('w4-01')
   })
 
-  it('a world opens when the previous boss is passed', () => {
+  it('a stage opens when the previous checkpoint is passed; extras open with it', () => {
     const p = newProgress()
-    expect(worldUnlocked(p, 1)).toBe(true)
-    expect(worldUnlocked(p, 2)).toBe(false)
-    p.lessons['w1-04'] = rec({ passedAt: 1, stars: 1 })
-    expect(worldUnlocked(p, 2)).toBe(true)
-    expect(isUnlocked(p, 'w2-01')).toBe(true)
-    expect(isUnlocked(p, 'w2-02')).toBe(false)
+    expect(stageOpen(p, 1)).toBe(true)
+    expect(stageOpen(p, 2)).toBe(false)
+    expect(stageOpen(p, 7)).toBe(false)
+    for (const id of STAGES[0].extra) expect(isUnlocked(p, id), id).toBe(true)
+    expect(isUnlocked(p, 'w3-01')).toBe(false)
+    p.lessons['w3-07'] = rec({ passedAt: 1, stars: 1 })
+    expect(stageOpen(p, 2)).toBe(true)
+    expect(stageOpen(p, 7)).toBe(true)
+    expect(isUnlocked(p, 'w3-09')).toBe(true)
+    expect(isUnlocked(p, 'w3-01')).toBe(true)
+    expect(isUnlocked(p, 'w2-06')).toBe(false)
+    expect(isUnlocked(p, 'w2-03')).toBe(false)
+    expect(stageOpen(p, 3)).toBe(false)
   })
 
-  it('free jams open with their world, never block, and are left out of world stars and Continue', () => {
-    const w8 = WORLDS.find((w) => w.id === 8)!
-    const free = w8.lessons.filter((id) => lessonById(id)?.free)
-    const fixed = w8.lessons.filter((id) => !lessonById(id)?.free)
-    expect(free.length).toBeGreaterThan(0)
+  it('passing a checkpoint reports the stage it opened', () => {
+    let p = recordSkip(newProgress(), 'w1-01', DAY)
+    for (const id of ['w1-05', 'w4-01', 'w3-06']) p = applyResult(p, by(id), result({ lessonId: id, score: 90, passed: true }), DAY, ctx).progress
+    const o = applyResult(p, by('w3-07'), result({ lessonId: 'w3-07', score: 90, passed: true }), DAY, ctx)
+    expect(o.stageOpened).toBe(2)
+    expect(o.unlocked).toEqual(expect.arrayContaining(['w3-09', 'w3-01', 'w2-02', 'w2-04', 'w3-03']))
+    expect(o.stageAfter).toBe(o.stageBefore + 1)
+  })
+
+  it('free jams open with stage 5, never block, and are left out of stage stars and Continue', () => {
+    const s5 = STAGES[4]
+    const free = s5.core.filter((id) => lessonById(id)?.free)
+    expect(free).toEqual(['w8-06', 'w8-07', 'w8-10'])
     const p = newProgress()
-    p.lessons['w7-04'] = rec({ passedAt: 1, stars: 1 }) // World 7's boss opens World 8
+    for (const id of free) expect(isUnlocked(p, id)).toBe(false)
+    p.lessons['w6-05'] = rec({ passedAt: 1, stars: 1 })
     for (const id of free) expect(isUnlocked(p, id)).toBe(true)
-    expect(starsInWorld(p, 8).max).toBe(3 * fixed.length)
-    // The lesson after a free jam follows the nearest earlier fixed lesson.
-    const i = w8.lessons.findIndex((id) => lessonById(id)?.free)
-    const after = w8.lessons.slice(i).find((id) => !lessonById(id)?.free && !lessonById(id)?.boss)
-    const before = fixed[fixed.indexOf(after!) - 1]
-    if (after && before) {
-      p.lessons[before] = rec({ passedAt: 1, stars: 1 })
-      expect(isUnlocked(p, after)).toBe(true)
+    expect(starsInStage(p, 5).max).toBe(3 * (s5.core.length - free.length))
+    // The checkpoint follows the box 2 lesson, skipping the free jams.
+    p.lessons['w5-08'] = rec({ passedAt: 1, stars: 1 })
+    expect(isUnlocked(p, 'w8-03')).toBe(false)
+    p.lessons['w5-09'] = rec({ passedAt: 1, stars: 1 })
+    expect(isUnlocked(p, 'w8-03')).toBe(true)
+    for (const id of free) expect(nextLesson(p)).not.toBe(id)
+  })
+
+  it('a played lesson never locks', () => {
+    const p = newProgress()
+    expect(isUnlocked(p, 'w6-03')).toBe(false)
+    p.lessons['w6-03'] = rec({ plays: 1 })
+    expect(isUnlocked(p, 'w6-03')).toBe(true)
+  })
+})
+
+describe('the map follows the plan: migration from the old world map', () => {
+  const migrated = () => importProgress(JSON.stringify(oldMapSave()))!
+
+  it('the old save: kept lessons stay open, the dino keeps its stage, Continue is Power Pair', () => {
+    const raw = oldMapSave()
+    const p = migrated()
+    expect(p.mapV).toBe(2)
+    expect(p.keepOpen).toEqual(['w1-01', 'w1-02', 'w1-03', 'w1-05', 'w1-04', 'w2-01', 'w2-02', 'w2-03', 'w2-05', 'w2-06', 'w2-04', 'w3-06', 'w3-07'])
+    expect(p.dinoBonus).toBe(1)
+    expect(dinoStageFor(p)).toBe(1)
+    expect(nextLesson(p)).toBe('w4-01')
+    for (const id of ['w2-03', 'w2-06', 'w2-04', 'w3-02', 'w8-01', 'w3-07']) expect(isUnlocked(p, id), id).toBe(true)
+    for (const id of ['w3-09', 'w3-10', 'w3-01', 'w3-03']) expect(isUnlocked(p, id), id).toBe(false)
+    // Records are untouched.
+    expect(JSON.stringify(p.lessons)).toBe(JSON.stringify(importProgress(JSON.stringify({ ...raw, mapV: 2 }))!.lessons))
+  })
+
+  it('migrating twice changes nothing', () => {
+    const p = migrated()
+    expect(importProgress(JSON.stringify(p))).toEqual(p)
+    expect(importProgress(JSON.stringify({ ...p, mapV: undefined }))).toEqual(p)
+  })
+
+  it("an untouched plan the old map picked is dropped, so today's plan is remade; a started one is kept", () => {
+    const step = (kind: string, lessonId: string, state: string) => ({ kind, lessonId, min: 8, state, why: '', from: { best: 0, stars: 0, speed: 1, loops: 0 } })
+    const oldPlan = (state: string) => ({ v: 2, day: '2026-11-04', min: 30, shape: 'A', steps: [step('new', 'w1-05', state), step('jam', 'w2-05', 'todo')] })
+    expect(importProgress(JSON.stringify({ ...oldMapSave(), plan: oldPlan('todo') }))!.plan).toBeNull()
+    const kept = importProgress(JSON.stringify({ ...oldMapSave(), plan: oldPlan('done') }))!
+    expect(kept.plan?.steps.map((s) => [s.lessonId, s.state])).toEqual([['w1-05', 'done'], ['w2-05', 'todo']])
+    // A save already on the new map keeps its plan as it is.
+    expect(importProgress(JSON.stringify({ ...oldMapSave(), mapV: 2, plan: oldPlan('todo') }))!.plan?.steps).toHaveLength(2)
+  })
+
+  it('the dino grows on the next checkpoint, and never drops below the old stage', () => {
+    const p = migrated()
+    p.lessons['w3-07'] = rec({ passedAt: 2, stars: 1 })
+    expect(dinoStageFor(p)).toBe(2)
+    const all = newProgress()
+    for (const id of GROWTH) all.lessons[id] = rec({ passedAt: 1, stars: 1 })
+    expect(dinoStageFor(all)).toBe(8)
+    expect(eggCracked(newProgress())).toBe(false)
+  })
+
+  it('nothing the old map had open locks, and the dino never shrinks', () => {
+    const fixtures: Record<string, unknown>[] = [oldMapSave()]
+    // A player deep into the old map: worlds 1 to 4 cleared, some of world 5.
+    const deep = oldMapSave()
+    const lessons = deep.lessons as Record<string, unknown>
+    for (const id of ['w2-03', 'w2-06', 'w2-07', 'w2-04', 'w3-01', 'w3-02', 'w3-07', 'w3-03', 'w3-05', 'w3-09', 'w3-10', 'w3-04', 'w4-01', 'w4-02', 'w4-03', 'w4-05', 'w4-06', 'w4-04', 'w5-01', 'w5-11']) {
+      lessons[id] = rec({ best: 80, stars: 2, plays: 2, passedAt: 1000 })
     }
+    fixtures.push(deep)
+    // Stars instead of a boss: 70% of world 1 opens world 2 under the old rules.
+    fixtures.push({ v: 1, xp: 0, lessons: { 'w1-01': rec({ plays: 1 }), 'w1-02': rec({ stars: 3, passedAt: 1 }), 'w1-03': rec({ stars: 3, passedAt: 1 }), 'w1-05': rec({ stars: 3, passedAt: 1 }), 'w1-04': rec({ stars: 2, plays: 3 }) } })
+    for (const raw of fixtures) {
+      const before = importProgress(JSON.stringify({ ...raw, mapV: 2 }))!
+      const p = importProgress(JSON.stringify(raw))!
+      for (const id of legacyOpen(before)) expect(isUnlocked(p, id), id).toBe(true)
+      expect(dinoStageFor(p)).toBeGreaterThanOrEqual(legacyStage(before))
+      const n = nextLesson(p)
+      const nl = newList(p)
+      if (n && !nl.polish && lessonById(n)?.type !== 'sync') expect(nl.ids[0]).toBe(n)
+    }
+    expect(LESSONS.length).toBe(58)
   })
 })
 
@@ -234,6 +328,7 @@ describe('saved progress', () => {
 
   it('a brand-new save never shows the weekly note; a dismissed one stays dismissed', () => {
     expect(newProgress().seenWeekly).toBe(true)
+    expect(newProgress()).toMatchObject({ mapV: 2, keepOpen: [], dinoBonus: 0 })
     const p = importProgress(JSON.stringify({ ...newProgress(), seenWeekly: true }))!
     expect(p.seenWeekly).toBe(true)
   })
@@ -252,6 +347,7 @@ describe('saved progress', () => {
         sessions: { log: [{ day: '2026-11-04', sec: 700, counted: true, pain: 'ouch' }, { day: 'nope' }], before: 2 },
         weekXp: ['2026-11-02', 5],
         runs: [{ at: 1, id: 'w1-02', bpm: 70 }, { at: 'x' }],
+        mapV: 2,
         plan: { v: 2, day: '2026-11-04', min: 30, shape: 'B', steps: [{ kind: 'new', lessonId: 'nope' }, { kind: 'jam', lessonId: 'w2-05', state: 'weird' }, { kind: 'changes', lessonId: null, skill: { game: 'changes', pair: 'A-D' } }] },
       }),
     )!

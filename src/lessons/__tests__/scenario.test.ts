@@ -8,10 +8,10 @@ import { LESSONS, lessonById } from '../data'
 import { buildChart } from '../charts'
 import { Judge, WINDOWS } from '../judge'
 import { swungBeat } from '../clock'
-import { applyResult, importProgress } from '../progress'
+import { applyResult, importProgress, nextLesson } from '../progress'
 import { autoSpeed, bpmAt, tempoStep } from '../speed'
 import { SESSION_GAPS, coldRun, isCold, sessionNow } from '../review'
-import { ctxDefault, planAfterRun, planAfterSkill, withSessionDay, withTodayPlan } from '../session'
+import { ctxDefault, newList, planAfterRun, planAfterSkill, withSessionDay, withTodayPlan } from '../session'
 import { tabLevelFor } from '../listen'
 import {
   bendSeries,
@@ -197,6 +197,10 @@ describe('the 12-week plan drives new material', () => {
       for (const off of [0, 2, 4]) {
         const now = new Date(start.getTime() + ((week - 1) * 7 + off) * 86400000)
         p = withTodayPlan(p, now, ctx) ?? p
+        // The map's Continue and the session's New name the same lesson, every day.
+        const nl = newList(p)
+        const next = nextLesson(p)
+        if (!nl.polish && next && lessonById(next)?.type !== 'sync') expect(nl.ids[0], `week ${week}`).toBe(next)
         for (const step of p.plan!.steps) {
           if (step.kind === 'mix') {
             for (const id of step.items ?? []) p = run(p, id, now).progress
@@ -211,8 +215,8 @@ describe('the 12-week plan drives new material', () => {
     }
     expect(firstNew['w3-07']).toBeLessThanOrEqual(2)
     expect(firstNew['w5-11']).toBeLessThanOrEqual(6)
-    // The first fortnight's plan lessons came first, in plan order.
-    expect(Object.keys(firstNew).slice(0, 4)).toEqual(['w1-05', 'w3-06', 'w3-07', 'w4-01'])
+    // The first stage's plan lessons came first, in map order: the checkpoint last.
+    expect(Object.keys(firstNew).slice(0, 4)).toEqual(['w1-05', 'w4-01', 'w3-06', 'w3-07'])
   })
 })
 

@@ -70,9 +70,9 @@ export interface StarExtra {
 
 export interface Lesson {
   id: string
-  world: WorldId
-  order: number // 1-based within the world
-  boss?: boolean
+  world: WorldId // the lesson's family (hand tips, guides, teach basics); the map uses STAGES
+  order: number // 1-based within the family
+  boss?: boolean // a stage checkpoint
   title: string
   goal: string
   tips: string[]
@@ -97,15 +97,20 @@ export interface Lesson {
   xp: number
   position?: number // home hand position (index-finger fret), e.g. 5 for A minor box 1; improv uses boxFret
   pickRule?: PickRule // default 'grid'
-  free?: boolean // jam library: open with its world, never blocks the next lesson, left out of world stars
+  free?: boolean // jam library: open with its stage, never blocks the next lesson, left out of stage stars
   dyad?: boolean // seq chord tokens are two-note shapes (boogie): judged by pitch like power chords, no chroma
 }
 
-export interface WorldDef {
-  id: WorldId
-  title: string
-  skill: string
-  lessons: string[] // ids in play order; the boss is last
+/** A map stage: one fortnight of the 12-week plan, or the Extras area (id 7). */
+export type StageId = 1 | 2 | 3 | 4 | 5 | 6 | 7
+export interface StageDef {
+  id: StageId
+  weeks: [number, number] | null // null = the Extras area
+  title: string // what you learn
+  skill: string // one plain line
+  core: string[] // the plan's lessons in teaching order; the checkpoint (boss) is last
+  extra: string[] // optional: open with the stage, never block anything
+  encore?: string // an optional extra that also grows the dino
 }
 
 // ---- seq() output -------------------------------------------------------------
@@ -456,7 +461,8 @@ export interface SessionStep {
   why: string
   from: { best: number; stars: Stars; speed: number; loops?: number }
   drill?: string // a trouble-spot drill (heat cell key)
-  score?: number
+  score?: number // set once, by the run that ticked the step (cold: the first try)
+  best?: number // the best later run of this lesson today (not cold, not drill)
   speed?: number
 }
 
@@ -533,6 +539,9 @@ export interface Progress {
   weekXp: string[] // week keys whose goal was met at the time (no XP: the name is kept for saved data), newest last, max 20
   runs: RunSample[] // oldest first, max RUNS_MAX
   seenWeekly?: boolean // the "weeks, not days" note was shown
+  mapV?: 2 // the map follows the 12-week plan (absent: an old world-map save, migrated on load)
+  keepOpen?: string[] // lessons the old map had open: they never lock
+  dinoBonus?: number // dino stages carried over from the old map, so the dino never shrinks
 }
 
 export interface XpLine {
@@ -550,7 +559,7 @@ export interface ApplyOutcome {
   stageAfter: number
   newAchievements: string[]
   unlocked: string[] // lesson ids that became playable
-  worldUnlocked: WorldId | null
+  stageOpened: StageId | null
   competence: string[] // what got better, in plain words ("Cold tempo on Boogie Shuffle in A is up 8 BPM.")
   cold: ColdAttempt | null // this run was a cold-start test
   review: ReviewState | null // the item's review after this run
@@ -575,7 +584,7 @@ export type DinoMood = 'idle' | 'focus' | 'happy' | 'hyped' | 'oops' | 'sad' | '
 export interface DinoStage {
   stage: number // 0–8
   name: string
-  after: WorldId | null // reached by passing this world's boss (null = start)
+  after: number | null // growth lessons passed to reach it: checkpoints and encores (null = start)
 }
 export interface AchievementDef {
   id: string

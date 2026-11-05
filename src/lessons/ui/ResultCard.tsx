@@ -5,7 +5,7 @@ import { factById } from '../facts/pick'
 import { VERDICT_LABEL } from '../scoring'
 import { DINO_STAGES, levelFor } from '../progress'
 import { ACHIEVEMENTS } from '../achievements'
-import { WORLDS, lessonById } from '../data'
+import { STAGES, lessonById, weeksLabel } from '../data'
 import { EARN_PASSES, MIN_SPEED, bpmAt, tempoStep } from '../speed'
 import { buildChart } from '../charts'
 import { hardRange } from '../loop'
@@ -277,7 +277,7 @@ export function ResultCard({
   const short = Math.max(0, lesson.pass - result.score)
   const totalLine = outcome.lines.find((l) => l.label === 'Total')
   const lines = outcome.lines.filter((l) => l.label !== 'Total')
-  const world = outcome.worldUnlocked ? WORLDS.find((w) => w.id === outcome.worldUnlocked) : undefined
+  const world = outcome.stageOpened ? STAGES.find((s) => s.id === outcome.stageOpened) : undefined
   // Picked once in applyResult and saved with progress, so a re-render shows the same lines.
   const factLines = outcome.factLines ?? []
   const chart = useMemo(() => buildChart(lesson), [lesson])
@@ -438,7 +438,7 @@ export function ResultCard({
             <ul className="ls-unlocks">
               {world && (
                 <li className="world">
-                  World {world.id} is open: {world.title}
+                  New stage open: {weeksLabel(world)} · {world.title}
                 </li>
               )}
               {outcome.unlocked.map((id) => (

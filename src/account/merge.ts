@@ -227,6 +227,10 @@ export function mergeLessonsProgress(a: string, b: string): string | null {
       weekXp: unionSorted(base.weekXp, other.weekXp, 20),
       runs: mergeRuns(base.runs, other.runs),
       ...(base.seenWeekly === true || other.seenWeekly === true ? { seenWeekly: true } : {}),
+      keepOpen: unionSorted(base.keepOpen, other.keepOpen, 200),
+      dinoBonus: Math.max(num(base.dinoBonus), num(other.dinoBonus)),
+      // An old-map side keeps mapV off, so loading the merge migrates it (keepOpen and dinoBonus only grow).
+      mapV: base.mapV === 2 && other.mapV === 2 ? 2 : undefined,
     })
   } catch {
     return null

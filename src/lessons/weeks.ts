@@ -1,5 +1,5 @@
 // The 12-week plan (research section 5): what each fortnight is for, and whether its checkpoint is met. Pure.
-import type { Progress, WorldId } from './types'
+import type { Progress, StageId } from './types'
 import type { SkillStats } from '../skills/data'
 import { bestKey, median } from '../skills/data'
 import { CORE_PAIRS } from '../skills/chords'
@@ -12,7 +12,7 @@ export interface PlanWeek {
   from: number
   to: number
   focus: string
-  worlds: WorldId[]
+  stage: StageId // its stage on the map
   lessons: string[]
   checkpoint: string
   check: (p: Progress, stats: SkillStats) => CheckState
@@ -36,7 +36,7 @@ export const PLAN_WEEKS: PlanWeek[] = [
     from: 1,
     to: 2,
     focus: 'Setup, posture, muting; downstrokes with the band; A5, D5, E5 and the boogie shuffle',
-    worlds: [1, 3, 4],
+    stage: 1,
     lessons: PLAN_LESSONS[0],
     checkpoint: 'One full 12-bar shuffle rhythm in A at 60 BPM without stopping',
     check: (p) => (cleanCold(p, 'w3-07', 60) ? 'met' : passed(p, 'w3-07') || cleanInSession(p, 'w3-07', 60) ? 'partial' : 'open'),
@@ -45,7 +45,7 @@ export const PLAN_WEEKS: PlanWeek[] = [
     from: 3,
     to: 4,
     focus: 'Open A, D, E, then A7, D7, E7; 8th strumming; notes on the low E string',
-    worlds: [3, 2],
+    stage: 2,
     lessons: PLAN_LESSONS[1],
     checkpoint: 'One-minute changes baseline per chord pair; shuffle at 70 BPM',
     check: (p, s) =>
@@ -58,7 +58,7 @@ export const PLAN_WEEKS: PlanWeek[] = [
     from: 5,
     to: 6,
     focus: 'A minor pentatonic box 1; 2–3 blues licks; short call and response',
-    worlds: [5, 7],
+    stage: 3,
     lessons: PLAN_LESSONS[2],
     checkpoint: 'Box 1 in 8ths at 70 BPM up and down; licks over the 12-bar',
     check: (p) => halves(cleanCold(p, 'w5-11', 70), passed(p, 'w5-07')),
@@ -67,7 +67,7 @@ export const PLAN_WEEKS: PlanWeek[] = [
     from: 7,
     to: 8,
     focus: 'Bends, slides, vibrato; G, C, Em; notes on the A string',
-    worlds: [6, 3, 2],
+    stage: 4,
     lessons: PLAN_LESSONS[3],
     checkpoint: 'Bends in tune; echo 2-bar phrases at the first attempt for most of a set',
     check: (p, s) => {
@@ -85,7 +85,7 @@ export const PLAN_WEEKS: PlanWeek[] = [
     from: 9,
     to: 10,
     focus: 'A major pentatonic; landing on the root at chord changes; blues in E',
-    worlds: [5, 8],
+    stage: 5,
     lessons: PLAN_LESSONS[4],
     checkpoint: 'One-minute changes in the 40s on core pairs, heading for 60',
     check: (_p, s) => {
@@ -97,7 +97,7 @@ export const PLAN_WEEKS: PlanWeek[] = [
     from: 11,
     to: 12,
     focus: 'One relaxed rock song plus a 12-bar jam',
-    worlds: [8],
+    stage: 6,
     lessons: PLAN_LESSONS[5],
     checkpoint: '3 choruses (rhythm, solo, rhythm) at 70–80 BPM without stopping, recorded',
     check: (p, s) => {

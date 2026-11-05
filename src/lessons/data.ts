@@ -1,4 +1,4 @@
-import type { Lesson, WorldDef } from './types'
+import type { Lesson, StageDef } from './types'
 import { STANDARD_TUNING, parseChord, pc } from '../music/theory'
 import { seq, seqBeats } from './seq'
 import { buildChart } from './charts'
@@ -44,21 +44,37 @@ const ROCK_E = { E5, A5: A5o, B5: [-1, 2, 4, 4, -1, -1] }
 const rockBars = (chords: string[], shapes: Record<string, number[]>) =>
   chords.map((chord, i) => ({ chord, frets: shapes[chord], strum: i === chords.length - 1 ? 'D_______' : 'DDDDDDDD' }))
 
-export const WORLDS: WorldDef[] = [
-  { id: 1, title: 'First Sparks', skill: 'Electric basics and muting', lessons: ['w1-01', 'w1-02', 'w1-03', 'w1-05', 'w1-04'] },
-  { id: 2, title: 'Fret Finder', skill: 'Clean single notes, and a first jam', lessons: ['w2-01', 'w2-02', 'w2-03', 'w2-05', 'w2-06', 'w2-07', 'w2-04'] },
-  { id: 3, title: 'Strum Stomp', skill: 'Rhythm, feel and the shuffle', lessons: ['w3-01', 'w3-02', 'w3-06', 'w3-07', 'w3-03', 'w3-05', 'w3-09', 'w3-10', 'w3-04'] },
-  { id: 4, title: 'Power Stomp', skill: 'Power chords and riffs', lessons: ['w4-01', 'w4-02', 'w4-03', 'w4-05', 'w4-06', 'w4-04'] },
-  { id: 5, title: 'Pentatonic Playground', skill: 'A minor and A major pentatonic, box 1 and box 2',
-    lessons: ['w5-01', 'w5-11', 'w5-02', 'w5-03', 'w5-04', 'w5-07', 'w5-08', 'w5-09', 'w5-06'] },
-  { id: 6, title: 'Expression', skill: 'Hammer-ons, slides, bends, vibrato', lessons: ['w6-01', 'w6-02', 'w6-03', 'w6-04', 'w6-05'] },
-  { id: 7, title: 'Call & Response', skill: 'Listening and answering', lessons: ['w7-01', 'w7-02', 'w7-03', 'w7-05', 'w7-04'] },
-  { id: 8, title: 'Freestyle Jam', skill: 'Improvising over a band: the blues and rock jam library',
-    lessons: ['w8-01', 'w8-02', 'w8-03', 'w8-04', 'w8-06', 'w8-07', 'w8-08', 'w8-09', 'w8-10', 'w8-11', 'w8-12', 'w8-05'] },
+/**
+ * The map: one stage per fortnight of the 12-week plan (research section 5), then an Extras area.
+ * core = the plan's lessons in teaching order, the checkpoint last; extra = optional, never blocks anything.
+ */
+export const STAGES: StageDef[] = [
+  // Muting is taught inside Power Pair and Downstroke Lock; Stop the Ring stays optional so the boogie lands in week 2.
+  { id: 1, weeks: [1, 2], title: 'Time and power chords', skill: 'A light fretting hand, downstrokes with the band, muted power chords and the boogie shuffle',
+    core: ['w1-01', 'w1-05', 'w4-01', 'w3-06', 'w3-07'],
+    extra: ['w1-02', 'w1-03', 'w2-01', 'w3-02', 'w1-04', 'w2-05', 'w8-01'] },
+  { id: 2, weeks: [3, 4], title: 'Open chords and the low E string', skill: 'Open A, D, E, then A7, D7, E7; 8th strumming; notes and roots on the low strings',
+    core: ['w3-09', 'w2-06', 'w2-03', 'w3-10'],
+    extra: ['w3-01'] },
+  { id: 3, weeks: [5, 6], title: 'Box 1, blues licks, call and response', skill: 'A minor pentatonic box 1, short melodies copied by ear, three blues licks',
+    core: ['w5-01', 'w5-11', 'w7-02', 'w5-07'],
+    extra: ['w5-02', 'w5-03', 'w5-04', 'w7-01', 'w7-03', 'w8-02', 'w5-06'] },
+  { id: 4, weeks: [7, 8], title: 'Bends, slides, vibrato; G, C, Em', skill: 'Hammer-ons, slides, bends in tune, vibrato; G, C and Em; notes on the A string; licks echoed by ear',
+    core: ['w6-01', 'w6-02', 'w6-03', 'w6-04', 'w3-05', 'w2-07', 'w7-05', 'w6-05'],
+    extra: ['w3-04', 'w7-04'], encore: 'w7-04' },
+  { id: 5, weeks: [9, 10], title: 'A major box, chord tones, blues in E', skill: 'A major pentatonic, box 2, landing on the chord when it changes, the shuffle in E',
+    core: ['w5-08', 'w5-09', 'w8-06', 'w8-07', 'w8-10', 'w8-03'],
+    extra: ['w4-02', 'w4-05', 'w4-06', 'w8-04'] },
+  { id: 6, weeks: [11, 12], title: 'A rock song and a 12-bar jam', skill: 'Rock in E, slow and minor blues, three choruses without stopping',
+    core: ['w8-11', 'w8-08', 'w8-09', 'w8-12'],
+    extra: ['w4-03', 'w4-04', 'w8-05'], encore: 'w8-05' },
+  { id: 7, weeks: null, title: 'Extras', skill: 'Whenever you like: melodies on one string, and reggae',
+    core: [],
+    extra: ['w2-02', 'w2-04', 'w3-03'] },
 ]
 
 export const LESSONS: Lesson[] = [
-  // ---- World 1: First Sparks ----
+  // ---- Family 1: first sparks ----
   { id: 'w1-01', world: 1, order: 1, title: 'Tap In', goal: "Let Fretwise learn your setup's delay.", type: 'sync',
     bpm: 80, bars: 2, timing: 'easy', tone: 'Clean', pass: 0, stars: [0, 0, 0], xp: 30,
     tips: ['Pluck the open A string right on each click.', "Play with the click, don't chase it.",
@@ -80,13 +96,13 @@ export const LESSONS: Lesson[] = [
     pass: 60, stars: [60, 80, 95], xp: 40,
     tips: ['Press until the note buzzes, then add just enough to clear the buzz. No more.',
       'Thumb relaxed behind the neck. If your hand aches, you are squeezing.', 'Let each note ring for its full two beats.'] },
-  { id: 'w1-04', world: 1, order: 5, boss: true, title: 'Spark Show', goal: 'Open strings, muting and your first fretted notes together.', type: 'notes',
+  { id: 'w1-04', world: 1, order: 5, title: 'Spark Show', goal: 'Open strings, muting and your first fretted notes together.', type: 'notes',
     bpm: 80, bars: 4, timing: 'easy', tone: 'Clean', backing: { feel: 'ballad', chords: ['E5', 'E5', 'A5', 'A5'], parts: GROOVE, level: 0.6 },
     seq: '0.0 r 1.0 r | 2.0 r 3.0 r | 4.5 4.5 5.5 5.5 | 4.5 r 5.5*2', step: 1,
     pass: 65, stars: [65, 82, 95], xp: 100,
     tips: ['Fretted notes: press just behind the 5th fret wire, not on top of it.', 'Pick down on every beat. Let the pick swing back up between notes.'] },
 
-  // ---- World 2: Fret Finder ----
+  // ---- Family 2: fret finder ----
   { id: 'w2-01', world: 2, order: 1, title: 'Spider Walk', goal: 'One finger per fret, clean notes.', type: 'notes',
     bpm: 60, bars: 4, timing: 'easy', tone: 'Clean', backing: { feel: 'pop', chords: ['A5'], parts: DRUMS, level: 0.55 },
     seq: '0.5 0.6 0.7 0.8 | 1.5 1.6 1.7 1.8 | 2.5 2.6 2.7 2.8 | 3.5 3.6 3.7 3.8', step: 1,
@@ -121,13 +137,13 @@ export const LESSONS: Lesson[] = [
     pass: 60, stars: [60, 80, 95], xp: 50,
     tips: ['Natural notes on the A string: A B C D E F G, then A at fret 12.', 'B to C and E to F are one fret apart. The others are two frets apart.',
       'Say each name as you play it.'] },
-  { id: 'w2-04', world: 2, order: 7, boss: true, title: 'Full Ode', goal: 'A whole melody, accurate and steady.', type: 'notes',
+  { id: 'w2-04', world: 2, order: 7, title: 'Full Ode', goal: 'A whole melody, accurate and steady.', type: 'notes',
     bpm: 90, bars: 8, timing: 'normal', tone: 'Clean', backing: { feel: 'pop', chords: ['C', 'G', 'C', 'G', 'C', 'G', 'C', 'C'], parts: FULL, level: 0.75 },
     seq: '4.5 4.5 4.6 4.8 | 4.8 4.6 4.5 4.3 | 4.1 4.1 4.3 4.5 | 4.5*1.5 4.3*0.5 4.3*2 | 4.5 4.5 4.6 4.8 | 4.8 4.6 4.5 4.3 | 4.1 4.1 4.3 4.5 | 4.3*1.5 4.1*0.5 4.1*2', step: 1,
     pass: 70, stars: [70, 85, 95], xp: 120,
     tips: ['Phrase two ends differently. Listen for it.', 'Relax. Tension makes you rush.'] },
 
-  // ---- World 3: Strum Stomp ----
+  // ---- Family 3: strum stomp ----
   { id: 'w3-01', world: 3, order: 1, title: 'Strum Engine', goal: 'A pendulum strumming hand: downs, then down-ups.', type: 'chords',
     bpm: 80, bars: 4, timing: 'easy', tone: 'Clean', backing: { feel: 'pop', chords: ['Em'], parts: GROOVE, level: 0.7 },
     chordBars: [...bars('Em', 'D_D_D_D_', 2), ...bars('Em', 'DUDUDUDU', 2)],
@@ -147,7 +163,7 @@ export const LESSONS: Lesson[] = [
     tips: ['Downstrokes only, small and even, locked to the kick and snare.',
       'A5: open A string plus the D and G strings at fret 2. D5: open D string, G string fret 2, B string fret 3. E5: open low E, A and D strings at fret 2.',
       'Rest the side of your picking hand lightly on the strings you skip.'] },
-  { id: 'w3-07', world: 3, order: 4, title: 'Boogie Shuffle in A', goal: 'The A5–A6 boogie: a full 12-bar shuffle rhythm in A.', type: 'notes', dyad: true, pickRule: 'down',
+  { id: 'w3-07', world: 3, order: 4, boss: true, title: 'Boogie Shuffle in A', goal: 'The A5–A6 boogie: a full 12-bar shuffle rhythm in A.', type: 'notes', dyad: true, pickRule: 'down',
     bpm: 60, bars: 12, timing: 'easy', tone: 'Blues crunch', backing: { feel: 'blues', chords: TWELVE_A7, parts: GROOVE, level: 0.7 }, shapes: BOOGIE,
     seq: ['A', 'A', 'A', 'A', 'D', 'D', 'A', 'A', 'E', 'D', 'A', 'E'].map(boogieBar).join(' | '), step: 0.5,
     pass: 65, stars: [65, 80, 92], xp: 90,
@@ -162,13 +178,13 @@ export const LESSONS: Lesson[] = [
     pass: 65, stars: [65, 80, 92], xp: 60,
     tips: ['Am: lay your index across the top three strings at fret 5. D: index on high e fret 5, ring and pinky on fret 7.', 'Hit on 2 and 4 only.',
       "Right after the hit, ease off the pressure to choke it. Think 'chk', not 'strummm'."] },
-  { id: 'w3-05', world: 3, order: 6, title: 'Open Chord Swap', goal: 'Learn the open G, D and C chords, and change between them in time.', type: 'chords',
-    bpm: 70, bars: 8, timing: 'easy', tone: 'Clean', backing: { feel: 'ballad', chords: ['G', 'G', 'D', 'D', 'C', 'C', 'G', 'G'], parts: GROOVE, level: 0.7 },
-    chordBars: [...bars('G', 'D_D_D_D_', 2), ...bars('D', 'D_D_D_D_', 2), ...bars('C', 'D_D_D_D_', 2), ...bars('G', 'D_D_D_D_', 2)],
+  { id: 'w3-05', world: 3, order: 6, title: 'Open Chord Swap', goal: 'Learn the open G, C and Em chords, and change between them in time.', type: 'chords',
+    bpm: 70, bars: 8, timing: 'easy', tone: 'Clean', backing: { feel: 'ballad', chords: ['G', 'G', 'C', 'C', 'Em', 'Em', 'G', 'G'], parts: GROOVE, level: 0.7 },
+    chordBars: [...bars('G', 'D_D_D_D_', 2), ...bars('C', 'D_D_D_D_', 2), ...bars('Em', 'D_D_D_D_', 2), ...bars('G', 'D_D_D_D_', 2)],
     pass: 65, stars: [65, 80, 92], xp: 60,
     tips: ['G: middle finger on low E fret 3, index on A string fret 2, ring on high e fret 3. The middle strings ring open.',
-      'D: index on G string fret 2, ring on B string fret 3, middle on high e fret 2. Strum only the top four strings.',
       'C: ring on A string fret 3, middle on D string fret 2, index on B string fret 1. Skip the low E.',
+      'Em: middle on A string fret 2, ring on D string fret 2. All six strings ring.',
       'Start moving to the next chord on beat 4. Landing on time beats landing perfect.'] },
   { id: 'w3-09', world: 3, order: 7, title: 'Open A, D, E', goal: 'Learn the open A, D and E chords, and strum 8ths.', type: 'chords',
     bpm: 70, bars: 8, timing: 'easy', tone: 'Clean', backing: { feel: 'ballad', chords: ['A', 'A', 'D', 'D', 'E', 'E', 'A', 'A'], parts: GROOVE, level: 0.7 },
@@ -178,19 +194,19 @@ export const LESSONS: Lesson[] = [
       'D: index on the G string fret 2, ring on the B string fret 3, middle on the high e fret 2. Top four strings only.',
       'E: middle on the A string fret 2, ring on the D string fret 2, index on the G string fret 1. All six strings.',
       'Move on beat 4. Landing on time beats landing perfect.'] },
-  { id: 'w3-10', world: 3, order: 8, title: 'Seventh Shuffle', goal: 'A7, D7 and E7 through a 12-bar shuffle.', type: 'chords',
+  { id: 'w3-10', world: 3, order: 8, boss: true, title: 'Seventh Shuffle', goal: 'A7, D7 and E7 through a 12-bar shuffle.', type: 'chords',
     bpm: 70, bars: 12, timing: 'easy', tone: 'Clean', backing: { feel: 'blues', chords: TWELVE_A7 },
     chordBars: TWELVE_A7.map((c) => ({ chord: c, frets: SEVENTH[c], strum: 'D_DUD_DU' })),
     pass: 65, stars: [65, 80, 92], xp: 80,
     tips: ['A7: like A, but lift the finger off the G string so it rings open.', 'D7: index on the B string fret 1, middle on the G string fret 2, ring on the high e fret 2.',
       'E7: like E, but lift the finger off the D string.', 'Shuffle strum: the down is long, the up is short. Swing it.'] },
-  { id: 'w3-04', world: 3, order: 9, boss: true, title: 'Groove Gauntlet', goal: 'A full strum pattern through chord changes, with the band.', type: 'chords',
+  { id: 'w3-04', world: 3, order: 9, title: 'Groove Gauntlet', goal: 'A full strum pattern through chord changes, with the band.', type: 'chords',
     bpm: 85, bars: 8, timing: 'normal', tone: 'Clean', backing: { feel: 'pop', chords: ['G', 'D', 'Em', 'C'] },
     chordBars: ['G', 'D', 'Em', 'C', 'G', 'D', 'Em', 'C'].map((chord) => ({ chord, strum: 'D_DU_UDU' })),
     pass: 70, stars: [70, 85, 95], xp: 120,
-    tips: ['Down, down-up, up-down-up. Say it out loud.', 'Same G, D and C shapes as the last lesson, plus Em.', 'Change chords during the last up-strum. Open strings there are fine.', 'Never stop the hand.'] },
+    tips: ['Down, down-up, up-down-up. Say it out loud.', 'Same G, C and Em shapes as Open Chord Swap, plus the open D.', 'Change chords during the last up-strum. Open strings there are fine.', 'Never stop the hand.'] },
 
-  // ---- World 4: Power Stomp ----
+  // ---- Family 4: power stomp ----
   { id: 'w4-01', world: 4, order: 1, title: 'Power Pair', goal: 'Two-finger power chords, with the other strings muted.', type: 'chords',
     bpm: 80, bars: 4, timing: 'easy', tone: 'Classic rock', backing: { feel: 'pop', chords: ['E5', 'A5', 'E5', 'A5'], parts: GROOVE, level: 0.8 },
     chordBars: [{ chord: 'E5', frets: E5, strum: 'D_D_D_D_' }, { chord: 'A5', frets: A5o, strum: 'D_D_D_D_' }, { chord: 'E5', frets: E5, strum: 'D_D_D_D_' }, { chord: 'A5', frets: A5o, strum: 'D_D_D_D_' }],
@@ -218,14 +234,14 @@ export const LESSONS: Lesson[] = [
     chordBars: rockBars(['E5', 'E5', 'A5', 'A5', 'B5', 'B5', 'E5', 'E5'], ROCK_E),
     pass: 65, stars: [65, 80, 92], xp: 70,
     tips: ['B5: index on the A string fret 2, ring and pinky at fret 4 on the D and G strings.', 'Keep the 8ths even, then let the last chord ring.'] },
-  { id: 'w4-04', world: 4, order: 6, boss: true, title: 'Stomp Session', goal: 'Riff, then power chords, locked to the drums.', type: 'notes', pickRule: 'down',
+  { id: 'w4-04', world: 4, order: 6, title: 'Stomp Session', goal: 'Riff, then power chords, locked to the drums.', type: 'notes', pickRule: 'down',
     bpm: 95, bars: 8, timing: 'normal', tone: 'Classic rock', backing: { feel: 'pop', chords: ['E5', 'E5', 'E5', 'E5', 'G5', 'A5', 'C5', 'D5'] }, shapes: POWER,
     seq: '0.0 0.0 0.3@1 0.0 0.5@3 0.0 0.3@1 0.0 | 0.0 0.0 0.3@1 0.0 1.2@1 - 1.0 - | 0.0 0.0 0.3@1 0.0 0.5@3 0.0 0.3@1 0.0 | 0.0 0.0 0.3@1 0.0 1.2@1 - 1.0 - | ' +
       '[G5] - [G5] [G5] - [G5] [G5] [G5] | [A5] - [A5] [A5] - [A5] [A5] [A5] | [C5] - [C5] [C5] - [C5] [C5] [C5] | [D5] - [D5] [D5] - [D5] [D5]*2', step: 0.5,
     pass: 70, stars: [70, 85, 95], xp: 150,
     tips: ['Get the G5 shape ready during the last eighth of bar 4.', 'Lock in with the kick drum.'] },
 
-  // ---- World 5: Pentatonic Playground ----
+  // ---- Family 5: pentatonic playground ----
   { id: 'w5-01', world: 5, order: 1, title: 'Meet the Box', goal: 'Play the 12-note box up and down.', type: 'notes', position: 5,
     bpm: 70, bars: 6, timing: 'easy', tone: 'Clean', backing: { feel: 'ballad', chords: ['Am'], parts: GROOVE, level: 0.75 },
     seq: '0.5 0.8 1.5 1.7 2.5 2.7 3.5 3.7 4.5 4.8 5.5 5.8 | 5.5 4.8 4.5 3.7 3.5 2.7 2.5 1.7 1.5 0.8 0.5*2', step: 1,
@@ -253,7 +269,7 @@ export const LESSONS: Lesson[] = [
     seq: `${LICK_A} ${LICK_B} ${LICK_A} ${LICK_B}`, step: 0.5,
     pass: 70, stars: [70, 85, 95], xp: 80,
     tips: ["Licks are words. You'll reuse these in your jams.", 'Both land on A, a strong ending over Am and F.', 'Hold the last note and let it sing.'] },
-  { id: 'w5-07', world: 5, order: 6, title: 'Blues Licks', goal: 'Three classic-style blues licks over a 12-bar shuffle.', type: 'notes', position: 5,
+  { id: 'w5-07', world: 5, order: 6, boss: true, title: 'Blues Licks', goal: 'Three classic-style blues licks over a 12-bar shuffle.', type: 'notes', position: 5,
     bpm: 70, bars: 12, timing: 'easy', tone: 'Blues crunch', backing: { feel: 'blues', chords: TWELVE_A7 },
     seq: [LICK_1, REST_BAR, LICK_2, REST_BAR, LICK_3, REST_BAR, LICK_1, REST_BAR, LICK_2, REST_BAR, LICK_3, REST_BAR].join(' | '), step: 0.5,
     pass: 65, stars: [65, 80, 92], xp: 90,
@@ -272,13 +288,13 @@ export const LESSONS: Lesson[] = [
     pass: 65, stars: [65, 80, 92], xp: 80,
     tips: ['Box 2 starts where box 1 ends: slide up the G string from fret 5 to 7.', 'Box 2 sits between frets 7 and 10.',
       'Same five notes, A C D E G. Only the place changes.', 'Come home to A at fret 5 on the low E string.'] },
-  { id: 'w5-06', world: 5, order: 9, boss: true, title: 'Box Boss', goal: 'Box runs and licks over a progression.', type: 'notes', position: 5,
+  { id: 'w5-06', world: 5, order: 9, title: 'Box Boss', goal: 'Box runs and licks over a progression.', type: 'notes', position: 5,
     bpm: 90, bars: 8, timing: 'normal', tone: 'Clean', backing: { feel: 'pop', chords: ['Am', 'F', 'Am', 'F'] },
     seq: '0.5 0.8 1.5 1.7 2.5 2.7 3.5 3.7 4.5 4.8 5.5 5.8 - - - - ' + LICK_A + ' 5.8 5.5 4.8 4.5 3.7 3.5 2.7 2.5 1.7 1.5 0.8 0.5*2 - - - ' + LICK_B, step: 0.5,
     pass: 70, stars: [70, 85, 95], xp: 150,
     tips: ['Breathe in the gaps.', 'If you lose the box, find any A and restart from there.'] },
 
-  // ---- World 6: Expression ----
+  // ---- Family 6: expression ----
   { id: 'w6-01', world: 6, order: 1, title: 'Hammer & Pull', goal: 'Sound two notes with one pick stroke.', type: 'notes', position: 5,
     bpm: 70, bars: 4, timing: 'easy', tone: 'Blues crunch', backing: { feel: 'ballad', chords: ['Am'], parts: GROOVE, level: 0.75 },
     seq: '3.5 h3.7 - - 2.5 h2.7 - - | 4.5 h4.8 - - 1.5 h1.7 - - | 3.7 p3.5 - - 2.7 p2.5 - - | 4.8 p4.5 - - 1.7 p1.5 - -', step: 0.5,
@@ -307,7 +323,7 @@ export const LESSONS: Lesson[] = [
     pass: 70, stars: [70, 85, 95], xp: 160,
     tips: ['Every phrase ends on A with vibrato.', 'Play softer than you think. Feel beats speed here.'] },
 
-  // ---- World 7: Call & Response ----
+  // ---- Family 7: call and response ----
   { id: 'w7-01', world: 7, order: 1, title: 'Echo Rhythm', goal: 'Hear a rhythm on A, then copy it in the next bar.', type: 'notes', position: 5,
     bpm: 80, bars: 8, timing: 'easy', tone: 'Clean', octaveOk: true,
     backing: { feel: 'pop', chords: ['Am'], parts: GROOVE, level: 0.7, onListen: 'drums' },
@@ -333,7 +349,7 @@ export const LESSONS: Lesson[] = [
     calls: { mode: 'echo-notes', showUntil: 2, calls: [LICK_2, LICK_3, LICK_1, LICK_2] },
     pass: 65, stars: [65, 80, 92], xp: 90,
     tips: ['The calls swing, so your answers should too: long-short.', 'These are your three blues licks. Listen, then copy.', 'The last two are ear only. Trust your ears.'] },
-  { id: 'w7-04', world: 7, order: 5, boss: true, title: 'Conversation', goal: 'Echo four calls, then answer four.', type: 'improv',
+  { id: 'w7-04', world: 7, order: 5, title: 'Conversation', goal: 'Echo four calls, then answer four.', type: 'improv',
     bpm: 85, bars: 16, timing: 'normal', tone: 'Blues crunch', backing: { feel: 'blues', chords: ['A7', 'A7', 'D7', 'A7'] },
     improv: { key: 9, scale: 'blues', boxFret: 5, endPcs: [9, 4], minNotes: 16,
       callResponse: { mode: 'mixed', seed: 11, calls: ['5.5 4.8 4.5 3.7 3.5*2 2.7*2', '2.5 2.7 3.5 3.7 4.5*4', '3.5 h3.7 3.5 2.7*5', '4.8 4.5 3.7 3.5 2.7*4', '', '', '', ''] },
@@ -341,7 +357,7 @@ export const LESSONS: Lesson[] = [
     pass: 65, stars: [65, 80, 92], xp: 180,
     tips: ['The first four calls: copy them note for note.', 'The last four: answer in your own words.', 'Blues shuffle: long-short, long-short.'] },
 
-  // ---- World 8: Freestyle Jam ----
+  // ---- Family 8: freestyle jam ----
   { id: 'w8-01', world: 8, order: 1, title: 'Two-Note Jam', goal: 'Back to two notes, now with endings. Rhythm and space do the work.', type: 'improv',
     bpm: 85, bars: 12, timing: 'easy', tone: 'Clean', backing: { feel: 'pop', chords: ['Am', 'F'] },
     improv: { key: 9, scale: null, allowedPcs: [9, 0], boxFret: 5, endPcs: [9], minNotes: 12, weights: { inScale: 30, phrases: 25, space: 25, endings: 20 } },
@@ -352,7 +368,7 @@ export const LESSONS: Lesson[] = [
     improv: { key: 9, scale: 'minorPent', boxFret: 5, endPcs: [9, 0, 4], minNotes: 16, weights: { inScale: 30, phrases: 25, space: 20, endings: 25 } },
     pass: 60, stars: [60, 78, 90], xp: 120,
     tips: ['Start from your two licks, then change them.', 'Play less than you want to.'] },
-  { id: 'w8-03', world: 8, order: 3, title: 'Chord Catcher', goal: 'Land on chord tones when the chord changes.', type: 'improv',
+  { id: 'w8-03', world: 8, order: 3, boss: true, title: 'Chord Catcher', goal: 'Land on chord tones when the chord changes.', type: 'improv',
     bpm: 85, bars: 8, timing: 'easy', tone: 'Clean', backing: { feel: 'pop', chords: ['Am', 'F', 'C', 'G'] },
     improv: { key: 9, scale: 'minorPent', boxFret: 5, chordTones: true, minNotes: 12, weights: { targets: 50, inScale: 30, space: 20 } },
     pass: 60, stars: [60, 78, 90], xp: 120,
@@ -365,7 +381,7 @@ export const LESSONS: Lesson[] = [
     tips: ['Play a lick, play it again, then answer it.',
       "The blue note Eb: A string fret 6, G string fret 8. It's a passing note: slide or bend through it, don't sit on it."] },
 
-  // The jam library: free lessons, open with the world, never block the next lesson
+  // The jam library: free lessons open with their stage and never block the next lesson
   { id: 'w8-06', world: 8, order: 5, free: true, title: 'Shuffle in A', goal: 'Two choruses over a 12-bar shuffle in A. Land on the chord when it changes.', type: 'improv',
     bpm: 80, bars: 24, timing: 'easy', tone: 'Blues crunch', backing: { feel: 'blues', chords: TWELVE_A7 },
     improv: { key: 9, scale: 'minorPent', boxFret: 5, endPcs: [9, 4], chordTones: true, minNotes: 24, weights: SHUFFLE_WEIGHTS },
@@ -399,13 +415,13 @@ export const LESSONS: Lesson[] = [
     pass: 60, stars: [60, 78, 90], xp: 120,
     tips: ['E minor pentatonic at fret 12 fits all three chords.', 'Short, punchy phrases. Repeat one you like.'] },
   // The boogie's sixths sit a little outside the scale, so the pass mark is 50
-  { id: 'w8-12', world: 8, order: 11, free: true, title: 'Three Choruses', goal: 'Rhythm, solo, rhythm: three choruses without stopping.', type: 'improv',
+  { id: 'w8-12', world: 8, order: 11, boss: true, title: 'Three Choruses', goal: 'Rhythm, solo, rhythm: three choruses without stopping.', type: 'improv',
     bpm: 75, bars: 36, timing: 'easy', tone: 'Blues crunch', backing: { feel: 'blues', chords: [...TWELVE_A7, ...TWELVE_A7, ...TWELVE_A7] },
     improv: { key: 9, scale: 'minorPent', boxFret: 5, endPcs: [9, 4], chordTones: true, minNotes: 30, weights: { phrases: 30, targets: 30, inScale: 20, space: 20 } },
     pass: 50, stars: [50, 70, 85], xp: 150,
     tips: ['Chorus 1: play the boogie. Chorus 2: solo. Chorus 3: back to the boogie.', "Don't stop, whatever happens. Keep the form going.",
       'Record a take of it and listen back next session.'] },
-  { id: 'w8-05', world: 8, order: 12, boss: true, title: 'Big Stomp Jam', goal: 'A full freestyle solo using everything.', type: 'improv',
+  { id: 'w8-05', world: 8, order: 12, title: 'Big Stomp Jam', goal: 'A full freestyle solo using everything.', type: 'improv',
     bpm: 95, bars: 16, timing: 'normal', tone: 'Blues crunch', backing: { feel: 'pop', chords: ['Am', 'F', 'C', 'G'] },
     improv: { key: 9, scale: 'minorPent', boxFret: 5, endPcs: [9, 0, 4], chordTones: true, minNotes: 24, technique: true,
       weights: { inScale: 25, phrases: 20, space: 15, endings: 15, targets: 15, motif: 10 } },
@@ -417,18 +433,48 @@ export function lessonById(id: string): Lesson | undefined {
   return LESSONS.find((l) => l.id === id)
 }
 
-/** The 12-week plan's lessons per fortnight (research section 5), in teaching order. weeks.ts shows them. */
-export const PLAN_LESSONS: string[][] = [
-  ['w1-05', 'w3-06', 'w3-07', 'w4-01'],
-  ['w3-09', 'w3-10', 'w2-06'],
-  ['w5-01', 'w5-11', 'w5-07', 'w7-05'],
-  ['w6-01', 'w6-02', 'w6-03', 'w6-04', 'w6-05', 'w3-05', 'w2-07'],
-  ['w5-08', 'w5-09', 'w8-06', 'w8-07', 'w8-10'],
-  ['w8-11', 'w8-12', 'w8-08', 'w8-09'],
-]
+/** The 12-week plan's lessons per fortnight (research section 5), in teaching order: each stage's core minus Tap In. */
+export const PLAN_LESSONS: string[][] = STAGES.filter((s) => s.weeks).map((s) => s.core.filter((id) => lessonById(id)?.type !== 'sync'))
 
-/** The plan's lessons that unlock in order (free jams open with their world): each opens once the one before is passed. */
-export const PLAN_PATH: string[] = PLAN_LESSONS.flat().filter((id) => !lessonById(id)?.free)
+/** The lessons that unlock in order (free jams open with their stage): each opens once the one before is passed. */
+export const PLAN_PATH: string[] = STAGES.flatMap((s) => s.core).filter((id) => !lessonById(id)?.free)
+
+/** Every lesson in map order: each stage's core, then its extras. */
+export const ORDER: string[] = STAGES.flatMap((s) => [...s.core, ...s.extra])
+
+/** Where a lesson sits on the map: its stage, core or extra, and its 0-based place in that list. */
+export function stageOf(id: string): { stage: StageDef; core: boolean; pos: number } | null {
+  for (const stage of STAGES) {
+    const c = stage.core.indexOf(id)
+    if (c >= 0) return { stage, core: true, pos: c }
+    const e = stage.extra.indexOf(id)
+    if (e >= 0) return { stage, core: false, pos: e }
+  }
+  return null
+}
+
+/** A stage's checkpoint: the last core lesson (none for the Extras area). */
+export function checkpointOf(s: StageDef): string | null {
+  return s.weeks && s.core.length ? s.core[s.core.length - 1] : null
+}
+
+/** "Weeks 1–2", or "Extras" for the Extras area. */
+export const weeksLabel = (s: StageDef) => (s.weeks ? `Weeks ${s.weeks[0]}–${s.weeks[1]}` : 'Extras')
+
+/** Where a lesson sits, for its intro: "Weeks 1–2, lesson 3", "Weeks 1–2 checkpoint", "Weeks 3–4 · optional extra". */
+export function whereLabel(id: string): string {
+  const at = stageOf(id)
+  if (!at) return ''
+  const w = weeksLabel(at.stage)
+  if (!at.core) return at.stage.weeks ? `${w} · optional extra` : 'Optional extra'
+  return id === checkpointOf(at.stage) ? `${w} checkpoint` : `${w}, lesson ${at.pos + 1}`
+}
+
+/** Lessons that grow the dino: the 6 checkpoints, then the 2 encores. */
+export const GROWTH: string[] = [
+  ...STAGES.map(checkpointOf).filter((id): id is string => id !== null),
+  ...STAGES.map((s) => s.encore).filter((id): id is string => !!id),
+]
 
 // ---- validateLessons() ----------------------------------------------------------
 
@@ -491,25 +537,28 @@ export function validateLessons(): string[] {
   for (const id of PLAN_LESSONS.flat()) if (!ids.has(id)) errs.push(`12-week plan: unknown lesson ${id}`)
   if (new Set(PLAN_LESSONS.flat()).size !== PLAN_LESSONS.flat().length) errs.push('12-week plan: a lesson is listed twice')
 
-  for (const w of WORLDS) {
-    w.lessons.forEach((id, i) => {
+  for (const s of STAGES) {
+    const cp = checkpointOf(s)
+    for (const id of [...s.core, ...s.extra]) {
       const l = lessonById(id)
       if (!l) {
-        errs.push(`world ${w.id}: unknown lesson ${id}`)
-        return
+        errs.push(`stage ${s.id}: unknown lesson ${id}`)
+        continue
       }
-      if (l.world !== w.id) errs.push(`${id}: world ${l.world} but listed in world ${w.id}`)
-      if (l.order !== i + 1) errs.push(`${id}: order ${l.order}, position ${i + 1}`)
-      if (!!l.boss !== (i === w.lessons.length - 1)) errs.push(`${id}: the boss must be last in its world`)
-      if (l.free && l.boss) errs.push(`${id}: a free lesson can't be a boss`)
+      const core = s.core.includes(id)
+      if (!!l.boss !== (id === cp)) errs.push(`${id}: only a stage's last core lesson is a checkpoint (boss)`)
+      if (l.free && !core) errs.push(`${id}: a free jam must be core, not an extra`)
+      if (l.free && l.boss) errs.push(`${id}: a free lesson can't be a checkpoint`)
       if (l.dyad && l.type !== 'notes') errs.push(`${id}: dyad needs a notes lesson`)
-    })
-    if (NOTATION_LEAK.test(w.title) || NOTATION_LEAK.test(w.skill)) errs.push(`world ${w.id}: title or skill shows string.fret notation`)
+    }
+    if (s.weeks && !s.core.length) errs.push(`stage ${s.id}: no core lessons`)
+    if (s.encore && !s.extra.includes(s.encore)) errs.push(`stage ${s.id}: encore ${s.encore} is not one of its extras`)
+    if (NOTATION_LEAK.test(s.title) || NOTATION_LEAK.test(s.skill)) errs.push(`stage ${s.id}: title or skill shows string.fret notation`)
   }
+  if (lessonById(STAGES[0].core[0])?.type !== 'sync') errs.push('stage 1 must start with the sync lesson')
   for (const l of LESSONS) {
-    const w = WORLDS.find((x) => x.id === l.world)
-    const n = w ? w.lessons.filter((id) => id === l.id).length : 0
-    if (n !== 1) errs.push(`${l.id}: listed ${n} times in world ${l.world}`)
+    const n = ORDER.filter((id) => id === l.id).length
+    if (n !== 1) errs.push(`${l.id}: listed ${n} times on the map`)
   }
 
   for (const l of LESSONS) {

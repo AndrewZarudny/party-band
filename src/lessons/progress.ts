@@ -22,11 +22,13 @@ import type {
   StepKind,
   TabLevel,
   TempoTrial,
+  StageDef,
+  StageId,
   WeekShape,
-  WorldId,
   XpLine,
 } from './types'
-import { LEGACY_IDS, LESSONS, PLAN_PATH, WORLDS, lessonById } from './data'
+import { GROWTH, LEGACY_IDS, LESSONS, ORDER, PLAN_PATH, STAGES, checkpointOf, lessonById, stageOf } from './data'
+import { legacyOpen, legacyStage } from './legacyMap'
 import { ACHIEVEMENTS, checkAchievements } from './achievements'
 import { MIN_GRADED, RECENT_MAX, pickLines, pushRecent } from './facts/pick'
 import { bpmAt, cleanSpeed, nextSpeed } from './speed'
@@ -89,6 +91,9 @@ export function newProgress(): Progress {
     weekXp: [],
     runs: [],
     seenWeekly: true,
+    mapV: 2,
+    keepOpen: [],
+    dinoBonus: 0,
   }
 }
 
@@ -241,6 +246,7 @@ function normalizeStep(raw: unknown): SessionStep | null {
   if (kind === 'mix' && !items?.length) return null
   if (x.consolidate === true) step.consolidate = true
   if (typeof x.score === 'number') step.score = x.score
+  if (typeof x.best === 'number' && isFinite(x.best)) step.best = x.best
   if (typeof x.speed === 'number') step.speed = x.speed
   if (typeof x.drill === 'string' && /^[nct]:/.test(x.drill)) step.drill = x.drill
   return step
@@ -355,7 +361,10 @@ function normalize(raw: unknown, now = new Date()): Progress | null {
   if (Array.isArray(o.runs)) p.runs = o.runs.map(normalizeRun).filter((r): r is RunSample => r !== null).sort((a, b) => a.at - b.at).slice(-RUNS_MAX)
   // The one-time "weeks, not days" note: shown to a save from the day-streak era, and until dismissed.
   if (o.seenWeekly !== true && ('streak' in o || 'dailyGoal' in o || 'sessions' in o)) delete p.seenWeekly
-  return p
+  if (Array.isArray(o.keepOpen)) p.keepOpen = [...new Set(o.keepOpen.filter((id): id is string => typeof id === 'string' && !!lessonById(id)))]
+  p.dinoBonus = int(o.dinoBonus, 0, 8, 0)
+  // A save from the old world map: keep what it had open, and the dino's stage.
+  return o.mapV === 2 ? p : migrateMap(p)
 }
 
 function readGood(): Progress | null {
@@ -452,81 +461,94 @@ export function isPassed(p: Progress, lessonId: string): boolean {
   return p.lessons[lessonId]?.passedAt !== undefined
 }
 
-function worldDef(w: WorldId) {
-  return WORLDS.find((x) => x.id === w)
+/** Checkpoints and encores passed. */
+export function growthCount(p: Progress): number {
+  return GROWTH.filter((id) => isPassed(p, id)).length
 }
 
-function bossOf(w: WorldId): string | undefined {
-  const def = worldDef(w)
-  if (!def) return undefined
-  return def.lessons.find((id) => lessonById(id)?.boss) ?? def.lessons[def.lessons.length - 1]
-}
-
+/** The dino grows with each growth lesson; dinoBonus carries an old-map stage over so it never shrinks. */
 export function dinoStageFor(p: Progress): number {
-  let n = 0
-  for (const w of WORLDS) {
-    const boss = bossOf(w.id)
-    if (boss && isPassed(p, boss)) n++
-  }
-  return Math.min(8, n)
+  return Math.min(8, growthCount(p) + (p.dinoBonus ?? 0))
 }
 
 export function eggCracked(p: Progress): boolean {
   if (dinoStageFor(p) !== 0) return false
-  const w1 = worldDef(1)
-  return (w1?.lessons.filter((id) => isPassed(p, id)).length ?? 0) >= 2
+  const s1 = STAGES[0]
+  return [...s1.core, ...s1.extra].filter((id) => isPassed(p, id)).length >= 2
 }
 
 // ---- Unlocks -------------------------------------------------------------------
 
 const isFree = (id: string) => lessonById(id)?.free === true
+const isSyncId = (id: string) => lessonById(id)?.type === 'sync'
+const stageById = (id: StageId) => STAGES.find((s) => s.id === id)
 
-/** Stars in a world's lessons; free jams are left out. */
-export function starsInWorld(p: Progress, w: WorldId): { got: number; max: number } {
-  const ids = (worldDef(w)?.lessons ?? []).filter((id) => !isFree(id))
+/** Stars in a stage's core lessons; free jams are left out. */
+export function starsInStage(p: Progress, s: StageId): { got: number; max: number } {
+  const ids = (stageById(s)?.core ?? []).filter((id) => !isFree(id))
   const got = ids.reduce((a, id) => a + (p.lessons[id]?.stars ?? 0), 0)
   return { got, max: 3 * ids.length }
 }
 
-export function worldUnlocked(p: Progress, w: WorldId): boolean {
-  if (w === 1) return true
-  const prev = (w - 1) as WorldId
-  const boss = bossOf(prev)
-  if (boss && isPassed(p, boss)) return true
-  const s = starsInWorld(p, prev)
-  return s.max > 0 && s.got >= Math.ceil(0.7 * s.max)
+/** Stage 1 is open; a weeks stage opens when the previous stage's checkpoint is passed; Extras open with stage 2. */
+export function stageOpen(p: Progress, s: StageId): boolean {
+  const def = stageById(s)
+  if (!def) return false
+  if (!def.weeks) return stageOpen(p, 2)
+  const i = STAGES.indexOf(def)
+  if (i === 0) return true
+  const cp = checkpointOf(STAGES[i - 1])
+  return cp !== null && isPassed(p, cp)
 }
 
-/** On the 12-week plan's path and the path lesson before it is passed (the first is always open). */
-export function planOpen(p: Progress, lessonId: string): boolean {
-  const i = PLAN_PATH.indexOf(lessonId)
-  return i === 0 || (i > 0 && isPassed(p, PLAN_PATH[i - 1]))
+/** The first stage whose checkpoint is not passed yet (the last weeks stage when all are). */
+export function currentStage(p: Progress): StageDef {
+  const weeks = STAGES.filter((s) => s.weeks)
+  return weeks.find((s) => !isPassed(p, checkpointOf(s) ?? '')) ?? weeks[weeks.length - 1]
+}
+
+/** Played, passed or kept from the old map: never locked again. */
+function everOpen(p: Progress, id: string): boolean {
+  const rec = p.lessons[id]
+  return isPassed(p, id) || (rec?.plays ?? 0) > 0 || (p.keepOpen ?? []).includes(id)
 }
 
 export function isUnlocked(p: Progress, lessonId: string): boolean {
-  const lesson = lessonById(lessonId)
-  if (!lesson) return false
-  // The 12-week plan opens its lessons in order, ahead of the world they sit in.
-  if (planOpen(p, lessonId)) return true
-  if (!worldUnlocked(p, lesson.world)) return false
-  // A free jam opens with its world and never blocks the next lesson.
-  if (lesson.free) return true
-  const ids = (worldDef(lesson.world)?.lessons ?? []).filter((id) => !isFree(id))
-  const i = ids.indexOf(lessonId)
-  if (i <= 0 || lesson.boss || isPassed(p, lessonId)) return true
-  const prevId = ids[i - 1]
-  if (isPassed(p, prevId)) return true
-  // The sync lesson never blocks: trying or skipping it is enough.
-  return lessonById(prevId)?.type === 'sync' && (p.lessons[prevId]?.plays ?? 0) >= 1
+  if (!lessonById(lessonId)) return false
+  if (everOpen(p, lessonId)) return true
+  const at = stageOf(lessonId)
+  if (!at) return false
+  // Free jams and extras open with their stage and never block anything.
+  if (!at.core || isFree(lessonId)) return stageOpen(p, at.stage.id)
+  // The plan's path opens one lesson at a time; the sync lesson only needs a try.
+  const i = PLAN_PATH.indexOf(lessonId)
+  if (i === 0) return true
+  const prev = PLAN_PATH[i - 1]
+  return isPassed(p, prev) || (isSyncId(prev) && (p.lessons[prev]?.plays ?? 0) >= 1)
 }
 
+/** The plan's next lesson ("Continue"); with the path finished, the first open extra not passed yet. */
 export function nextLesson(p: Progress): string | null {
   // A sync lesson that was tried or skipped never blocks "Continue"; it stays a tap away on the map.
-  const settled = (id: string) => isPassed(p, id) || (lessonById(id)?.type === 'sync' && (p.lessons[id]?.plays ?? 0) > 0)
-  for (const w of WORLDS) {
-    for (const id of w.lessons) if (!isFree(id) && isUnlocked(p, id) && !settled(id)) return id
-  }
-  return null
+  const settled = (id: string) => isPassed(p, id) || (isSyncId(id) && (p.lessons[id]?.plays ?? 0) > 0)
+  const path = PLAN_PATH.find((id) => isUnlocked(p, id) && !settled(id))
+  if (path) return path
+  if (PLAN_PATH.some((id) => !settled(id))) return null
+  return ORDER.find((id) => stageOf(id)?.core === false && isUnlocked(p, id) && !isPassed(p, id)) ?? null
+}
+
+// ---- Migration from the old world map ---------------------------------------------
+
+/**
+ * Old-map saves: everything the old map had open stays open, and the dino keeps its stage.
+ * A stored plan with nothing done yet was picked by the old map: dropped, so the home screen makes one that matches Continue.
+ */
+export function migrateMap(p: Progress): Progress {
+  const started = !!p.plan?.steps.some((s) => s.state === 'done')
+  const next = { ...p, mapV: 2 as const, plan: started ? p.plan : null }
+  next.keepOpen = [...new Set([...(p.keepOpen ?? []), ...legacyOpen(p)])].filter((id) => lessonById(id))
+  next.dinoBonus = Math.max(p.dinoBonus ?? 0, Math.max(0, legacyStage(p) - growthCount(p)))
+  return next
 }
 
 // ---- Runs ----------------------------------------------------------------------
@@ -618,7 +640,7 @@ export function applyResult(p: Progress, lesson: Lesson, r: LessonResult, now: D
     levelBefore: levelFor(p.xp).level,
     stageBefore: dinoStageFor(p),
     unlocked: [] as string[],
-    worldUnlocked: null,
+    stageOpened: null,
   }
 
   // Shuffle mode: practice only. The straight record (stars, pass, review, tempo) stays as it was.
@@ -757,7 +779,7 @@ export function applyResult(p: Progress, lesson: Lesson, r: LessonResult, now: D
   }
 
   const unlocked = LESSONS.filter((l) => !isUnlocked(p, l.id) && isUnlocked(next, l.id)).map((l) => l.id)
-  const newWorld = WORLDS.find((w) => !worldUnlocked(p, w.id) && worldUnlocked(next, w.id))
+  const opened = STAGES.find((st) => !stageOpen(p, st.id) && stageOpen(next, st.id))
 
   return {
     ...base,
@@ -767,7 +789,7 @@ export function applyResult(p: Progress, lesson: Lesson, r: LessonResult, now: D
     stageAfter: dinoStageFor(next),
     newAchievements,
     unlocked,
-    worldUnlocked: newWorld ? newWorld.id : null,
+    stageOpened: opened ? opened.id : null,
     competence,
     cold,
     review: rec.review ?? null,

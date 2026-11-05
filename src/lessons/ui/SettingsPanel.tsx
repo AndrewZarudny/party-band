@@ -4,7 +4,6 @@ import type { Prefs, Progress } from '../types'
 import { dayKey, exportProgress, importProgress, newProgress } from '../progress'
 import { withSessionMin } from '../session'
 import { InputPicker } from './InputPicker'
-import { GUIDES_AUTO_MAX_WORLD } from '../fingering'
 
 const LENGTHS: Progress['sessionMin'][] = [20, 30]
 const WEEK_GOALS = [2, 3, 4, 5]
@@ -156,7 +155,7 @@ export function SettingsPanel({
         <Row label="Show fretboard">
           <Switch on={prefs.showFretboard} set={(v) => onPrefs({ ...prefs, showFretboard: v })} label="Show fretboard" />
         </Row>
-        <Row label="Finger guides" note={`Finger numbers, pick strokes and hand moves while you play. Auto shows them up to World ${GUIDES_AUTO_MAX_WORLD}. Key G in a lesson`}>
+        <Row label="Finger guides" note={`Finger numbers, pick strokes and hand moves while you play. Auto shows them everywhere except the call-and-response and jam lessons. Key G in a lesson`}>
           <div className="ls-seg" role="radiogroup" aria-label="Finger guides">
             {GUIDES.map(([g, label]) => (
               <button key={g} role="radio" aria-checked={prefs.guides === g} className={prefs.guides === g ? 'on' : ''} onClick={() => onPrefs({ ...prefs, guides: g })}>

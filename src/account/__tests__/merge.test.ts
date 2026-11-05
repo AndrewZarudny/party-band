@@ -172,6 +172,22 @@ describe('mergeLessonsProgress', () => {
     expect(m.sessions).toEqual({ log: [], before: 0 })
     expect(importProgress(JSON.stringify(m))).not.toBeNull()
   })
+  it('the plan map: kept lessons combined, the bigger dino bonus; an old-map side migrates on load', () => {
+    const a = { ...prog({ xp: 5 }), mapV: 2, keepOpen: ['w2-03', 'w1-02'], dinoBonus: 1 }
+    const b = { ...prog({ xp: 1 }), mapV: 2, keepOpen: ['w2-04'], dinoBonus: 0 }
+    const m = merge(a, b)
+    expect(m.keepOpen).toEqual(['w1-02', 'w2-03', 'w2-04'])
+    expect(m.dinoBonus).toBe(1)
+    expect(m.mapV).toBe(2)
+    const old = { v: 1, xp: 1, lessons: { 'w1-04': lessonRec({ plays: 1, passedAt: 1, stars: 1 }) } }
+    const mo = merge(a, old)
+    expect(mo.mapV).toBeUndefined()
+    const loaded = importProgress(JSON.stringify(mo))!
+    expect(loaded.mapV).toBe(2)
+    expect(loaded.keepOpen).toEqual(expect.arrayContaining(['w1-02', 'w2-03', 'w2-01', 'w2-04']))
+    expect(loaded.dinoBonus).toBe(1)
+  })
+
   it('null when a side is unreadable', () => {
     expect(mergeLessonsProgress('{', '{}')).toBeNull()
     expect(mergeLessonsProgress('null', '{}')).toBeNull()

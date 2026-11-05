@@ -15,6 +15,7 @@ import { FEELS } from '../../music/parts'
 import { KEYBOARD_DEVICE, deviceKey, latencyAdvice, loadLatency, micWarning } from '../calibration'
 import { clicksMuted } from '../clock'
 import { DINO_STAGES, dinoStageFor } from '../progress'
+import { whereLabel } from '../data'
 import { connectSource } from '../source'
 import { EARN_PASSES, MANUAL_SPEEDS, autoSpeed, bpmAt, bpmPct, pickFor, speedCap } from '../speed'
 import { Dino } from './Dino'
@@ -189,7 +190,7 @@ export function LessonIntro({
       <header className="ls-intro-head">
         <div className="ls-intro-title">
           <p className="ls-intro-where ls-num">
-            {lesson.boss ? `World ${lesson.world} boss` : `World ${lesson.world}, lesson ${lesson.order}`}
+            {whereLabel(lesson.id)}
           </p>
           <h2 className="ls-display">{lesson.title}</h2>
           <p className="ls-goal">{lesson.goal}</p>

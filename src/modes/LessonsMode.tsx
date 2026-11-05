@@ -7,7 +7,7 @@ import { buildChart } from '../lessons/charts'
 import { loopSpecFor, recordLoop } from '../lessons/loop'
 import { recordHeat } from '../lessons/heat'
 import { drillSpec } from '../lessons/drill'
-import { PLAN_PATH, WORLDS, lessonById, validateLessons } from '../lessons/data'
+import { lessonById, stageOf, validateLessons } from '../lessons/data'
 import { applyResult, dayKey, dinoStageFor, isPassed, isUnlocked, loadProgress, nextLesson, recordSkip, saveProgress } from '../lessons/progress'
 import { bpmAt, pickFor, slowerSpeed, speedFor } from '../lessons/speed'
 import { REST_SEC, markPocket, planAfterLoop, planAfterRun, planAfterSkill, setPain, skipStep, swapStep, withSessionDay, withTodayPlan } from '../lessons/session'
@@ -78,15 +78,12 @@ function hasSavedProgress() {
   }
 }
 
-/** The next 12-week plan lesson when it is open, else the lesson after `id` in world order that is open now, or the first open unpassed one. */
+/** After an extra: the next open unpassed extra of its stage, else the plan's next lesson. After anything else: the plan's next lesson. */
 function nextAfter(p: Progress, id: string): string | null {
-  const pi = PLAN_PATH.indexOf(id)
-  const planNext = pi >= 0 ? PLAN_PATH[pi + 1] : undefined
-  if (planNext && isUnlocked(p, planNext) && !isPassed(p, planNext)) return planNext
-  const order = WORLDS.flatMap((w) => w.lessons)
-  const i = order.indexOf(id)
-  for (let j = i + 1; j < order.length; j++) {
-    if (isUnlocked(p, order[j])) return order[j]
+  const at = stageOf(id)
+  if (at && !at.core) {
+    const more = at.stage.extra.slice(at.pos + 1).find((x) => isUnlocked(p, x) && !isPassed(p, x))
+    if (more) return more
   }
   const n = nextLesson(p)
   return n && n !== id ? n : null

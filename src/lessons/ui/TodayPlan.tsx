@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import type { PainLevel, Progress, SessionPlan, SessionStep } from '../types'
 import { lessonById } from '../data'
-import { KIND_LABEL, SHAPE_LABEL, improvements, lastPain, nextStepIndex, planDone, planMinutes, swapOptions, todayDay } from '../session'
+import { KIND_LABEL, SHAPE_LABEL, improvements, lastPain, nextStepIndex, planDone, planMinutes, stepScore, stepSource, swapOptions, todayDay } from '../session'
 import { drillTitle } from '../heat'
 import { PickMark } from './LessonMap'
 import { PainCheck, PainNote, WeekDots } from './SessionCards'
@@ -66,8 +66,10 @@ function SetRows({
         const name = stepTitle(s)
         const kind = KIND_LABEL[s.kind]
         const done = s.state === 'done'
-        const score = done && s.score !== undefined && s.lessonId ? `${Math.round(s.score)}%` : null
-        const label = [name, kind.toLowerCase(), s.state === 'todo' ? null : s.state, score].filter(Boolean).join(', ')
+        const sc = stepScore(progress, s)
+        const src = stepSource(s)
+        const said = sc && [sc.label === 'cold' ? `first try ${Math.round(sc.value)} percent` : `today's best ${Math.round(sc.value)} percent`, sc.ever !== null ? `best ever ${Math.round(sc.ever)} percent` : null]
+        const label = [name, kind.toLowerCase(), src, s.state === 'todo' ? null : s.state, ...(said ?? []), s.why || null].filter(Boolean).join(', ')
         const pop = fresh.has(stepKey(plan, s, i))
         return (
           <li key={stepKey(plan, s, i)} className={`ls-set-row ${s.state} ${i === next ? 'next' : ''} ${pop ? 'pop' : ''}`}>
@@ -78,9 +80,8 @@ function SetRows({
             <div className="ls-set-main">
               <button className="ls-set-open" onClick={() => onStep(i)} aria-label={label}>
                 <span className="ls-set-name">{name}</span>
-                <span className="ls-set-why">
-                  {kind} · {s.why}
-                </span>
+                <span className="ls-set-src">{src ? `${kind} · ${src}` : kind}</span>
+                {s.why && <span className="ls-set-why">{s.why}</span>}
                 {s.kind === 'mix' && s.items && (
                   <span className="ls-set-why">
                     {s.items.map((id) => `${s.played?.includes(id) ? '✓ ' : ''}${title(id)}`).join(' · ')}
@@ -100,12 +101,33 @@ function SetRows({
                 </span>
               )}
             </div>
-            <span className="ls-set-min ls-num">{score ?? `${s.min} min`}</span>
+            {sc ? (
+              <span className="ls-set-min ls-set-score ls-num" aria-hidden title={sc.label === 'cold' ? 'Your first try today' : 'Your best run today'}>
+                <span>
+                  <span className="ls-set-score-k">{sc.label}</span> {Math.round(sc.value)}%
+                </span>
+                {sc.ever !== null && <span className="ls-set-ever">best {Math.round(sc.ever)}%</span>}
+              </span>
+            ) : (
+              <span className="ls-set-min ls-num">{s.min} min</span>
+            )}
           </li>
         )
       })}
     </ol>
   )
+}
+
+/** What the row percentages mean, once some row shows one: only the labels on screen. */
+function ScoreKey({ progress, plan }: { progress: Progress; plan: SessionPlan }) {
+  const scores = plan.steps.map((s) => stepScore(progress, s)).filter((x) => x !== null)
+  if (!scores.length) return null
+  const parts = [
+    scores.some((x) => x.label === 'cold') && 'Cold: your first try today.',
+    scores.some((x) => x.label === 'today') && 'Today: your best run today.',
+    scores.some((x) => x.ever !== null) && 'Best: your best ever.',
+  ].filter(Boolean)
+  return <p className="ls-set-key">{parts.join(' ')}</p>
 }
 
 function SetHead({ progress, plan, now }: { progress: Progress; plan: SessionPlan; now: Date }) {
@@ -172,7 +194,10 @@ export function TodayCard({ progress, plan, onStep, onSwap, onSkip, onToday, onP
       {done ? (
         <SetDone progress={progress} plan={plan} max={3} />
       ) : (
-        <SetRows progress={progress} plan={plan} fresh={fresh} onStep={onStep} onSwap={onSwap} onSkip={onSkip} paused={paused} />
+        <>
+          <SetRows progress={progress} plan={plan} fresh={fresh} onStep={onStep} onSwap={onSwap} onSkip={onSkip} paused={paused} />
+          <ScoreKey progress={progress} plan={plan} />
+        </>
       )}
       <TodayPain progress={progress} now={now} done={done} onPain={onPain} onPressure={onPressure} />
       <div className="ls-set-foot">
@@ -227,6 +252,7 @@ export function TodayScreen({ progress, onStep, onSwap, onSkip, onPain, onPressu
             <SetHead progress={progress} plan={plan} now={now} />
             <p className="ls-set-intro">Cold starts first, before any warm-up of that piece. New material on its own, then mixed with the rest. A jam to finish. Swap or skip anything.</p>
             <SetRows progress={progress} plan={plan} fresh={fresh} onStep={onStep} onSwap={onSwap} onSkip={onSkip} paused={paused} />
+            <ScoreKey progress={progress} plan={plan} />
             {done && <SetDone progress={progress} plan={plan} />}
             <TodayPain progress={progress} now={now} done={done} onPain={onPain} onPressure={onPressure} />
             {paused && !done && <Paused />}

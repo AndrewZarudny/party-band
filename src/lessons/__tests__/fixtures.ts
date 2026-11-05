@@ -76,3 +76,27 @@ export function jr(eventId: number, kind: ChartEvent['kind'], verdict: Verdict, 
 
 /** A fixed local noon, so day keys never flip on the 4 am practice-day line. */
 export const at = (day: string) => new Date(day + 'T12:00:00')
+
+/**
+ * The player's own save from the old world map (no mapV): World 1 done, Spark Show 2 stars, World 2 partly done,
+ * Downstroke Lock passed with 1 star, the boogie played but not passed.
+ */
+export function oldMapSave(): Record<string, unknown> {
+  const passed = (stars: number, plays = 2) => rec({ best: 60 + 10 * stars, stars: stars as 0 | 1 | 2 | 3, plays, passedAt: 1000, lastPlayed: 1000, firstS: 1 })
+  return {
+    v: 1,
+    xp: 600,
+    lessons: {
+      'w1-01': rec({ plays: 1, passedAt: 1000, lastPlayed: 1000, firstS: 1 }),
+      'w1-02': passed(2),
+      'w1-03': passed(2),
+      'w1-05': passed(2),
+      'w1-04': passed(2),
+      'w2-01': passed(1),
+      'w2-02': passed(1),
+      'w2-05': passed(1),
+      'w3-06': passed(1),
+      'w3-07': rec({ best: 48, plays: 3, fails: 3, lastPlayed: 1000, firstS: 2 }),
+    },
+  }
+}

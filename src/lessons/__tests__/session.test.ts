@@ -8,6 +8,7 @@ import {
   knownChords,
   makeSessionPlan,
   markPocket,
+  newList,
   planAfterLoop,
   planAfterRun,
   planAfterSkill,
@@ -17,16 +18,18 @@ import {
   setPain,
   shapeFor,
   skipStep,
+  stepScore,
+  stepSource,
   swapOptions,
   swapStep,
   withSessionDay,
   withSessionMin,
   withTodayPlan,
 } from '../session'
-import { newProgress } from '../progress'
+import { importProgress, newProgress, nextLesson } from '../progress'
 import { firstReview } from '../review'
 import { dayNum } from '../heat'
-import { at, rec, result } from './fixtures'
+import { at, oldMapSave, rec, result } from './fixtures'
 
 const NOW = at('2026-11-04') // a Wednesday; the week starts on Monday 2026-11-02
 const ctx = ctxDefault()
@@ -87,8 +90,8 @@ describe('templates and the week', () => {
 describe('new material: block, then interleave', () => {
   it('A has a new step; B and D never do', () => {
     const a = plan(base())
-    // The 12-week plan's first fortnight comes first: Light Touch is passed, so Downstroke Lock is next.
-    expect(a.plan.steps.find((s) => s.kind === 'new')).toMatchObject({ lessonId: 'w3-06', why: 'Practise it on its own. Rest 20–30 s between runs.' })
+    // The plan's path comes first: Light Touch is passed, so Power Pair is next.
+    expect(a.plan.steps.find((s) => s.kind === 'new')).toMatchObject({ lessonId: 'w4-01', why: 'Practise it on its own. Rest 20–30 s between runs.' })
     const b = plan(base([day('2026-11-02')]))
     expect(b.plan.shape).toBe('B')
     expect(kinds(b)).not.toContain('new')
@@ -104,7 +107,7 @@ describe('new material: block, then interleave', () => {
     p.lessons['w2-01'].firstS = 2
     const ok = plan(p)
     expect(ok.plan.shape).toBe('C')
-    expect(ok.plan.steps.find((s) => s.kind === 'new')).toMatchObject({ lessonId: 'w3-06' })
+    expect(ok.plan.steps.find((s) => s.kind === 'new')).toMatchObject({ lessonId: 'w4-01' })
     expect(ok.plan.steps.find((s) => s.kind === 'new')!.consolidate).toBeUndefined()
   })
 
@@ -148,25 +151,22 @@ describe('cold starts', () => {
     expect(plan(p).plan.steps.find((s) => s.lessonId === 'w1-05')!.why).toBe('Learned. A quick check that it still sticks.')
   })
 
-  it('no due item: no cold step; with only the First Jam taste the jam keeps its minutes and changes gets the rest', () => {
+  it('no due item: no cold step; with only the early jams the jam keeps its minutes and changes gets the rest', () => {
     const p = plan(base([day('2026-11-02')])).plan
     expect(p.steps.some((s) => s.kind === 'cold')).toBe(false)
-    expect(p.steps.find((s) => s.kind === 'jam')).toMatchObject({ lessonId: 'w2-05', min: 8 })
+    // The furthest open jam: Two-Note Jam, an early jam, so it keeps its own minutes.
+    expect(p.steps.find((s) => s.kind === 'jam')).toMatchObject({ lessonId: 'w8-01', min: 8 })
     expect(p.steps.find((s) => s.kind === 'changes')!.min).toBe(4 + 6)
     expect(planMinutes(p)).toBe(30)
   })
 
   it('an open jam lesson takes the spare minutes', () => {
     const b = base([day('2026-11-02')])
-    b.lessons['w2-04'] = passed() // World 2 boss: World 3 and more jams open
-    b.lessons['w3-04'] = passed()
-    b.lessons['w4-04'] = passed()
-    b.lessons['w5-06'] = passed()
-    b.lessons['w6-05'] = passed()
-    b.lessons['w7-04'] = passed()
+    // Checkpoints of weeks 1–8: stage 5 and its free jams open
+    for (const id of ['w3-07', 'w3-10', 'w7-05', 'w6-05']) b.lessons[id] = passed()
     const p = plan(b).plan
     const jam = p.steps.find((s) => s.kind === 'jam')!
-    expect(jam.lessonId).not.toBe('w2-05')
+    expect(['w8-06', 'w8-07', 'w8-10']).toContain(jam.lessonId)
     expect(jam.min).toBe(8 + 6)
   })
 
@@ -190,11 +190,11 @@ describe('cold starts', () => {
     for (const id of ['w1-02', 'w1-03', 'w1-05']) p.lessons[id].review = firstReview(0)
     const steps = plan(p).plan.steps
     const colds = steps.filter((s) => s.kind === 'cold').map((s) => s.lessonId)
-    expect(colds).toEqual(['w1-02', 'w1-03'])
+    expect(colds).toEqual(['w1-05', 'w1-02'])
     const warm = steps.find((s) => s.kind === 'warmup')!
     expect(['w1-02', 'w1-03', 'w1-05']).not.toContain(warm.lessonId)
-    // w1-05 is due too but has no cold slot today: it waits, it isn't mixed in warm
-    for (const s of steps) expect(s.items ?? []).not.toContain('w1-05')
+    // w1-03 is due too but has no cold slot today: it waits, it isn't mixed in warm
+    for (const s of steps) expect(s.items ?? []).not.toContain('w1-03')
   })
 
   it('a drill on a due item is skipped; a drill on another item keeps that lesson out of the cold and mix steps', () => {
@@ -223,7 +223,7 @@ describe('mix and skills', () => {
     const p = base([day('2026-11-02')]) // B
     p.lessons['w1-03'].review = firstReview(0) // cold today
     const mix = plan(p).plan.steps.find((s) => s.kind === 'mix')!
-    expect(mix.items).toEqual(['w1-02', 'w1-05', 'w1-04'])
+    expect(mix.items).toEqual(['w1-05', 'w1-02', 'w1-04'])
     expect(mix.why).toMatch(/^[^:]+, .+, .+\. One run each, in turn\.$/)
     expect(mix.played).toEqual([])
   })
@@ -306,12 +306,36 @@ describe('ticking steps', () => {
     expect(planAfterRun(q, 'w1-03', result({ lessonId: 'w1-03' }), NOW).progress.plan!.steps[0].state).toBe('todo')
   })
 
+  it("a later, better loop raises the done drill's best today; a worse one changes nothing", () => {
+    const d = dayNum(NOW)
+    const cell = (n: number, bad: number, wrong: number) => ({ n, bad, wrong, early: 0, late: 0, err: 0, d, l: 'w1-03' })
+    const q = plan({ ...base(), heat: { v: 1 as const, cells: { 'n:2.7': cell(30, 18, 15), 'n:1.3': cell(20, 1, 0) } } })
+    const loop = (acc: number) => ({ passes: [{ speed: 0.9, acc, clean: acc > 0.9 }], clean: acc > 0.9 ? 1 : 0, topSpeed: 0.9 }) as LoopSummary
+    const first = planAfterLoop(q, 'n:2.7', loop(0.6), NOW).progress
+    const better = planAfterLoop(first, 'n:2.7', loop(0.88), NOW)
+    expect(better.finished).toBe(false)
+    expect(better.progress.plan!.steps[0]).toMatchObject({ state: 'done', score: 60, best: 88 })
+    expect(stepScore(better.progress, better.progress.plan!.steps[0])).toEqual({ label: 'today', value: 88, ever: null })
+    expect(planAfterLoop(better.progress, 'n:2.7', loop(0.7), NOW).progress).toBe(better.progress)
+  })
+
+  it('a drill on the Continue lesson keeps it as New, so the map and the session name the same lesson', () => {
+    const d = dayNum(NOW)
+    const cell = (n: number, bad: number, wrong: number) => ({ n, bad, wrong, early: 0, late: 0, err: 0, d, l: 'w4-01' })
+    const p = { ...base(), heat: { v: 1 as const, cells: { 'n:1.2': cell(30, 18, 15), 'n:2.2': cell(20, 1, 0) } } }
+    expect(nextLesson(p)).toBe('w4-01')
+    const steps = plan(p).plan.steps
+    expect(steps[0]).toMatchObject({ kind: 'warmup', drill: 'n:1.2', lessonId: 'w4-01' })
+    expect(steps.find((s) => s.kind === 'new')?.lessonId).toBe(nextLesson(p))
+  })
+
   it('swap and skip', () => {
     const p = plan(base())
     const ni = p.plan.steps.findIndex((s) => s.kind === 'new')
     const opts = swapOptions(p, ni, NOW)
-    expect(opts).toEqual(['w2-02', 'w2-04']) // after the plan's lessons, map order; w2-03 waits for w2-02
-    expect(swapStep(p, ni, NOW).plan!.steps[ni].lessonId).toBe('w2-02')
+    // After the plan's path, the open extras in map order (the jam step already has Two-Note Jam).
+    expect(opts).toEqual(['w3-02', 'w2-05'])
+    expect(swapStep(p, ni, NOW).plan!.steps[ni].lessonId).toBe('w3-02')
     expect(swapOptions(p, p.plan.steps.findIndex((s) => s.kind === 'changes'), NOW)).toEqual([])
     const sk = skipStep(p, 0)
     expect(sk.plan!.steps[0].state).toBe('skipped')
@@ -355,5 +379,74 @@ describe('the session log', () => {
     expect(later.sessionMin).toBe(20)
     expect(later.plan).toBe(started.plan)
     expect(withSessionMin(p, 30, NOW)).toBe(p)
+  })
+})
+
+describe('one list: Continue on the map and New in the session agree', () => {
+  it('the old save: Continue = New = Power Pair; swap order, then the jam', () => {
+    const p = importProgress(JSON.stringify(oldMapSave()), NOW)!
+    expect(nextLesson(p)).toBe('w4-01')
+    expect(newList(p)).toEqual({ ids: ['w4-01', 'w3-07', 'w2-06', 'w2-03', 'w3-02', 'w8-01', 'w2-04'], polish: false })
+    const pl = plan(p).plan
+    expect(pl.steps.find((s) => s.kind === 'new')?.lessonId).toBe('w4-01')
+    expect(pl.steps.find((s) => s.kind === 'jam')?.lessonId).toBe('w8-01')
+  })
+
+  it('a base player and a brand-new one after Tap In', () => {
+    expect(newList(base()).ids[0]).toBe(nextLesson(base()))
+    const p = newProgress()
+    p.lessons['w1-01'] = rec({ plays: 1 })
+    expect(newList(p).ids[0]).toBe('w1-05')
+    expect(nextLesson(p)).toBe('w1-05')
+  })
+})
+
+describe('session card scores: labelled, first try or best today', () => {
+  it('planAfterRun keeps the first score, raises best on later runs, never touches a cold score', () => {
+    const p0 = base([day('2026-11-02')])
+    p0.lessons['w1-03'].review = firstReview(0) // cold today
+    let p: Progress = plan(p0)
+    const steps = p.plan!.steps
+    const ci = steps.findIndex((s) => s.kind === 'cold')
+    const ji = steps.findIndex((s) => s.kind === 'jam')
+    const jam = steps[ji].lessonId!
+    p = planAfterRun(p, 'w1-03', result({ lessonId: 'w1-03', score: 22 }), NOW).progress
+    p = planAfterRun(p, 'w1-03', result({ lessonId: 'w1-03', score: 90 }), NOW).progress
+    expect(p.plan!.steps[ci]).toMatchObject({ state: 'done', score: 22 })
+    expect(p.plan!.steps[ci].best).toBeUndefined()
+    expect(stepScore(p, p.plan!.steps[ci])).toEqual({ label: 'cold', value: 22, ever: 85 })
+    p = planAfterRun(p, jam, result({ lessonId: jam, score: 60 }), NOW).progress
+    p = planAfterRun(p, jam, result({ lessonId: jam, score: 72 }), NOW).progress
+    p = planAfterRun(p, jam, result({ lessonId: jam, score: 50 }), NOW).progress
+    expect(p.plan!.steps[ji]).toMatchObject({ score: 60, best: 72 })
+    expect(stepScore(p, p.plan!.steps[ji])).toEqual({ label: 'today', value: 72, ever: null })
+    p.lessons[jam] = rec({ best: 85 })
+    expect(stepScore(p, p.plan!.steps[ji])?.ever).toBe(85)
+  })
+
+  it('no score for todo, skill and mix steps; a drill shows no best ever', () => {
+    const p = plan(base())
+    for (const s of p.plan.steps) expect(stepScore(p, s)).toBeNull()
+    const s = { ...p.plan.steps[0], state: 'done' as const, score: 70, drill: 'n:2.7' }
+    p.lessons[s.lessonId!] = rec({ best: 99 })
+    expect(stepScore(p, s)).toEqual({ label: 'today', value: 70, ever: null })
+  })
+
+  it('stepSource says where the lesson comes from', () => {
+    const p = plan(base())
+    const step = (kind: StepKind, lessonId: string | null, o = {}) => ({ ...p.plan.steps[0], kind, lessonId, drill: undefined, from: { best: 0, stars: 0 as const, speed: 1 }, ...o })
+    expect(stepSource(step('new', 'w4-01'))).toBe('From your plan, weeks 1–2')
+    expect(stepSource(step('new', 'w2-03'))).toBe('From your plan, weeks 3–4')
+    expect(stepSource(step('new', 'w3-01'))).toBe('Optional extra, weeks 3–4')
+    expect(stepSource(step('new', 'w3-03'))).toBe('Optional extra')
+    expect(stepSource(step('new', 'w1-05', { from: { best: 85, stars: 2, speed: 1 } }))).toBe('Going for 3 stars')
+    expect(stepSource(step('cold', 'w1-05'))).toBe('Review, due today')
+    expect(stepSource(step('changes', null))).toBeNull()
+    expect(stepSource(step('mix', null))).toBeNull()
+    // Warm-ups, drills and jams come every session: their place on the map is no reason.
+    expect(stepSource(step('warmup', 'w1-02'))).toBeNull()
+    expect(stepSource(step('warmup', 'w5-01'))).toBeNull()
+    expect(stepSource(step('warmup', 'w1-03', { drill: 'n:2.7' }))).toBeNull()
+    expect(stepSource(step('jam', 'w8-01'))).toBeNull()
   })
 })

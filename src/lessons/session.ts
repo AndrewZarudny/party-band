@@ -5,9 +5,8 @@ import type { LessonResult, LoopSummary, PainLevel, Progress, SessionDay, Sessio
 import type { SkillEntry, SkillStats } from '../skills/data'
 import { bestKey, emptyStats } from '../skills/data'
 import { CHANGE_CHORDS, weakestPair } from '../skills/chords'
-import { WORLDS, lessonById } from './data'
-import { PLAN_WEEKS, planWeek } from './weeks'
-import { dayKey, daysAway, isPassed, isUnlocked, trimLog } from './progress'
+import { ORDER, PLAN_PATH, lessonById, stageOf, weeksLabel } from './data'
+import { dayKey, daysAway, isPassed, isUnlocked, nextLesson, trimLog } from './progress'
 import { autoSpeed, bpmAt, earnedTop } from './speed'
 import { heatReady, spotLabel, topSpots } from './heat'
 import { SESSION_MIN_SEC, coldSpeedFor, isCold, isReviewItem, sessionNow, sessionOf, weekKey, weekStatus } from './review'
@@ -50,12 +49,11 @@ export const TEMPLATES: Record<SessionMin, Record<WeekShape, [StepKind, number][
 
 const DRILL_MIN_SCORE = 0.2
 const SYNC_ID = 'w1-01'
-const TASTE_ID = 'w2-05' // First Jam: the World 1 taste of playing over a band
+/** First Jam and Two-Note Jam: the early jams, which keep their own minutes. */
+const TASTE_IDS = ['w2-05', 'w8-01']
 
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T
 
-/** Every lesson id in map order. */
-const ORDER = WORLDS.flatMap((w) => w.lessons)
 const isSync = (id: string) => lessonById(id)?.type === 'sync'
 const isImprov = (id: string) => lessonById(id)?.type === 'improv'
 /** Tap In was played or skipped: the real plan can start. */
@@ -71,8 +69,8 @@ export const ctxDefault = (): PlanCtx => ({ unratedTake: false, stats: emptyStat
 const CHORDS_BY: [string[], string[]][] = [
   [['w3-02'], ['E5']],
   [['w3-06', 'w4-01'], ['A5', 'E5']],
-  [['w3-05'], ['G', 'D', 'C']],
-  [['w3-04'], ['Em']],
+  [['w3-05'], ['G', 'C', 'Em']],
+  [['w3-04'], ['G', 'D', 'C', 'Em']],
   [['w3-09'], ['A', 'D', 'E']],
   [['w3-10'], ['A7', 'D7', 'E7']],
   [['w4-02'], ['G5']],
@@ -147,14 +145,13 @@ function coldWhy(p: Progress, id: string): string {
 const NEW_WHY = 'Practise it on its own. Rest 20–30 s between runs.'
 
 /**
- * New lessons: first the 12-week plan's lessons up to this fortnight (in plan order), then the rest in map order
+ * New lessons: the plan's path first (the same list as the map's Continue), then the open extras in map order
  * (open, not passed, not free, not sync); else passed ones to polish, fewest stars first.
  */
-function newList(p: Progress, now: Date): { ids: string[]; polish: boolean } {
+export function newList(p: Progress): { ids: string[]; polish: boolean } {
   const fresh = (id: string) => !isSync(id) && !lessonById(id)?.free && isUnlocked(p, id) && !isPassed(p, id)
-  const week = planWeek(p, now)
-  const planned = PLAN_WEEKS.filter((w) => w.from <= week).flatMap((w) => w.lessons).filter(fresh)
-  const open = [...planned, ...ORDER.filter((id) => fresh(id) && !planned.includes(id))]
+  const path = PLAN_PATH.filter(fresh)
+  const open = [...path, ...ORDER.filter((id) => stageOf(id)?.core === false && fresh(id))]
   if (open.length) return { ids: open, polish: false }
   const ids = ORDER.filter((id) => !isSync(id) && isPassed(p, id) && p.lessons[id].stars < 3)
     .map((id, i) => ({ id, i, stars: p.lessons[id].stars }))
@@ -216,12 +213,12 @@ function jamList(p: Progress, s: number): string[] {
     .sort((a, b) => (p.lessons[a]?.lastPlayed ?? 0) - (p.lessons[b]?.lastPlayed ?? 0))
   const rest = open.filter((id) => !free.includes(id)).reverse()
   const all = [...free, ...rest]
-  return all.length ? all : [TASTE_ID]
+  return all.length ? all : [TASTE_IDS[0]]
 }
 
 const JAM_WHY = 'Wind down: jam in listen mode, band loud, no tab. Record the last 2 minutes if you like.'
 const jamWhy = (p: Progress, id: string) =>
-  isUnlocked(p, id) ? JAM_WHY : 'A taste of World 2: free play with the band. A is the open A string, C is G string fret 5.'
+  isUnlocked(p, id) ? JAM_WHY : 'A first jam: free play with the band. A is the open A string, C is G string fret 5.'
 
 function changesStep(p: Progress, ctx: PlanCtx): Pick & { skill: SessionStep['skill'] } {
   const pair = weakestPair(ctx.stats, knownChords(p))
@@ -276,8 +273,8 @@ export function makeSessionPlan(p: Progress, now: Date, ctx: PlanCtx): SessionPl
       const d = dp && !colds.includes(dp.id) ? dp : null
       const id = d ? null : (warmupList(p, now).find((x) => !used.has(x)) ?? null)
       if (d) {
-        // Cold, new and mix steps skip the drilled lesson.
-        used.add(d.id)
+        // Cold, new and mix steps skip the drilled lesson, except New keeps the Continue lesson so both name the same one.
+        if (d.id !== nextLesson(p)) used.add(d.id)
         steps.push(lessonStep(p, 'warmup', d, m))
       } else if (id) {
         used.add(id)
@@ -304,7 +301,7 @@ export function makeSessionPlan(p: Progress, now: Date, ctx: PlanCtx): SessionPl
         continue
       }
       if (allowed) {
-        const { ids, polish } = newList(p, now)
+        const { ids, polish } = newList(p)
         const id = ids.find((x) => !used.has(x))
         if (id) {
           used.add(id)
@@ -325,8 +322,8 @@ export function makeSessionPlan(p: Progress, now: Date, ctx: PlanCtx): SessionPl
       steps.push(skillStep('ear', { game: 'ear' }, 'Call and response: copy short phrases by ear.', m))
     } else if (kind === 'jam') {
       const id = jamList(p, s)[0]
-      // Only the First Jam taste so far: the jam keeps its own minutes, the rest goes to guided work below.
-      const extra = id === TASTE_ID ? Math.min(0, extraJam) : extraJam
+      // Only an early jam so far: the jam keeps its own minutes, the rest goes to guided work below.
+      const extra = TASTE_IDS.includes(id) ? Math.min(0, extraJam) : extraJam
       spare = extraJam - extra
       steps.push(lessonStep(p, 'jam', { id, why: jamWhy(p, id) }, m + extra))
     }
@@ -406,10 +403,20 @@ export function planAfterRun(p: Progress, lessonId: string, r: LessonResult, now
   if (setupOnly(plan) && syncDone(p)) return { progress: { ...p, plan: null }, finished: false }
   const next = clone(p)
   const steps = (next.plan as SessionPlan).steps
+  // A later run of a done step's lesson raises today's best; the first score and a cold score never change.
+  let raised = false
+  for (const s of steps) {
+    if (s.state !== 'done' || s.lessonId !== lessonId || s.drill || s.kind === 'cold' || s.score === undefined) continue
+    const best = Math.max(s.best ?? s.score, r.score)
+    if (best !== s.best) {
+      s.best = best
+      raised = true
+    }
+  }
   const step = steps.find((s) => s.state === 'todo' && s.lessonId === lessonId && !s.drill)
   if (step) return finishStep(next, step, r.score, r.speed)
   const mix = steps.find((s) => s.state === 'todo' && s.kind === 'mix' && s.items?.includes(lessonId) && !s.played?.includes(lessonId))
-  if (!mix) return same
+  if (!mix) return raised ? { progress: next, finished: false } : same
   mix.played = [...(mix.played ?? []), lessonId]
   if (mix.played.length < mixNeed(mix)) return { progress: next, finished: false }
   return finishStep(next, mix, r.score, r.speed)
@@ -420,11 +427,16 @@ export function planAfterLoop(p: Progress, drillKey: string, s: LoopSummary, now
   const same = { progress: p, finished: false }
   if (!todayPlan(p, now) || !s.passes.length) return same
   const next = clone(p)
-  const step = (next.plan as SessionPlan).steps.find((x) => x.drill === drillKey && x.state === 'todo')
-  if (!step) return same
+  const steps = (next.plan as SessionPlan).steps
   const score = Math.round(100 * Math.max(...s.passes.map((x) => x.acc)))
   const speed = s.topSpeed || s.passes[s.passes.length - 1].speed
-  return finishStep(next, step, score, speed)
+  const step = steps.find((x) => x.drill === drillKey && x.state === 'todo')
+  if (step) return finishStep(next, step, score, speed)
+  // A later loop of a done drill raises today's best, like a later run of a lesson.
+  const done = steps.find((x) => x.drill === drillKey && x.state === 'done' && x.score !== undefined)
+  if (!done || score <= Math.max(done.score ?? 0, done.best ?? 0)) return same
+  done.best = score
+  return { progress: next, finished: false }
 }
 
 /** A skill round ticks the first todo skill step of its game (a rating ticks Listen back). */
@@ -443,6 +455,38 @@ export function planAfterSkill(p: Progress, e: SkillEntry, now: Date): Ticked {
   return finishStep(next, step, e.score, 1)
 }
 
+export interface StepScore {
+  label: 'cold' | 'today' // cold: the first try today; today: the best run today
+  value: number
+  ever: number | null // the lesson's best ever, when higher than value
+}
+
+/** The score a done lesson step shows, labelled; null for todo, skill and mix steps. */
+export function stepScore(p: Progress, step: SessionStep): StepScore | null {
+  if (step.state !== 'done' || !step.lessonId || step.score === undefined || step.kind === 'mix') return null
+  const cold = step.kind === 'cold'
+  const value = cold ? step.score : Math.max(step.score, step.best ?? step.score)
+  const best = step.drill ? undefined : p.lessons[step.lessonId]?.best
+  return { label: cold ? 'cold' : 'today', value, ever: best !== undefined && best > value ? best : null }
+}
+
+/**
+ * Why this lesson is in today's session, in a few words: for cold and new steps only.
+ * Warm-ups, drills and jams come every session, so their place on the map is no reason.
+ */
+export function stepSource(step: SessionStep): string | null {
+  if (!step.lessonId) return null
+  if (step.kind === 'cold') return 'Review, due today'
+  if (step.kind !== 'new') return null
+  // A new step on a lesson passed before the plan was made: polishing it.
+  if (!step.consolidate && step.from.stars > 0) return 'Going for 3 stars'
+  const at = stageOf(step.lessonId)
+  if (!at) return null
+  const weeks = at.stage.weeks ? weeksLabel(at.stage).toLowerCase() : null
+  if (at.core) return weeks ? `From your plan, ${weeks}` : null
+  return weeks ? `Optional extra, ${weeks}` : 'Optional extra'
+}
+
 /** Ids of the lesson steps other than i (mix items included). */
 const otherIds = (plan: SessionPlan, i: number) => new Set(plan.steps.filter((_, j) => j !== i).flatMap((s) => [...(s.lessonId ? [s.lessonId] : []), ...(s.items ?? [])]))
 
@@ -450,7 +494,7 @@ function candidates(p: Progress, step: SessionStep, now: Date): string[] {
   const s = sessionNow(p, now)
   if (step.kind === 'warmup') return warmupList(p, now)
   if (step.kind === 'cold') return coldList(p, now)
-  if (step.kind === 'new') return step.consolidate ? [] : newList(p, now).ids
+  if (step.kind === 'new') return step.consolidate ? [] : newList(p).ids
   if (step.kind === 'jam') return jamList(p, s).filter((id) => isUnlocked(p, id))
   return []
 }

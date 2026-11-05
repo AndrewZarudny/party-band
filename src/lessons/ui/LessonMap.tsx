@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import type { PainLevel, Progress, SessionPlan, Stars, WorldDef } from '../types'
+import type { PainLevel, Progress, SessionPlan, StageDef, Stars } from '../types'
 import type { SkillStart } from '../../skills/data'
-import { WORLDS, lessonById } from '../data'
-import { DINO_STAGES, dinoStageFor, eggCracked, isPassed, isUnlocked, levelFor, nextLesson, starsInWorld, worldUnlocked } from '../progress'
+import { STAGES, checkpointOf, lessonById, weeksLabel } from '../data'
+import { DINO_STAGES, dinoStageFor, eggCracked, isPassed, isUnlocked, levelFor, nextLesson, stageOpen, starsInStage } from '../progress'
 import { knownChords, planDone, pocketOpen } from '../session'
 import { weakestPair } from '../../skills/chords'
 import { loadStats } from '../../skills/store'
@@ -57,6 +57,16 @@ function LockGlyph() {
   )
 }
 
+// A checkpoint flag: a pole and a pennant.
+function FlagGlyph() {
+  return (
+    <svg className="ls-flag" viewBox="0 0 16 16" aria-hidden>
+      <path className="ls-flag-pole" d="M4 14.5V2" />
+      <path d="M4 2.5h8l-2 3 2 3H4Z" />
+    </svg>
+  )
+}
+
 export function FootGlyph() {
   return (
     <svg className="ls-foot" viewBox="0 0 24 24" aria-hidden>
@@ -107,53 +117,67 @@ function DinoName({ name, onRename }: { name: string; onRename: (n: string) => v
   )
 }
 
-function WorldRow({ world, progress, current, onOpen }: { world: WorldDef; progress: Progress; current: string | null; onOpen: (id: string) => void }) {
-  const open = worldUnlocked(progress, world.id)
-  const { got, max } = starsInWorld(progress, world.id)
-  const prev = WORLDS.find((w) => w.id === world.id - 1)
-  const need = prev ? Math.ceil(0.7 * starsInWorld(progress, prev.id).max) : 0
+function PathNode({ id, mark, extra, progress, current, onOpen }: { id: string; mark: number; extra: boolean; progress: Progress; current: string | null; onOpen: (id: string) => void }) {
+  const l = lessonById(id)
+  if (!l) return null
+  const rec = progress.lessons[id]
+  const passed = isPassed(progress, id)
+  // Kept or played lessons stay open even in a stage that is still locked.
+  const unlocked = isUnlocked(progress, id)
+  const state = passed ? 'done' : !unlocked ? 'locked' : id === current ? 'current' : 'open'
+  const kind = l.boss ? ', checkpoint' : extra ? ', optional' : ''
+  const label = `${l.title}${kind}: ${state === 'locked' ? 'locked' : passed ? `${rec?.stars ?? 0} stars` : 'open'}`
   return (
-    <section className={`ls-world ${open ? 'open' : 'locked'}`} aria-labelledby={`ls-w${world.id}`}>
-      <header className="ls-world-head">
-        <h3 id={`ls-w${world.id}`}>
-          <span className="ls-world-n ls-num">{world.id}</span>
-          {world.title}
-        </h3>
-        <span className="ls-world-skill">{world.skill}</span>
-        <span className="ls-world-stars ls-num" aria-label={`${got} of ${max} stars`}>
-          <StarGlyph /> {got}/{max}
+    <li className={`ls-fret ${l.boss ? 'boss' : ''}`}>
+      <button className={`ls-node ${state}`} disabled={!unlocked} onClick={() => onOpen(id)} aria-label={label} aria-current={state === 'current' ? 'step' : undefined}>
+        <span className="ls-node-pick">
+          <PickMark />
+          <span className="ls-node-mark ls-num">{state === 'locked' ? <LockGlyph /> : l.boss ? <FlagGlyph /> : extra ? '' : mark}</span>
         </span>
+        <span className="ls-node-title">{l.title}</span>
+        {passed && <StarPips stars={rec?.stars ?? 0} />}
+      </button>
+    </li>
+  )
+}
+
+function StageRow({ stage, progress, current, onOpen }: { stage: StageDef; progress: Progress; current: string | null; onOpen: (id: string) => void }) {
+  const open = stageOpen(progress, stage.id)
+  const { got, max } = starsInStage(progress, stage.id)
+  const i = STAGES.indexOf(stage)
+  const gate = stage.weeks && i > 0 ? checkpointOf(STAGES[i - 1]) : null
+  const lockText = !stage.weeks ? `Opens with ${weeksLabel(STAGES[1]).toLowerCase()}` : gate ? `Pass ${lessonById(gate)?.title ?? gate} to open` : ''
+  const node = (id: string, n: number, extra: boolean) => <PathNode key={id} id={id} mark={n} extra={extra} progress={progress} current={current} onOpen={onOpen} />
+  return (
+    <section className={`ls-world ${open ? 'open' : 'locked'} ${stage.weeks ? '' : 'extras'}`} aria-labelledby={`ls-s${stage.id}`}>
+      <header className="ls-world-head">
+        <h3 id={`ls-s${stage.id}`}>
+          {stage.weeks && <span className="ls-world-n ls-num">{stage.id}</span>}
+          <span>
+            {stage.weeks ? `${weeksLabel(stage)} · ${stage.title}` : stage.title}
+          </span>
+        </h3>
+        <span className="ls-world-skill">{stage.skill}</span>
+        {max > 0 && (
+          <span className="ls-world-stars ls-num" aria-label={`${got} of ${max} stars`}>
+            <StarGlyph /> {got}/{max}
+          </span>
+        )}
       </header>
-      {!open && prev && (
+      {!open && lockText && (
         <p className="ls-world-lock">
-          <LockGlyph /> Clear World {prev.id}'s boss or get {need} <StarGlyph />
-          <span className="ls-sr">stars</span>
+          <LockGlyph /> {lockText}
         </p>
       )}
-      <ol className="ls-path">
-        {world.lessons.map((id) => {
-          const l = lessonById(id)
-          if (!l) return null
-          const rec = progress.lessons[id]
-          const passed = isPassed(progress, id)
-          // A 12-week plan lesson can open before its world does.
-          const unlocked = isUnlocked(progress, id)
-          const state = passed ? 'done' : !unlocked ? 'locked' : id === current ? 'current' : 'open'
-          const label = `${l.title}${l.boss ? ', boss' : ''}: ${state === 'locked' ? 'locked' : passed ? `${rec?.stars ?? 0} stars` : 'open'}`
-          return (
-            <li key={id} className={`ls-fret ${l.boss ? 'boss' : ''}`}>
-              <button className={`ls-node ${state}`} disabled={!unlocked} onClick={() => onOpen(id)} aria-label={label} aria-current={state === 'current' ? 'step' : undefined}>
-                <span className="ls-node-pick">
-                  <PickMark />
-                  <span className="ls-node-mark ls-num">{state === 'locked' ? <LockGlyph /> : l.boss ? 'Boss' : l.order}</span>
-                </span>
-                <span className="ls-node-title">{l.title}</span>
-                {passed && <StarPips stars={rec?.stars ?? 0} />}
-              </button>
-            </li>
-          )
-        })}
-      </ol>
+      {stage.core.length > 0 && <ol className="ls-path">{stage.core.map((id, n) => node(id, n + 1, false))}</ol>}
+      {stage.extra.length > 0 && (
+        <>
+          {stage.core.length > 0 && <h4 className="ls-extra-h">Optional</h4>}
+          <ol className="ls-path extra" aria-label={`${stage.weeks ? weeksLabel(stage) : 'Extras'}: optional lessons`}>
+            {stage.extra.map((id, n) => node(id, n + 1, true))}
+          </ol>
+        </>
+      )}
     </section>
   )
 }
@@ -285,8 +309,8 @@ export function LessonMap({
       )}
 
       <div className="ls-worlds">
-        {WORLDS.map((w) => (
-          <WorldRow key={w.id} world={w} progress={progress} current={current} onOpen={onOpen} />
+        {STAGES.map((s) => (
+          <StageRow key={s.id} stage={s} progress={progress} current={current} onOpen={onOpen} />
         ))}
       </div>
 
