@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { engine } from '../../audio/engine'
 import type { CycleResult } from '../clock'
 import { CYCLES, ClockRun, STEADY_MS } from '../clock'
+import { clicksMuted } from '../../lessons/clock'
 import { dailyBest } from '../data'
 import { finishRound, loadStats, setLevels } from '../store'
 import { inputOffsetSec, useGuitar, useKeys, useRoundActivity, useTick } from '../hooks'
@@ -60,6 +61,7 @@ export function InnerClock({ keyboard, onBack }: { keyboard: boolean; onBack: ()
   }
 
   const start = async () => {
+    if (clicksMuted()) return
     const ctx = await engine.ensureContext()
     offset.current = inputOffsetSec(keyboard)
     results.current = []
@@ -92,9 +94,14 @@ export function InnerClock({ keyboard, onBack }: { keyboard: boolean; onBack: ()
     setHits((n) => n + 1)
   }
   useGuitar(running && !keyboard, { strum })
-  useKeys(running, (k, t) => {
+  // Keys stand in for strums only without a guitar.
+  useKeys(running && keyboard, (k, t) => {
     if (k === ' ' || k === 'j') strum(t)
   })
+
+  // The click bars are the tempo to hold: with the metronome at 0 there is nothing to hear.
+  const [, bump] = useState(0)
+  const muted = clicksMuted()
 
   const ctx = engine.ctx
   const bar = running && ctx && run.current ? run.current.barAt(ctx.currentTime) : null
@@ -143,9 +150,23 @@ export function InnerClock({ keyboard, onBack }: { keyboard: boolean; onBack: ()
             )}
             {running && lastCycle && <p className="ls-muted">Last quiet bar: {fmtMs(lastCycle.drifts[lastCycle.drifts.length - 1] ?? null)}</p>}
           </div>
+          {!running && muted && (
+            <p className="ls-warn">
+              Your metronome volume is off, so the click bars would be silent.{' '}
+              <button
+                className="ls-link"
+                onClick={() => {
+                  engine.setMetronomeLevel(1)
+                  bump((n) => n + 1)
+                }}
+              >
+                Turn it on
+              </button>
+            </p>
+          )}
           <div className="sk-actions">
             {!running ? (
-              <button className="ls-btn primary big" onClick={() => void start()} autoFocus>
+              <button className="ls-btn primary big" onClick={() => void start()} disabled={muted} autoFocus>
                 Start
               </button>
             ) : (

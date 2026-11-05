@@ -216,6 +216,7 @@ export class GuitarEngine {
   private delayWet!: GainNode
   private reverbWet!: GainNode
   private out!: GainNode
+  private wet!: GainNode // amp and effects summed, before the amp on/off gain
   private aL!: AnalyserNode
   private aR!: AnalyserNode
   private chBuf = new Float32Array(1024)
@@ -380,9 +381,14 @@ export class GuitarEngine {
     this.state.emit()
   }
 
-  /** The processed guitar sound (amp, cab and effects), for recording a take. Null before audio starts. */
+  /** The processed guitar sound (amp, cab and effects), taken before the amp on/off switch, for recording a take. */
   get output(): AudioNode | null {
-    return this.ctx ? this.out : null
+    return this.ctx ? this.wet : null
+  }
+
+  /** The raw input (picked channel, input gain), for recording a mic or a dry guitar. */
+  get dryOutput(): AudioNode | null {
+    return this.ctx ? this.input : null
   }
 
   get latencyMs(): number {
@@ -721,6 +727,7 @@ export class GuitarEngine {
     this.cabBypass = ctx.createGain()
     this.master = ctx.createGain()
     this.out = ctx.createGain()
+    this.wet = ctx.createGain()
 
     this.input.connect(this.gateGain)
     this.ampIn = ctx.createGain()
@@ -764,14 +771,14 @@ export class GuitarEngine {
     this.delayWet = ctx.createGain()
     this.master.connect(this.delay)
     this.delay.connect(fbLp).connect(fb).connect(this.delay)
-    this.delay.connect(this.delayWet).connect(this.out)
+    this.delay.connect(this.delayWet).connect(this.wet)
 
     const conv = ctx.createConvolver()
     conv.buffer = reverbImpulse(ctx, 2.4, 3)
     this.reverbWet = ctx.createGain()
-    this.master.connect(conv).connect(this.reverbWet).connect(this.out)
+    this.master.connect(conv).connect(this.reverbWet).connect(this.wet)
 
-    this.master.connect(this.out)
+    this.master.connect(this.wet)
 
     // Chorus: a short delay swept by a slow LFO, mixed in parallel.
     const chorusDelay = ctx.createDelay(0.05)
@@ -784,8 +791,8 @@ export class GuitarEngine {
     lfo.start()
     this.chorusWet = ctx.createGain()
     this.chorusWet.gain.value = 0
-    this.master.connect(chorusDelay).connect(this.chorusWet).connect(this.out)
-    this.out.connect(ctx.destination)
+    this.master.connect(chorusDelay).connect(this.chorusWet).connect(this.wet)
+    this.wet.connect(this.out).connect(ctx.destination)
     this.setTone(this.tone)
   }
 

@@ -51,7 +51,10 @@ export function finishRound(game: GameId, score: number, xp: number, detail?: st
 
 export function setLevels(patch: Partial<SkillStats['levels']>): SkillStats {
   const s = loadStats()
-  const next = { ...s, levels: { ...s.levels, ...patch } }
+  const levels = { ...s.levels, ...patch }
+  const same = levels.fretMax === s.levels.fretMax && levels.clockGap === s.levels.clockGap && levels.earLen === s.levels.earLen
+  if (same) return s // unchanged: keep its time, so a merge doesn't prefer a copy that only re-saved
+  const next = { ...s, levels, levelsAt: Date.now() }
   saveStats(next)
   return next
 }

@@ -1,4 +1,5 @@
 // Small pieces every skill game shares: the header, the round summary and a progress chart.
+import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 
 export function GameHead({ title, sub, onBack, right }: { title: string; sub: string; onBack: () => void; right?: ReactNode }) {
@@ -8,7 +9,9 @@ export function GameHead({ title, sub, onBack, right }: { title: string; sub: st
         Back
       </button>
       <div className="sk-head-text">
-        <h2 className="ls-display">{title}</h2>
+        <h2 id="sk-game-h" className="ls-display">
+          {title}
+        </h2>
         <p className="ls-muted">{sub}</p>
       </div>
       {right}
@@ -38,10 +41,45 @@ export interface RoundSummary {
   note?: string
 }
 
-export function RoundDone({ s, onAgain, onBack, children }: { s: RoundSummary; onAgain: () => void; onBack: () => void; children?: ReactNode }) {
+const SETTLE_MS = 1000 // Space and Enter do nothing this long after a round ends (the player may still be tapping)
+
+export function RoundDone({
+  s,
+  onAgain,
+  onBack,
+  actions,
+  children,
+}: {
+  s: RoundSummary
+  onAgain: () => void
+  onBack: () => void
+  actions?: ReactNode
+  children?: ReactNode
+}) {
+  const head = useRef<HTMLParagraphElement>(null)
+  // Focus the summary, not Again: a Space tap meant for the game must not start a new round.
+  useEffect(() => {
+    head.current?.focus()
+    const until = performance.now() + SETTLE_MS
+    const guard = (ev: KeyboardEvent) => {
+      if (performance.now() > until) return
+      if (ev.key === ' ' || ev.key === 'Enter') {
+        ev.preventDefault()
+        ev.stopPropagation()
+      }
+    }
+    window.addEventListener('keydown', guard, true)
+    const id = window.setTimeout(() => window.removeEventListener('keydown', guard, true), SETTLE_MS)
+    return () => {
+      window.clearTimeout(id)
+      window.removeEventListener('keydown', guard, true)
+    }
+  }, [])
   return (
     <section className="sk-done" aria-live="polite">
-      <p className="sk-done-head ls-display">{s.headline}</p>
+      <p ref={head} tabIndex={-1} className="sk-done-head ls-display">
+        {s.headline}
+      </p>
       {s.best && <p className="sk-best-tag">New best</p>}
       <dl className="sk-lines">
         {s.lines.map(([k, v]) => (
@@ -60,9 +98,10 @@ export function RoundDone({ s, onAgain, onBack, children }: { s: RoundSummary; o
       {s.note && <p>{s.note}</p>}
       {children}
       <div className="sk-actions">
-        <button className="ls-btn primary" onClick={onAgain} autoFocus>
+        <button className="ls-btn primary" onClick={onAgain}>
           Again
         </button>
+        {actions}
         <button className="ls-btn ghost" onClick={onBack}>
           Back to skills
         </button>

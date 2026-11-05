@@ -23,7 +23,7 @@ interface Found {
 }
 
 export function FretGame({ mode, keyboard, onBack }: { mode: Mode; keyboard: boolean; onBack: () => void }) {
-  const [fretMax] = useState(() => loadStats().levels.fretMax)
+  const [fretMax, setFretMax] = useState(() => loadStats().levels.fretMax)
   const [running, setRunning] = useState(false)
   const [endAt, setEndAt] = useState(0)
   const [done, setDone] = useState<RoundSummary | null>(null)
@@ -49,6 +49,9 @@ export function FretGame({ mode, keyboard, onBack }: { mode: Mode; keyboard: boo
   const notePc = order[noteIdx % order.length]
   const spots = mode === 'find' ? spotsOf(notePc, fretMax) : []
   const target: FretPos | null = mode === 'find' ? (spots[spotIdx] ?? null) : spot
+  // From 12 frets a note sits twice on some strings (open and 12th): say which one.
+  const sameString = mode === 'find' && target ? spots.filter((s) => s.string === target.string) : []
+  const twin = sameString.length > 1 && target ? (sameString[0].fret === target.fret ? 'lower' : 'higher') : null
 
   const start = () => {
     setOrder(findOrder())
@@ -68,6 +71,7 @@ export function FretGame({ mode, keyboard, onBack }: { mode: Mode; keyboard: boo
 
   const nextFind = () => {
     since.current = performance.now()
+    setMissed(false)
     if (spotIdx + 1 < spots.length) setSpotIdx(spotIdx + 1)
     else {
       // Every spot of this note: on to the next note, a clean board.
@@ -99,7 +103,7 @@ export function FretGame({ mode, keyboard, onBack }: { mode: Mode; keyboard: boo
 
   const miss = () => {
     if (!running || !target) return
-    if (mode === 'name' && !missed) setMissed(true)
+    if (!missed) setMissed(true)
   }
 
   const skip = () => {
@@ -120,9 +124,10 @@ export function FretGame({ mode, keyboard, onBack }: { mode: Mode; keyboard: boo
     else miss()
   }
   useGuitar(running && !keyboard, { note: onMidi })
+  // With a guitar, only the guitar says right or wrong; S skips either way.
   useKeys(running, (k) => {
-    if (k === ' ' || k === 'j') hit()
-    else if (k === 'x') miss()
+    if (keyboard && (k === ' ' || k === 'j')) hit()
+    else if (keyboard && k === 'x') miss()
     else if (k === 's') skip()
   })
 
@@ -140,7 +145,10 @@ export function FretGame({ mode, keyboard, onBack }: { mode: Mode; keyboard: boo
       })
     } else {
       const wider = widenAfter(fretMax, right, tries)
-      if (wider !== fretMax) setLevels({ fretMax: wider })
+      if (wider !== fretMax) {
+        setLevels({ fretMax: wider })
+        setFretMax(wider) // Again plays on the wider board
+      }
       const acc = tries ? Math.round((100 * right) / tries) : 0
       const r = finishRound('name', right, Math.min(20, right))
       setDone({
@@ -177,9 +185,13 @@ export function FretGame({ mode, keyboard, onBack }: { mode: Mode; keyboard: boo
             {!running ? (
               <p>{mode === 'find' ? 'You get one note at a time. Find it on each string.' : 'A spot lights up. Play it.'}</p>
             ) : mode === 'find' && target ? (
-              <p>
-                Find <b className="sk-big">{noteName(notePc)}</b> on the <b>{STRING_NAMES[target.string]}</b> string
-              </p>
+              <>
+                <p>
+                  Find <b className="sk-big">{noteName(notePc)}</b> on the <b>{STRING_NAMES[target.string]}</b> string
+                  {twin && <>, the {twin} one</>}
+                </p>
+                {missed && <p className="ls-muted">Not that one. Stay on the {STRING_NAMES[target.string]} string{twin ? `, the ${twin} ${noteName(notePc)}` : ''}.</p>}
+              </>
             ) : mode === 'name' ? (
               <p>{missed ? 'Not quite. Try again or skip.' : 'Play the marked spot.'}</p>
             ) : null}

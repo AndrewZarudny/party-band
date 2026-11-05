@@ -165,10 +165,11 @@
   overflow-x: auto;
   border-radius: 10px;
 }
+/* These boards have 5 to 12 frets: they fit a phone's width, so every spot stays in view. */
 .lessons .sk-board .fretboard {
   display: block;
   width: 100%;
-  min-width: 520px;
+  min-width: 0;
   height: auto;
 }
 .lessons .sk-actions {
@@ -238,6 +239,9 @@
   font-size: clamp(24px, 5vw, 36px);
   margin: 0;
 }
+.lessons .sk-done-head:focus:not(:focus-visible) {
+  outline: none;
+}
 .lessons .sk-best-tag {
   margin: 0;
   padding: 2px 10px;
@@ -305,6 +309,36 @@
   border-radius: 8px;
   border: 1px solid var(--line);
   background: var(--panel);
+}
+.lessons .sk-slots li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.lessons .sk-slot-mark {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.lessons small.sk-slot-mark {
+  width: auto;
+  height: auto;
+  font-size: var(--fs-sm);
+  line-height: 1;
+}
+.lessons .sk-slots li.ok .sk-slot-mark {
+  color: var(--played-text, var(--text));
+}
+.lessons .sk-slots li.octave .sk-slot-mark {
+  color: var(--next-text, var(--text));
+}
+.lessons .sk-slots li.miss .sk-slot-mark {
+  color: var(--root-text, var(--text));
 }
 .lessons .sk-slots li.got {
   border-color: var(--text);
@@ -402,6 +436,20 @@
   border: 1px solid var(--line);
   background: var(--panel-2);
   color: var(--text);
+}
+.lessons .sk-take-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--root);
+  background: var(--panel-2);
+  font-size: var(--fs-ui);
+}
+.lessons .sk-take-confirm span {
+  flex: 1 1 180px;
 }
 .lessons .sk-rec-dot {
   width: 12px;

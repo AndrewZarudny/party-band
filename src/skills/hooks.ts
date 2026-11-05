@@ -3,8 +3,13 @@ import { useEffect, useReducer, useRef } from 'react'
 import { engine } from '../audio/engine'
 import { holdReload, practice } from '../account/activity'
 import { KEYBOARD_DEVICE, defaultKeyOffsetMs, defaultOffsetMs, deviceKey, loadLatency } from '../lessons/calibration'
+import { loadPrefs } from '../lessons/prefs'
 
+// Same gate as the Lessons input: a real attack, loud enough, stricter on a mic.
 const STRUM_RATIO = 1.5 // a pick or strum attack, not a fret squeak
+const MIC_RATIO = 0.2
+const ABS_RMS = 0.002
+const MIC_ABS_RMS = 0.004
 const STRUM_GAP_MS = 90 // one strum, not its echo
 
 /** The latest value in a ref, so listeners subscribed once always see fresh props. */
@@ -33,11 +38,19 @@ export function useGuitar(on: boolean, h: GuitarHandlers) {
   useEffect(() => {
     if (!on) return
     let last = -Infinity
+    let rms = 0
+    const mic = loadPrefs().input === 'mic'
+    const ratio = STRUM_RATIO + (mic ? MIC_RATIO : 0)
+    const absRms = mic ? MIC_ABS_RMS : ABS_RMS
     const offs = [
       engine.notes.on((m) => ref.current.note?.(m)),
+      // The engine sends the level right before each onset.
+      engine.level.on((v) => {
+        rms = v
+      }),
       engine.onset.on((o) => {
         const ctx = engine.ctx
-        if (!ctx || o.ratio < STRUM_RATIO) return
+        if (!ctx || o.ratio < ratio || rms <= absRms) return
         const t = ctx.currentTime - o.ageSec
         if ((t - last) * 1000 < STRUM_GAP_MS) return
         last = t

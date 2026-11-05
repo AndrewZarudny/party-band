@@ -56,7 +56,8 @@ export function ChordChanges({ keyboard, onBack }: { keyboard: boolean; onBack: 
       pending.current.push(judgeStrum(a, b, add))
     },
   })
-  useKeys(running, (k) => {
+  // Keys only without a guitar: then the guitar is the only judge.
+  useKeys(running && keyboard, (k) => {
     // Space: a clean strum of the other chord (a change); X: a muddy strum.
     if (k === ' ' || k === 'j') setCount((c) => countStrum(c, c.on === a ? b : a))
     else if (k === 'x') add(null)
@@ -96,7 +97,16 @@ export function ChordChanges({ keyboard, onBack }: { keyboard: boolean; onBack: 
     <section className="sk-game" aria-labelledby="sk-game-h">
       <GameHead title="One-minute changes" sub="Strum, switch, strum. Count the clean changes in 60 seconds." onBack={onBack} right={<Timer left={left} total={ROUND_SEC} />} />
       {done ? (
-        <RoundDone s={done} onAgain={start} onBack={onBack}>
+        <RoundDone
+          s={done}
+          onAgain={start}
+          onBack={onBack}
+          actions={
+            <button className="ls-btn ghost" onClick={() => setDone(null)}>
+              Change chords
+            </button>
+          }
+        >
           <TrendChart points={trend} unit="changes" label={`Best per day, ${a} and ${b}`} />
         </RoundDone>
       ) : (

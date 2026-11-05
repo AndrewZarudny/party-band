@@ -6,7 +6,7 @@ import type { Marker } from '../../components/Fretboard'
 import { Fretboard } from '../../components/Fretboard'
 import type { FretPos } from '../../music/theory'
 import { midiName, noteName } from '../../music/theory'
-import type { Grade } from '../ear'
+import type { Grade, Mark } from '../ear'
 import { gradePhrase, makePhrase, nextLength, poolFor } from '../ear'
 import { dailyBest } from '../data'
 import { finishRound, loadStats, setLevels } from '../store'
@@ -20,6 +20,18 @@ const SETTLE_MS = 350 // after the phrase, before listening (the last note rings
 const ANSWER_MS = 8000 // waiting this long after the last note played ends the answer
 
 type Phase = 'idle' | 'listen' | 'answer' | 'graded'
+
+const MARK_TEXT: Record<Mark, string> = { ok: 'right', octave: 'wrong octave', miss: 'wrong' }
+
+/** Each slot's result as a shape too, not only a colour: a tick, "8va", or a cross. */
+function SlotMark({ m }: { m: Mark }) {
+  if (m === 'octave') return <small className="sk-slot-mark">8va</small>
+  return (
+    <svg className="sk-slot-mark" viewBox="0 0 12 12" aria-hidden>
+      <path d={m === 'ok' ? 'M2 6.5 5 9.5 10 3' : 'M3 3l6 6M9 3 3 9'} />
+    </svg>
+  )
+}
 
 export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () => void }) {
   const [len, setLen] = useState(() => loadStats().levels.earLen)
@@ -136,9 +148,12 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
   }
 
   useGuitar(phase === 'answer' && !keyboard, { note: add })
+  // Give up and see the phrase; what was played so far still shows.
+  const showMe = () => {
+    if (phase === 'answer') judge(played)
+  }
   useKeys(running, (k) => {
-    if (phase === 'answer' && (k === ' ' || k === 'j')) judge(phrase.map((p) => p.midi)) // test key: a perfect answer
-    else if (phase === 'answer' && k === 'x') judge([])
+    if (phase === 'answer' && k === 'x') showMe()
     else if (k === 'r' && phase === 'answer') replay()
   })
 
@@ -185,9 +200,12 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
             <ol className="sk-slots" aria-label="Your notes">
               {phrase.map((_, i) => {
                 const m = grade?.marks[i]
+                const got = played[i] !== undefined ? noteName(played[i]) : null
+                const label = `Note ${i + 1}: ${got ?? 'not played'}${m ? `, ${MARK_TEXT[m]}` : ''}`
                 return (
-                  <li key={i} className={m ?? (i < played.length ? 'got' : '')}>
-                    {played[i] !== undefined ? noteName(played[i]) : '·'}
+                  <li key={i} className={m ?? (i < played.length ? 'got' : '')} aria-label={label}>
+                    <span aria-hidden>{got ?? '·'}</span>
+                    {m && <SlotMark m={m} />}
                   </li>
                 )
               })}
@@ -211,13 +229,18 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
                 Start
               </button>
             ) : (
-              <button className="ls-btn ghost" onClick={replay} disabled={phase !== 'answer'}>
-                Hear it again <kbd>R</kbd>
-              </button>
+              <>
+                <button className="ls-btn ghost" onClick={replay} disabled={phase !== 'answer'}>
+                  Hear it again <kbd>R</kbd>
+                </button>
+                <button className="ls-btn ghost" onClick={showMe} disabled={phase !== 'answer'}>
+                  Show me <kbd>X</kbd>
+                </button>
+              </>
             )}
           </div>
           <p className="ls-caption">
-            {keyboard ? 'No guitar: click the notes in order. Space answers right, X wrong.' : 'Pick each note clearly; the exact octave counts.'}
+            {keyboard ? 'No guitar: click the notes in order.' : 'Pick each note clearly; the exact octave counts.'} Stuck? Show me gives the answer.
           </p>
         </>
       )}

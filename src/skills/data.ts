@@ -18,6 +18,7 @@ export interface SkillStats {
   best: Record<string, number> // "game" or "game:detail" -> best score
   history: SkillEntry[] // newest first
   levels: { fretMax: number; clockGap: number; earLen: number }
+  levelsAt: number // ms of the last level change, so a merge keeps the newer levels (they go down too)
   xp: { day: string; got: number } // XP given to lessons today (capped)
 }
 
@@ -25,7 +26,7 @@ const HISTORY_MAX = 300
 export const FRET_STEPS = [5, 7, 9, 12]
 
 export function emptyStats(): SkillStats {
-  return { v: 1, best: {}, history: [], levels: { fretMax: 5, clockGap: 1, earLen: 2 }, xp: { day: '', got: 0 } }
+  return { v: 1, best: {}, history: [], levels: { fretMax: 5, clockGap: 1, earLen: 2 }, levelsAt: 0, xp: { day: '', got: 0 } }
 }
 
 const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
@@ -53,6 +54,7 @@ export function parseStats(raw: string | null): SkillStats {
       clockGap: Math.max(1, Math.min(4, Math.round(num(l.clockGap, 1)))),
       earLen: Math.max(2, Math.min(6, Math.round(num(l.earLen, 2)))),
     }
+    s.levelsAt = num(o.levelsAt)
     const x = (o.xp ?? {}) as Record<string, unknown>
     s.xp = { day: typeof x.day === 'string' ? x.day : '', got: num(x.got) }
   } catch {
@@ -80,7 +82,8 @@ export function record(s: SkillStats, game: GameId, score: number, detail?: stri
 
 /**
  * Two browsers' copies: history combined by id (newest first), each best the better one,
- * each level the higher one, today's XP the later day (same day: the larger count).
+ * the levels of the copy that changed them last (levels drop after misses, so the higher one is not
+ * the right one; copies without a time keep the higher), today's XP the later day (same day: the larger count).
  */
 export function mergeStatsRaw(a: string | null, b: string | null): string {
   const x = parseStats(a)
@@ -93,13 +96,17 @@ export function mergeStatsRaw(a: string | null, b: string | null): string {
     const game = k.split(':')[0] as GameId
     best[k] = o === undefined ? v : lowerBetter(game) ? Math.min(v, o) : Math.max(v, o)
   }
-  const levels = {
-    fretMax: Math.max(x.levels.fretMax, y.levels.fretMax),
-    clockGap: Math.max(x.levels.clockGap, y.levels.clockGap),
-    earLen: Math.max(x.levels.earLen, y.levels.earLen),
-  }
+  const levels =
+    x.levelsAt !== y.levelsAt
+      ? (x.levelsAt > y.levelsAt ? x : y).levels
+      : {
+          fretMax: Math.max(x.levels.fretMax, y.levels.fretMax),
+          clockGap: Math.max(x.levels.clockGap, y.levels.clockGap),
+          earLen: Math.max(x.levels.earLen, y.levels.earLen),
+        }
+  const levelsAt = Math.max(x.levelsAt, y.levelsAt)
   const xp = x.xp.day !== y.xp.day ? (x.xp.day > y.xp.day ? x.xp : y.xp) : { day: x.xp.day, got: Math.max(x.xp.got, y.xp.got) }
-  return JSON.stringify({ v: 1, best, history, levels, xp })
+  return JSON.stringify({ v: 1, best, history, levels, levelsAt, xp })
 }
 
 /** Best score per day for one game (and detail), oldest first: for the progress charts. */

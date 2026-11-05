@@ -1,15 +1,38 @@
 // Record yourself: a take of your guitar sound (with the band if you like), played back here. The last five stay in this browser.
 import { useEffect, useRef, useState } from 'react'
-import { engine } from '../../audio/engine'
+import type { SyntheticEvent } from 'react'
 import type { Take } from '../takes'
 import { KEEP, addTake, deleteTake, listTakes, saveNote } from '../takes'
-import { BACKINGS, MAX_SEC, TakeRecorder, canRecord } from '../recorder'
+import type { TakeSource } from '../recorder'
+import { BACKINGS, MAX_SEC, TakeRecorder, canRecord, takeSource } from '../recorder'
 import { finishRound } from '../store'
 import { useRoundActivity, useTick } from '../hooks'
 import { GameHead, Timer } from './Common'
 
 const fmtWhen = (ms: number) => new Date(ms).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 const fmtSec = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`
+
+const SOURCE_NOTE: Record<TakeSource, string | null> = {
+  none: 'No guitar connected: the take will have no guitar in it, only the band (or silence).',
+  mic: 'Recording the microphone as it is, without the amp sound.',
+  dry: 'The amp is off: the take records your dry guitar signal.',
+  amp: null,
+}
+
+/** Stops a recorder and keeps what it caught: saved, counted, and given XP. Safe after the screen is gone. */
+async function finishTake(r: TakeRecorder): Promise<{ saved: boolean; xp: number } | null> {
+  const out = await r.stop()
+  if (!out) return null
+  const take: Take = { id: Date.now().toString(36), at: Date.now(), blob: out.blob, sec: out.sec, band: r.backing?.label ?? null, note: '' }
+  let saved = true
+  try {
+    await addTake(take)
+  } catch {
+    saved = false
+  }
+  const g = finishRound('record', Math.round(out.sec), out.sec >= 30 ? 5 : 0)
+  return { saved, xp: g.xp }
+}
 
 export function RecordTakes({ keyboard, onBack }: { keyboard: boolean; onBack: () => void }) {
   const [takes, setTakes] = useState<Take[]>([])
@@ -28,7 +51,10 @@ export function RecordTakes({ keyboard, onBack }: { keyboard: boolean; onBack: (
     void listTakes().then((t) => live && setTakes(t))
     return () => {
       live = false
-      void rec.current?.stop()
+      // Leaving while recording keeps the take, as Stop would.
+      const r = rec.current
+      rec.current = null
+      if (r) void finishTake(r)
     }
   }, [])
 
@@ -38,7 +64,7 @@ export function RecordTakes({ keyboard, onBack }: { keyboard: boolean; onBack: (
     setBusy(true)
     try {
       const r = new TakeRecorder()
-      await r.start(BACKINGS.find((b) => b.id === backing) ?? null)
+      await r.start(BACKINGS.find((b) => b.id === backing) ?? null, keyboard)
       rec.current = r
       setRecording(true)
     } catch {
@@ -54,17 +80,10 @@ export function RecordTakes({ keyboard, onBack }: { keyboard: boolean; onBack: (
     setRecording(false)
     if (!r) return
     setBusy(true)
-    const out = await r.stop()
-    if (out) {
-      const b = BACKINGS.find((x) => x.id === backing)
-      const take: Take = { id: Date.now().toString(36), at: Date.now(), blob: out.blob, sec: out.sec, band: b ? b.label : null, note: '' }
-      try {
-        await addTake(take)
-      } catch {
-        setError('Could not save the take in this browser.')
-      }
-      const g = finishRound('record', Math.round(out.sec), out.sec >= 30 ? 5 : 0)
-      if (g.xp) setXpNote(`+${g.xp} XP`)
+    const res = await finishTake(r)
+    if (res) {
+      if (!res.saved) setError('Could not save the take in this browser.')
+      setXpNote(res.xp ? `+${res.xp} XP` : '')
       setTakes(await listTakes())
     }
     setBusy(false)
@@ -78,11 +97,13 @@ export function RecordTakes({ keyboard, onBack }: { keyboard: boolean; onBack: (
 
   if (!canRecord()) {
     return (
-      <section className="sk-game">
+      <section className="sk-game" aria-labelledby="sk-game-h">
         <GameHead title="Record yourself" sub="This browser can't record audio." onBack={onBack} />
       </section>
     )
   }
+
+  const sourceNote = SOURCE_NOTE[takeSource(keyboard)]
 
   return (
     <section className="sk-game" aria-labelledby="sk-game-h">
@@ -121,14 +142,19 @@ export function RecordTakes({ keyboard, onBack }: { keyboard: boolean; onBack: (
           {error}
         </p>
       )}
-      {xpNote && <p className="ls-muted">Saved. {xpNote}</p>}
-      {(keyboard || !engine.running) && <p className="ls-caption">No guitar connected: the take will only have the band in it.</p>}
+      {xpNote !== null && <p className="ls-muted">Saved.{xpNote ? ` ${xpNote}` : ''}</p>}
+      {recording && <p className="ls-caption">Leaving this screen stops and keeps the take.</p>}
+      {sourceNote && <p className={takeSource(keyboard) === 'none' ? 'ls-warn' : 'ls-caption'}>{sourceNote}</p>}
       <ul className="sk-takes">
         {takes.map((t) => (
-          <TakeRow key={t.id} take={t} onDelete={async () => {
-            await deleteTake(t.id).catch(() => {})
-            setTakes(await listTakes())
-          }} />
+          <TakeRow
+            key={t.id}
+            take={t}
+            onDelete={async () => {
+              await deleteTake(t.id).catch(() => {})
+              setTakes(await listTakes())
+            }}
+          />
         ))}
       </ul>
       {!takes.length && <p className="ls-muted">No takes yet. Two minutes of jamming is plenty.</p>}
@@ -144,9 +170,23 @@ function RecDot() {
   )
 }
 
+// Chrome's recordings have no length in the file: seek to the end once so the player learns it and can scrub.
+function fixDuration(ev: SyntheticEvent<HTMLAudioElement>) {
+  const a = ev.currentTarget
+  if (a.duration !== Infinity) return
+  const back = () => {
+    if (a.duration === Infinity) return
+    a.removeEventListener('durationchange', back)
+    a.currentTime = 0
+  }
+  a.addEventListener('durationchange', back)
+  a.currentTime = 1e101
+}
+
 function TakeRow({ take, onDelete }: { take: Take; onDelete: () => void }) {
   const [url, setUrl] = useState<string | null>(null)
   const [note, setNote] = useState(take.note)
+  const [confirm, setConfirm] = useState(false)
   useEffect(() => {
     const u = URL.createObjectURL(take.blob)
     setUrl(u)
@@ -160,7 +200,7 @@ function TakeRow({ take, onDelete }: { take: Take; onDelete: () => void }) {
           {fmtSec(take.sec)} · {take.band ?? 'guitar only'}
         </span>
       </div>
-      {url && <audio controls src={url} preload="metadata" />}
+      {url && <audio controls src={url} preload="metadata" onLoadedMetadata={fixDuration} aria-label={`Take, ${fmtSec(take.sec)} long`} />}
       <div className="sk-take-foot">
         <input
           className="sk-note"
@@ -171,10 +211,23 @@ function TakeRow({ take, onDelete }: { take: Take; onDelete: () => void }) {
           onChange={(ev) => setNote(ev.target.value)}
           onBlur={() => void saveNote(take.id, note.trim()).catch(() => {})}
         />
-        <button className="ls-btn ghost small" onClick={onDelete}>
-          Delete
-        </button>
+        {!confirm && (
+          <button className="ls-btn ghost small" onClick={() => setConfirm(true)}>
+            Delete
+          </button>
+        )}
       </div>
+      {confirm && (
+        <div className="sk-take-confirm" role="group" aria-label="Delete this take?">
+          <span>Delete this take and its note for good?</span>
+          <button className="ls-btn small" onClick={onDelete}>
+            Delete
+          </button>
+          <button className="ls-btn ghost small" onClick={() => setConfirm(false)} autoFocus>
+            Keep
+          </button>
+        </div>
+      )}
     </li>
   )
 }
