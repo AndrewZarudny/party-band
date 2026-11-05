@@ -26,8 +26,9 @@ import { PlanStrip, TodayScreen } from '../lessons/ui/TodayPlan'
 import { LoopScreen } from '../lessons/ui/LoopScreen'
 import { HeatScreen } from '../lessons/ui/HeatScreen'
 import { Dino } from '../lessons/ui/Dino'
+import { SkillsHome } from '../skills/ui/SkillsHome'
 
-type Screen = 'welcome' | 'home' | 'today' | 'intro' | 'sync' | 'play' | 'results' | 'achievements' | 'settings' | 'loop' | 'heat'
+type Screen = 'welcome' | 'home' | 'today' | 'intro' | 'sync' | 'play' | 'results' | 'achievements' | 'settings' | 'loop' | 'heat' | 'skills'
 
 const SYNC_ID = 'w1-01'
 
@@ -315,6 +316,13 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
         onBack={goHome}
       />
     )
+  } else if (screen === 'skills') {
+    // Skill games may add a little XP to the saved progress: read it again on the way back.
+    const back = () => {
+      setProgress(loadProgress())
+      goHome()
+    }
+    body = <SkillsHome keyboard={keyboard} onConnect={onConnect} onBack={back} />
   } else if (screen === 'achievements') {
     body = <AchievementsPanel progress={progress} onEquip={(c) => updateProgress({ ...progress, cosmetics: c })} onClose={goHome} />
   } else if (screen === 'settings') {
@@ -342,6 +350,7 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
         onToday={() => setScreen('today')}
         onDrill={(key) => openDrill(key, 'home')}
         onHeat={() => setScreen('heat')}
+        onSkills={() => setScreen('skills')}
       />
     )
   }

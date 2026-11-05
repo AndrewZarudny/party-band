@@ -2,6 +2,7 @@
 import { songKey } from '../music/songLibrary'
 import { PRACTICE_KEY, mergePracticeRaw } from '../practice/data'
 import { HALF_LIFE_DAYS, MAX_CELLS } from '../lessons/heat'
+import { SKILLS_KEY, mergeStatsRaw } from '../skills/data'
 
 type Item = Record<string, unknown>
 
@@ -35,7 +36,7 @@ const MERGERS: Record<string, (win: Item[], other: Item[]) => unknown[]> = {
 }
 
 /** Keys merged when both browsers changed them during normal sync. */
-export const isMergeKey = (k: string) => k in MERGERS || k === PRACTICE_KEY
+export const isMergeKey = (k: string) => k in MERGERS || k === PRACTICE_KEY || k === SKILLS_KEY
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 
@@ -123,6 +124,8 @@ export function mergeLessonsProgress(a: string, b: string): string | null {
 export function mergeValues(k: string, win: string | null, other: string | null, firstSignIn = false): string | null {
   // Practice time: per-browser buckets, the larger count wins, so either order gives the same result.
   if (k === PRACTICE_KEY) return mergePracticeRaw(win, other)
+  // Skill games: history combined, the better best and the higher level kept.
+  if (k === SKILLS_KEY) return mergeStatsRaw(win, other)
   const merger = MERGERS[k]
   if (!merger && !(firstSignIn && k === 'song-favorites')) return null
   const w = parseList(win)

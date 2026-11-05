@@ -199,6 +199,19 @@ A path from "I can strum a bit on acoustic" to jamming freely on electric: 36 sh
 
 Chords are checked from the sound's note content, so a slightly wrong shape costs some credit but still passes. Strum direction is shown, not judged.
 
+### Skills
+
+**Skills** (top of the Lessons home) has short games, 1–3 minutes each. They count as practice time, give a little XP to your dino (at most 60 a day) and keep your bests and history in your account (`skills-stats`).
+
+- **Find every note**: one note at a time (A first), find it on each string, frets 0–5 to start. A faint hint shows after 10 s.
+- **Name that note**: a spot lights up on the fretboard, play it. Get 85% right over 10 or more spots and the board opens up to frets 7, 9, then 12.
+- **One-minute changes**: pick two chords (E, A, D, G, C, Am, Em, E5, A5, G5), strum one, switch, strum the other. Each strum is checked against both chords from its note content; clean switches count. A chart shows your best per day for that pair.
+- **Inner clock**: two bars of click, then 1–4 quiet bars while you keep strumming on each beat. Each quiet bar shows how early or late you drifted; a steady cycle (last quiet bar within 60 ms) makes the next gap a bar longer.
+- **Ear training**: the app plays 2 notes on the open strings, then longer phrases in the A minor pentatonic box at the 5th fret. Play them back; two right in a row adds a note.
+- **Record yourself**: record your guitar sound (after the amp and effects), with or without the band, and listen back. The last 5 takes and their notes stay in this browser only.
+
+No guitar connected? Every game takes keys instead: Space for a right answer or a beat, X for a wrong one, S to skip, R to hear a phrase again, and note buttons in the note and ear games.
+
 ## Accounts
 
 **Sign in** (top right) to keep everything in an account: songs and tabs, recordings, tones and presets, history, band, lyrics and timings, phrases, and lessons. Sign in from any browser on this computer, or from a device on your Wi-Fi, and it's all there.

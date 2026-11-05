@@ -182,6 +182,7 @@ export function LessonMap({
   onToday,
   onDrill,
   onHeat,
+  onSkills,
 }: {
   progress: Progress
   onOpen: (id: string) => void
@@ -194,6 +195,7 @@ export function LessonMap({
   onPlanSwap: (i: number) => void
   onPlanSkip: (i: number) => void
   onToday: () => void
+  onSkills?: () => void
 }) {
   const [now] = useState(() => new Date())
   const stage = dinoStageFor(progress)
@@ -241,6 +243,17 @@ export function LessonMap({
           </p>
         </div>
       </header>
+
+      {onSkills && (
+        <div className="sk-entry">
+          <p>
+            <b>Skills</b> <span className="ls-muted">· short games: notes, changes, timing, ear</span>
+          </p>
+          <button className="ls-btn small" onClick={onSkills}>
+            Open
+          </button>
+        </div>
+      )}
 
       {showSet && <TodayCard progress={progress} plan={plan} onOpen={onOpen} onDrill={onDrill} onSwap={onPlanSwap} onSkip={onPlanSkip} onToday={onToday} />}
 

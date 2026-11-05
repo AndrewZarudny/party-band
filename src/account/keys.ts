@@ -16,6 +16,7 @@ export const SYNC_KEYS = [
   'lessons-prefs',
   't3k-client-id',
   'practice-log',
+  'skills-stats',
 ]
 
 // Read fresh from storage on every use, so a newer account copy is merged in place without a page reload.

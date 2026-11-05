@@ -1,0 +1,439 @@
+/* Skills: short games beside the lessons. Theme tokens only. */
+.lessons .sk-home,
+.lessons .sk-game {
+  max-width: 820px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.lessons .sk-home-head {
+  justify-content: flex-start;
+}
+.lessons .sk-kbd-note {
+  font-size: var(--fs-ui);
+  color: var(--muted);
+}
+.lessons .sk-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+}
+.lessons .sk-card {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.lessons .sk-card:hover {
+  background: var(--panel-2);
+}
+.lessons .sk-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.lessons .sk-card-text .ls-muted {
+  font-size: var(--fs-ui);
+}
+.lessons .sk-card-best {
+  font-size: var(--fs-sm);
+  color: var(--accent);
+  font-weight: 700;
+}
+.lessons .sk-icon {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Skills entry on the Lessons home */
+.lessons .sk-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.lessons .sk-entry p {
+  margin: 0;
+}
+
+/* Game screens */
+.lessons .sk-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.lessons .sk-head-text {
+  flex: 1;
+  min-width: 0;
+}
+.lessons .sk-head h2 {
+  font-size: clamp(24px, 4.5vw, 36px);
+  margin: 0;
+}
+.lessons .sk-head .ls-muted {
+  font-size: var(--fs-ui);
+  margin: 4px 0 0;
+}
+.lessons .sk-timer {
+  flex: none;
+  width: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  font-size: 22px;
+  font-weight: 700;
+}
+.lessons .sk-timer .ls-bar {
+  width: 100%;
+  flex: none;
+  height: 6px;
+}
+.lessons .sk-timer .ls-bar > span {
+  transition: none;
+}
+.lessons .sk-prompt,
+.lessons .sk-pulse {
+  min-height: 64px;
+  text-align: center;
+}
+.lessons .sk-prompt p,
+.lessons .sk-pulse p {
+  margin: 4px 0;
+}
+.lessons .sk-big {
+  font-size: 1.6em;
+  color: var(--text);
+}
+.lessons .sk-pulse {
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+.lessons .sk-pulse.click {
+  border-color: var(--accent);
+}
+.lessons .sk-pulse.quiet {
+  background: var(--panel-2);
+  border-style: dashed;
+}
+.lessons .sk-flash {
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--fs-ui);
+  font-weight: 700;
+  border: 1px solid var(--line);
+}
+.lessons .sk-flash.clean {
+  color: var(--played-text, var(--text));
+  border-color: var(--played);
+}
+.lessons .sk-flash.muddy {
+  color: var(--root-text, var(--text));
+  border-color: var(--root);
+}
+.lessons .sk-board {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 10px;
+}
+.lessons .sk-board .fretboard {
+  display: block;
+  width: 100%;
+  min-width: 520px;
+  height: auto;
+}
+.lessons .sk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+.lessons .sk-actions kbd,
+.lessons .sk-game kbd {
+  font: inherit;
+  font-size: var(--fs-sm);
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+}
+.lessons .sk-pad {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+.lessons .sk-pad .ls-btn {
+  min-width: 52px;
+}
+.lessons .sk-pick-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 20px;
+}
+.lessons .sk-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.lessons .sk-field .ls-seg {
+  flex-wrap: wrap;
+}
+.lessons .sk-chords {
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+}
+.lessons .sk-chord {
+  padding: 6px;
+  border-radius: 12px;
+  border: 2px solid transparent;
+}
+.lessons .sk-chord.on {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+/* Round summary */
+.lessons .sk-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  padding: 12px 0;
+}
+.lessons .sk-done-head {
+  font-size: clamp(24px, 5vw, 36px);
+  margin: 0;
+}
+.lessons .sk-best-tag {
+  margin: 0;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+  font-size: var(--fs-ui);
+}
+.lessons .sk-lines {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 22px;
+  margin: 0;
+}
+.lessons .sk-lines div {
+  display: flex;
+  flex-direction: column;
+}
+.lessons .sk-lines dt {
+  font-size: var(--fs-sm);
+}
+.lessons .sk-lines dd {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* Inner clock cycles */
+.lessons .sk-cycles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  font-size: var(--fs-ui);
+}
+.lessons .sk-cycles li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--line);
+  margin-bottom: 4px;
+}
+.lessons .sk-cycles li.ok {
+  border-left-color: var(--played);
+}
+
+/* Ear training answer slots */
+.lessons .sk-slots {
+  list-style: none;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+.lessons .sk-slots li {
+  min-width: 42px;
+  padding: 8px 6px;
+  text-align: center;
+  font-weight: 700;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+.lessons .sk-slots li.got {
+  border-color: var(--text);
+}
+.lessons .sk-slots li.ok {
+  border-color: var(--played);
+  box-shadow: inset 0 -3px 0 var(--played);
+}
+.lessons .sk-slots li.octave {
+  border-color: var(--next);
+  box-shadow: inset 0 -3px 0 var(--next);
+}
+.lessons .sk-slots li.miss {
+  border-color: var(--root);
+  box-shadow: inset 0 -3px 0 var(--root);
+}
+
+/* Trend chart */
+.lessons .sk-chart {
+  margin: 0;
+  width: 100%;
+  max-width: 420px;
+  align-self: center;
+}
+.lessons .sk-chart svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.lessons .sk-chart figcaption {
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+.lessons .sk-chart-axis {
+  stroke: var(--line);
+}
+.lessons .sk-chart-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.lessons .sk-chart-dot {
+  fill: var(--bg);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.lessons .sk-chart-text {
+  fill: var(--muted);
+  font-size: 11px;
+}
+.lessons .sk-chart-empty {
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+/* Takes */
+.lessons .sk-takes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lessons .sk-take {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.lessons .sk-take-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+.lessons .sk-take audio {
+  width: 100%;
+}
+.lessons .sk-take-foot {
+  display: flex;
+  gap: 8px;
+}
+.lessons .sk-note {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: var(--fs-ui);
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+}
+.lessons .sk-rec-dot {
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  fill: currentColor;
+}
+
+@media (max-width: 480px) {
+  .lessons .sk-head {
+    flex-wrap: wrap;
+  }
+  .lessons .sk-timer {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+  }
+  .lessons .sk-timer .ls-bar {
+    width: auto;
+    flex: 1;
+  }
+  .lessons .sk-chords {
+    gap: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lessons .sk-card,
+  .lessons .sk-chord {
+    transition: none;
+  }
+}
