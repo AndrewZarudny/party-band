@@ -1,9 +1,12 @@
-// Technique basics: the six cards and which two a lesson shows first. Pure: no DOM.
+// Technique basics: the seven cards and which two a lesson shows first. Pure: no DOM.
 import type { Chart, ChartFingering, Lesson } from '../../types'
 
-export type BasicsId = 'grip' | 'wrist' | 'fret' | 'thumb' | 'pickMute' | 'fretMute'
+export type BasicsId = 'grip' | 'wrist' | 'fret' | 'thumb' | 'pickMute' | 'fretMute' | 'pressure'
 
-export const BASICS_ORDER: BasicsId[] = ['grip', 'wrist', 'fret', 'thumb', 'pickMute', 'fretMute']
+export const BASICS_ORDER: BasicsId[] = ['grip', 'wrist', 'fret', 'thumb', 'pickMute', 'fretMute', 'pressure']
+
+/** Lessons that lead with the minimum-pressure card (it also opens from the pain check-in). */
+const PRESSURE_FIRST = ['w1-05']
 
 export const BASICS: Record<BasicsId, { title: string; copy: string; chip: string }> = {
   grip: {
@@ -35,6 +38,11 @@ export const BASICS: Record<BasicsId, { title: string; copy: string; chip: strin
     title: 'Mute with the fretting hand',
     chip: 'Fretting-hand mute',
     copy: 'Ease off the pressure but keep touching the string: the note stops. The underside of your index quiets the strings above.',
+  },
+  pressure: {
+    title: 'Minimum pressure',
+    chip: 'Light grip',
+    copy: 'Fret a note and press until it buzzes. Then add just enough pressure to clear the buzz. That is all the grip you need. Thumb relaxed, wrist straight, short breaks.',
   },
 }
 
@@ -82,8 +90,7 @@ export function basicsFor(lesson: Lesson, chart: Chart, fingering: ChartFingerin
     ['thumb', early && fretted],
     ['grip', early],
   ]
-  return flags
-    .filter(([, on]) => on)
-    .map(([id]) => id)
-    .slice(0, 2)
+  const ids = flags.filter(([, on]) => on).map(([id]) => id)
+  if (PRESSURE_FIRST.includes(lesson.id)) ids.unshift('pressure')
+  return ids.slice(0, 2)
 }

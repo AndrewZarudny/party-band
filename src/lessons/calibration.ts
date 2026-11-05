@@ -59,6 +59,21 @@ export function saveLatency(cal: LatencyCal) {
   }
 }
 
+export const LATENCY_WARN_MS = 20 // Jack et al. 2018: above about 20 ms playing feels sluggish
+
+export interface LatencyAdvice {
+  outMs: number // output latency (engine.latencyMs)
+  roundMs: number | null // Tap In's measured round trip, null when not synced
+  warn: boolean
+}
+
+/** Whether to warn about delay: the output alone, or half the measured round trip (heuristic one-way estimate), over 20 ms. */
+export function latencyAdvice(outMs: number, cal: LatencyCal | null): LatencyAdvice {
+  const roundMs = cal ? cal.offsetMs : null
+  const warn = outMs > LATENCY_WARN_MS || (roundMs !== null && roundMs / 2 > LATENCY_WARN_MS)
+  return { outMs: Math.round(outMs), roundMs, warn }
+}
+
 /** Guitar, uncalibrated: output latency plus a typical input path. */
 export function defaultOffsetMs(): number {
   return engine.latencyMs + 50

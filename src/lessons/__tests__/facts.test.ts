@@ -6,7 +6,7 @@ import { result } from './fixtures'
 
 const LEAK = /NaN|undefined|Infinity|\[object|null/
 
-function input(o: { bpm?: number; spread?: number | null; mean?: number | null; score?: number; passed?: boolean; age?: number | null; at?: number; hour?: number; streak?: number; type?: PickInput['lessonType']; prev?: boolean } = {}): PickInput {
+function input(o: { bpm?: number; spread?: number | null; mean?: number | null; score?: number; passed?: boolean; age?: number | null; at?: number; hour?: number; session?: number; away?: number | null; type?: PickInput['lessonType']; prev?: boolean } = {}): PickInput {
   const counts = { ...emptyCounts(), perfect: 16, good: 4, miss: 1 }
   const score = o.score ?? 80
   const r = result({
@@ -22,7 +22,7 @@ function input(o: { bpm?: number; spread?: number | null; mean?: number | null; 
     meanAbsErrMs: 30,
     calibrated: true,
   })
-  const streak = o.streak ?? 1
+  const session = o.session ?? 1
   return {
     result: r,
     lessonType: o.type ?? 'notes',
@@ -36,7 +36,9 @@ function input(o: { bpm?: number; spread?: number | null; mean?: number | null; 
     firstBeatPass: false,
     passedBefore: 3,
     passedAfter: 4,
-    streak: { before: streak - 1, after: streak, counted: true },
+    sessions: { before: session - 1, after: session, counted: true },
+    away: o.away === undefined ? null : o.away,
+    weeks: 0,
     totalSecBefore: 0,
     totalSecAfter: 600,
     recent: [],
@@ -53,7 +55,7 @@ function sweep(age: number | null): PickInput[] {
   for (const bpm of [45, 60, 72, 90, 110, 130, 150, 180])
     for (const spread of [null, 8, 18, 30, 45, 70])
       for (const mean of [null, -45, -12, 3, 25])
-        for (const score of [40, 75, 86, 97]) out.push(input({ bpm, spread, mean, score, age, at: at++, hour: at % 24, streak: 1 + (at % 9), prev: at % 2 === 0 }))
+        for (const score of [40, 75, 86, 97]) out.push(input({ bpm, spread, mean, score, age, at: at++, hour: at % 24, session: 1 + (at % 30), away: at % 5 === 0 ? 9 : 1, prev: at % 2 === 0 }))
   return out
 }
 const idsOf = (xs: PickInput[]) => new Set(xs.flatMap((x) => pickLines(x).flatMap((l) => (l.factId ? [l.factId] : []))))
@@ -123,5 +125,26 @@ describe('pickLines', () => {
     expect(next).toHaveLength(RECENT_MAX)
     expect(next.slice(-2)).toEqual(['f3', 'new'])
     expect(next.filter((id) => id === 'f3')).toHaveLength(1)
+  })
+})
+
+describe('session milestones', () => {
+  const texts = (x: PickInput) => pickLines({ ...x, recent: [] }).map((l) => l.text)
+  const sweepSessions = (n: number, away: number | null) => Array.from({ length: 40 }, (_, i) => texts(input({ session: n, away, at: 1000 + i, bpm: 300, spread: null, mean: null })))
+
+  it('SUE lines on sessions 19 and 28, never day counts or sleep claims', () => {
+    expect(sweepSessions(19, 1).flat().some((t) => t.startsWith('Session 19!'))).toBe(true)
+    expect(sweepSessions(28, 1).flat().some((t) => t.startsWith('28 sessions!'))).toBe(true)
+    const all = [2, 7, 19, 28, 66].flatMap((n) => sweepSessions(n, 1)).flat()
+    expect(all.some((t) => /every day|night's sleep|Nap tip|in a row|streak is/i.test(t))).toBe(false)
+  })
+
+  it('comeback lines only after 7 or more days away', () => {
+    const back = sweepSessions(5, 9).flat()
+    const near = sweepSessions(5, 2).flat()
+    const comeback = /Welcome back|Missing a session|Good things come back/
+    expect(back.some((t) => comeback.test(t))).toBe(true)
+    expect(near.some((t) => comeback.test(t))).toBe(false)
+    expect(back.some((t) => t.includes("Missing a day"))).toBe(false)
   })
 })

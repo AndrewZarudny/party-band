@@ -40,12 +40,18 @@ export function InnerClock({ keyboard, onBack }: { keyboard: boolean; onBack: ()
     const lastDrifts = rs.map((r) => r.drifts[r.drifts.length - 1]).filter((d): d is number => d !== null && d !== undefined)
     const steady = rs.filter((r) => r.ok).length
     setLevels({ clockGap: gapRef.current })
+    // Drift of each cycle's last quiet bar as % of a beat, by quiet bars, for the progress screen (no XP).
+    const beatMs = 60000 / bpm
+    for (const c of rs) {
+      const d = c.drifts[c.drifts.length - 1]
+      if (d !== null && d !== undefined) finishRound('drift', Math.round((100 * Math.abs(d)) / beatMs), String(c.gap))
+    }
     if (!lastDrifts.length) {
       setDone({ headline: 'No strums heard in the quiet bars', lines: [], best: false, xp: 0, note: 'Keep strumming on every beat while the click is off.' })
       return
     }
     const avg = Math.round(lastDrifts.reduce((s, d) => s + Math.abs(d), 0) / lastDrifts.length)
-    const r = finishRound('clock', avg, 5 + 3 * steady)
+    const r = finishRound('clock', avg)
     setStats(r.stats)
     setDone({
       headline: `${avg} ms off on average`,

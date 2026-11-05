@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { Chart } from '../types'
 import { Judge, WINDOWS, evidenceFor, voteMidi, windowsFor } from '../judge'
+import { CONF_LOW, checkChord, chordConfidence } from '../chroma'
 import { chartOf, chord, frames, note, onset } from './fixtures'
 
 const SPB = 0.5
 const judgeFor = (chart: Chart, o: { octaveOk?: boolean; listenBars?: number[] } = {}) =>
-  new Judge(chart, { start: 0, secPerBeat: SPB, windows: WINDOWS.normal, octaveOk: o.octaveOk ?? false, restGate: () => 0.01, listenBars: o.listenBars ?? [] })
+  new Judge(chart, { start: 0, secPerBeat: SPB, windows: WINDOWS.normal, octaveOk: o.octaveOk ?? false, restGate: () => 0.01, listenBars: o.listenBars ?? [], swing: false })
 
 // Three notes a second apart: wide enough that no window is shrunk.
 const three = () => chartOf([note(0, 0, 0, 0), note(1, 2, 1, 0), note(2, 4, 2, 0)])
@@ -190,6 +191,7 @@ describe('settled / takeSettled', () => {
     j.tick(0.5)
     expect(r.chordOk).toBe(false)
     expect(r.credit).toBeCloseTo(0.7)
+    expect(r.chordConf).toBeGreaterThanOrEqual(CONF_LOW)
     expect(j.settled(0)).toBe(true)
     expect(j.takeSettled()).toEqual([0])
     expect(j.takeSettled()).toEqual([])
@@ -219,5 +221,110 @@ describe('settled / takeSettled', () => {
   it('an unplayed event is not settled', () => {
     const j = judgeFor(three())
     expect(j.settled(0)).toBe(false)
+  })
+})
+
+describe('honest chord checks', () => {
+  const C = [0, 4, 7]
+
+  it('chordConfidence: a wide margin and enough frames is sure; a tie or few frames is not', () => {
+    const on = new Float32Array(12)
+    for (const p of C) on[p] = 1
+    const c = checkChord(on, 'C')
+    expect(c.ok).toBe(true)
+    expect(chordConfidence(c, 6)).toBeCloseTo(1)
+    expect(chordConfidence(c, 3)).toBeCloseTo(0.5)
+    const flat = checkChord(new Float32Array(12).fill(1), 'C')
+    expect(chordConfidence(flat, 6)).toBeLessThanOrEqual(0.5 + 1e-9)
+  })
+
+  it('an unclear chord is neither right nor wrong, and keeps its credit', () => {
+    const j = judgeFor(chartOf([chord(0, 0, 'C', C, { chroma: true })]))
+    j.onset(onset(0, null))
+    const r = j.tick(0.01)[0]
+    const flat = new Float32Array(12).fill(1)
+    for (const dt of [0.2, 0.25, 0.3, 0.35, 0.4]) j.addChroma(j.chromaWindows(dt), flat)
+    j.tick(0.5)
+    expect(r.chordOk).toBeNull()
+    expect(r.chordConf).toBeLessThan(CONF_LOW)
+    expect(r.credit).toBe(1)
+  })
+
+  it('a live chroma chord with too few frames is unsure (confidence 0)', () => {
+    const j = judgeFor(chartOf([chord(0, 0, 'C', C, { chroma: true })]))
+    j.onset(onset(0, null, 'attack'))
+    const r = j.tick(0.2)[0]
+    j.tick(0.6)
+    expect(r.chordOk).toBeNull()
+    expect(r.chordConf).toBe(0)
+  })
+
+  const E5 = () => chartOf([chord(0, 0, 'E5', [4, 11], { power: true, frets: [0, 2, -1, -1, -1, -1] })])
+
+  it('a power chord with an unsteady pitch vote is "couldn\'t tell", without a penalty', () => {
+    const j = judgeFor(E5())
+    for (const f of [...frames(0, 4, 40), ...frames(0.04, 4, 47), ...frames(0.08, 4, 50)]) j.frame(f)
+    j.onset(onset(0, 40, 'attack'))
+    const r = j.tick(0.2)[0]
+    expect(r.chordConf).toBeLessThan(CONF_LOW)
+    expect(r.chordOk).toBeNull()
+    expect(r.credit).toBe(1)
+  })
+
+  it('a power chord with a steady vote is judged as before', () => {
+    const j = judgeFor(E5())
+    for (const f of frames(0, 12, 40)) j.frame(f)
+    j.onset(onset(0, 40, 'attack'))
+    expect(j.tick(0.2)[0]).toMatchObject({ chordOk: true, chordConf: 1, credit: 1 })
+    const k = judgeFor(E5())
+    for (const f of frames(0, 12, 41)) k.frame(f)
+    k.onset(onset(0, 41, 'attack'))
+    const w = k.tick(0.2)[0]
+    expect(w.chordOk).toBe(false)
+    expect(w.credit).toBeCloseTo(0.85)
+  })
+})
+
+describe('palm-muted strums and bends', () => {
+  const pChord = () => chartOf([chord(0, 0, 'E5', [4, 11], { power: true, dir: 'P', frets: [0, 2, -1, -1, -1, -1] })])
+
+  it('a P chord gets the palm-mute decay check', () => {
+    const j = judgeFor(pChord())
+    for (const f of [...frames(0, 6, 40, 0.1), ...frames(0.06, 20, 40, 0.01)]) j.frame(f)
+    j.onset(onset(0, 40, 'attack'))
+    const r = j.tick(0.13)[0]
+    expect(r.pmOk).toBeNull()
+    j.tick(0.5)
+    expect(r.pmOk).toBe(true)
+  })
+
+  it('a P chord that rings on is not palm-muted', () => {
+    const j = judgeFor(pChord())
+    for (const f of frames(0, 30, 40, 0.1)) j.frame(f)
+    j.onset(onset(0, 40, 'attack'))
+    const r = j.tick(0.13)[0]
+    j.tick(0.5)
+    expect(r.pmOk).toBe(false)
+  })
+
+  it('a key hit on a P chord counts as muted', () => {
+    const j = judgeFor(pChord())
+    j.onset(onset(0, 40))
+    expect(j.tick(0.01)[0].pmOk).toBe(true)
+  })
+
+  it('a bend reports how far from the target it was held, in cents', () => {
+    const e = note(0, 0, 3, 7, { tech: 'bend', bendTo: 64, dur: 2 }) // G string fret 7 = 62, bent a tone up
+    const j = judgeFor(chartOf([e]))
+    const fs = [
+      ...frames(0, 10, 62),
+      ...Array.from({ length: 85 }, (_, i) => ({ t: 0.1 + i * 0.01, rms: 0.05, midi: 64, midiF: 63.8 })),
+    ]
+    for (const f of fs) j.frame(f)
+    j.onset(onset(0, 62, 'attack'))
+    const r = j.tick(0.2)[0]
+    j.tick(1.1)
+    expect(r.techOk).toBe(true)
+    expect(r.bendCents).toBe(20)
   })
 })

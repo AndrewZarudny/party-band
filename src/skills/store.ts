@@ -1,7 +1,7 @@
 // Reading and saving the skill stats, and the small XP they give to the lessons progress.
 import { dayKey, loadProgress, saveProgress } from '../lessons/progress'
-import type { GameId, SkillStats } from './data'
-import { SKILLS_KEY, emptyStats, parseStats, record } from './data'
+import type { GameId, SkillEntry, SkillStats } from './data'
+import { SKILLS_KEY, emptyStats, parseStats, record, skillXp } from './data'
 
 const XP_PER_DAY = 60
 
@@ -21,9 +21,19 @@ export function saveStats(s: SkillStats): void {
   }
 }
 
+const listeners = new Set<(e: SkillEntry) => void>()
+
+/** Called for every recorded entry (ratings and measurements too). Returns the unsubscribe. */
+export function onSkillRound(fn: (e: SkillEntry) => void): () => void {
+  listeners.add(fn)
+  return () => {
+    listeners.delete(fn)
+  }
+}
+
 /**
  * A little XP into the lessons progress (at most 60 a day from skills). Returns the XP given.
- * Only touches xp and today's XP, so lesson records, streaks and the plan are left alone.
+ * Only touches xp, so lesson records, sessions and the plan are left alone.
  */
 export function giveXp(s: SkillStats, amount: number, now = new Date()): { stats: SkillStats; xp: number } {
   const today = dayKey(now)
@@ -36,16 +46,18 @@ export function giveXp(s: SkillStats, amount: number, now = new Date()): { stats
     return { stats: s, xp: 0 }
   }
   const p = loadProgress()
-  const daily = p.daily.day === today ? { ...p.daily, xp: p.daily.xp + xp } : { day: today, xp, passes: 0 }
-  saveProgress({ ...p, xp: p.xp + xp, daily })
+  saveProgress({ ...p, xp: p.xp + xp })
   return { stats: { ...s, xp: { day: today, got: got + xp } }, xp }
 }
 
-/** Saves a round: history, best, optional XP. */
-export function finishRound(game: GameId, score: number, xp: number, detail?: string): { best: boolean; xp: number; stats: SkillStats } {
-  const r = record(loadStats(), game, score, detail)
-  const g = giveXp(r.stats, xp)
+/** Saves a round: history, best, and XP for a real gain only (skillXp). */
+export function finishRound(game: GameId, score: number, detail?: string): { best: boolean; xp: number; stats: SkillStats } {
+  const before = loadStats()
+  const r = record(before, game, score, detail)
+  const g = giveXp(r.stats, skillXp(before, game, score, detail))
   saveStats(g.stats)
+  const e = g.stats.history[0]
+  if (e) listeners.forEach((fn) => fn(e))
   return { best: r.best, xp: g.xp, stats: g.stats }
 }
 
@@ -58,4 +70,3 @@ export function setLevels(patch: Partial<SkillStats['levels']>): SkillStats {
   saveStats(next)
   return next
 }
-

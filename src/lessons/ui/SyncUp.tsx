@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { engine } from '../../audio/engine'
 import type { SyncOutcome } from '../types'
 import type { SyncState } from '../calibration'
-import { SyncSession, micWarning, saveLatency } from '../calibration'
+import { SyncSession, latencyAdvice, micWarning, saveLatency } from '../calibration'
 import { clicksMuted } from '../clock'
+import { LatencyNote } from './LatencyNote'
 import { StarPips } from './LessonMap'
 
 const CLICKS = 8
@@ -106,6 +107,14 @@ export function SyncUp({ lessonMode, keyboard, onDone }: { lessonMode: boolean; 
         <div className="ls-sync-result">
           <StarPips stars={outcome.stars} />
           <p className="ls-sync-msg" aria-live="polite">{outcome.message}</p>
+          {!keyboard && (
+            <LatencyNote
+              advice={latencyAdvice(
+                engine.latencyMs,
+                outcome.ok ? { v: 1, offsetMs: outcome.offsetMs, pitchLagMs: outcome.pitchLagMs, spreadMs: outcome.madMs, device: '', at: 0 } : null,
+              )}
+            />
+          )}
           <div className="ls-actions">
             {outcome.ok ? (
               <button ref={primary} className="ls-btn primary" onClick={save}>

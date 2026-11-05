@@ -1,0 +1,158 @@
+/* Timing: rest timer, latency note, loop segments, speed and timing lines. Colours only from theme tokens. */
+
+/* ---- rest timer ---- */
+.tm-rest {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.tm-rest-ring {
+  width: 48px;
+  height: 48px;
+  flex: none;
+}
+.tm-rest-ring circle {
+  fill: none;
+  stroke-width: 3;
+}
+.tm-rest-track {
+  stroke: var(--line);
+}
+.tm-rest-left {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  transition: stroke-dashoffset 250ms linear;
+}
+.tm-rest-ring text {
+  fill: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+.lessons .tm-rest-box {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+}
+.lessons .tm-rest-box p {
+  margin: 0;
+  font-size: var(--fs-ui);
+}
+
+/* ---- intro: BPM labels are long, so the speed choices wrap on a phone ---- */
+.lessons .tm-speeds .ls-seg {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.lessons .tm-speeds .ls-seg button {
+  flex: 1 1 auto;
+}
+
+/* ---- latency note ---- */
+.lessons .tm-latency {
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+.lessons .tm-latency summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: var(--fs-ui);
+}
+.lessons .tm-latency summary:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.lessons .tm-latency p,
+.lessons .tm-latency ul {
+  margin: 6px 0 0;
+}
+.lessons .tm-latency ul {
+  padding-left: 18px;
+}
+.lessons .tm-latency li + li {
+  margin-top: 4px;
+}
+
+/* ---- result card lines ---- */
+.lessons .tm-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: var(--fs-ui);
+}
+.lessons .tm-better {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+}
+.lessons .tm-better h3 {
+  margin: 0 0 4px;
+  font-size: var(--fs-ui);
+  font-weight: 650;
+}
+.lessons .tm-better ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-ui);
+}
+
+/* ---- loop segments ---- */
+.lessons .tm-seg {
+  display: inline-block;
+  margin-left: 4px;
+  font-style: normal;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+.lessons .tm-seg.fast {
+  border-color: var(--accent);
+  color: var(--text);
+}
+/* slow passes: hollow dots that never decide anything */
+.lo-dots li.slow {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--muted);
+}
+.lo-dots li.slow.clean {
+  border-style: solid;
+  border-color: var(--target);
+}
+.lessons .tm-rest-stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  padding: 16px;
+  text-align: center;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+}
+.lessons .tm-rest-stage p {
+  margin: 0;
+  font-size: var(--fs-ui);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-rest-left {
+    transition: none;
+  }
+}

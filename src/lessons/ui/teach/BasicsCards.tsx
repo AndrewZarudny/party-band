@@ -1,4 +1,4 @@
-// Technique basics: six small looping pictures, each with a still version for reduced motion.
+// Technique basics: seven small looping pictures, each with a still version for reduced motion.
 // Every loop is a function of time in its period; one rAF per visible card writes attributes through refs.
 import { useRef } from 'react'
 import type { ReactNode, RefObject } from 'react'
@@ -392,6 +392,74 @@ function FretMuteArt({ still }: { still: boolean }) {
   )
 }
 
+// ---- 7. Minimum pressure ----------------------------------------------------------
+
+// The tip rests just behind the wire: light (buzz), then a touch more (clear), never a squeeze.
+function PressurePanel({ press }: { press: 'buzz' | 'clear' }) {
+  const clear = press === 'clear'
+  return (
+    <>
+      <line className="tc-art-string" x1={10} x2={150} y1={62} y2={62} />
+      <rect className="tc-art-wire" x={88} y={46} width={3} height={32} />
+      <ellipse className="tc-tip tc-f1" cx={78} cy={clear ? 55 : 53.5} rx={8} ry={7} />
+      <path className={clear ? 'tc-art-wave' : 'tc-art-buzz'} d={wave(98, 150, 62, clear ? 3 : 2.4, Math.PI / 2, !clear)} />
+    </>
+  )
+}
+
+function PressureArt({ still }: { still: boolean }) {
+  const tip = useRef<SVGEllipseElement>(null)
+  const fx = useRef<SVGPathElement>(null)
+  const word = useRef<SVGTextElement>(null)
+  const lastWord = useRef('')
+  const svg = useLoop(3.2, still, (t) => {
+    // 0–0.4 the tip comes down lightly, 0.4–1.4 buzz, 1.4–1.6 just a little more, 1.6–2.8 clean, then lift
+    const y = t < 0.4 ? lerp(30, 53.5, easeOut(t / 0.4)) : t < 1.4 ? 53.5 : t < 1.6 ? lerp(53.5, 55, easeInOut((t - 1.4) / 0.2)) : t < 2.8 ? 55 : lerp(55, 30, easeIn((t - 2.8) / 0.4))
+    tip.current?.setAttribute('cy', y.toFixed(2))
+    const buzz = t >= 0.4 && t < 1.4
+    const ring = t >= 1.6 && t < 2.8
+    if (fx.current) {
+      const k = buzz ? t - 0.4 : t - 1.6
+      fx.current.setAttribute('class', buzz ? 'tc-art-buzz' : 'tc-art-wave')
+      fx.current.setAttribute('d', buzz || ring ? wave(98, 150, 62, buzz ? 2.4 : 3 * Math.exp(-k / 0.9), k * 2 * Math.PI * 9, buzz) : 'M98 62H150')
+      fx.current.setAttribute('opacity', buzz || ring ? '1' : '0')
+    }
+    const w = buzz ? 'buzz: a touch more' : ring ? 'clear: that is enough' : ''
+    if (w !== lastWord.current && word.current) {
+      word.current.textContent = w
+      word.current.setAttribute('class', `tc-art-label strong ${ring ? 'good' : ''}`)
+      lastWord.current = w
+    }
+  })
+  if (still)
+    return (
+      <Art label="Two frames: a light fingertip just behind the fret wire buzzes; a touch more pressure and the note rings clear">
+        <g transform="translate(0 6) scale(0.48 0.8)">
+          <PressurePanel press="buzz" />
+        </g>
+        <g transform="translate(84 6) scale(0.48 0.8)">
+          <PressurePanel press="clear" />
+        </g>
+        <path className="tc-art-arrow" d="M66 22H94M90 18l4 4l-4 4" />
+        <text className="tc-art-label strong" x={38} y={100} textAnchor="middle">
+          buzz
+        </text>
+        <text className="tc-art-label strong good" x={122} y={100} textAnchor="middle">
+          clear
+        </text>
+      </Art>
+    )
+  return (
+    <Art svgRef={svg} label="A fingertip just behind the fret wire presses lightly and buzzes, then a touch more and the note rings clear">
+      <line className="tc-art-string" x1={10} x2={150} y1={62} y2={62} />
+      <rect className="tc-art-wire" x={88} y={46} width={3} height={32} />
+      <path ref={fx} className="tc-art-wave" d="M98 62H150" opacity={0} />
+      <ellipse ref={tip} className="tc-tip tc-f1" cx={78} cy={30} rx={8} ry={7} />
+      <text ref={word} className="tc-art-label strong" x={80} y={98} textAnchor="middle" />
+    </Art>
+  )
+}
+
 const ART: Record<BasicsId, (p: { still: boolean; strum: boolean }) => ReactNode> = {
   grip: GripArt,
   wrist: WristArt,
@@ -399,6 +467,7 @@ const ART: Record<BasicsId, (p: { still: boolean; strum: boolean }) => ReactNode
   thumb: ThumbArt,
   pickMute: PickMuteArt,
   fretMute: FretMuteArt,
+  pressure: PressureArt,
 }
 
 /** One basics card: the picture, the title and the copy. */

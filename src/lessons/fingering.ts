@@ -42,6 +42,10 @@ export const CHORD_FINGERS: Record<string, ChordFingering> = {
   'x,0,2,2,1,0': { fingers: [_, 0, 2, 3, 1, 0] }, // Am
   '0,2,2,1,0,0': { fingers: [0, 2, 3, 1, 0, 0] }, // E
   'x,x,x,7,7,5': { fingers: [_, _, _, 3, 4, 1] }, // D top 3
+  // Boogie sixths: the index stays on fret 2 (the fifth), the ring finger reaches fret 4 and back.
+  'x,0,4,x,x,x': { fingers: [_, 0, 3, _, _, _] }, // A6
+  'x,x,0,4,x,x': { fingers: [_, _, 0, 3, _, _] }, // D6
+  '0,4,x,x,x,x': { fingers: [0, 3, _, _, _, _] }, // E6
 }
 
 const shapeKey = (frets: number[]) => frets.map((f) => (f < 0 ? 'x' : f)).join(',')

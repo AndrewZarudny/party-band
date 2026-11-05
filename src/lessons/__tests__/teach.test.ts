@@ -4,7 +4,7 @@ import { buildChart } from '../charts'
 import { assignFingering } from '../fingering'
 import { barAt, beatToPoint, overviewLayout } from '../ui/teach/layout'
 import { easeIn, easeInOut, easeOut, easeOutBack, Glide, pendulum } from '../ui/teach/motion'
-import { BASICS, basicsCard, basicsFor, strums } from '../ui/teach/basics'
+import { BASICS, BASICS_ORDER, basicsCard, basicsFor, strums } from '../ui/teach/basics'
 import { DemoClock } from '../ui/teach/clock'
 import type { LeadVoice } from '../synth'
 import { loopBeat, phraseLabel, stepCaption, stepsOf } from '../ui/teach/phrase'
@@ -121,6 +121,19 @@ describe('basicsFor', () => {
     expect(basicsCard('wrist', true).copy).not.toMatch(/still/)
     expect(basicsCard('wrist', false)).toBe(BASICS.wrist)
     expect(basicsCard('grip', true)).toBe(BASICS.grip)
+  })
+  it('leads with the minimum-pressure card on Light Touch', () => {
+    const p = pick('w1-05')
+    expect(p[0]).toBe('pressure')
+    expect(p).toHaveLength(2)
+    expect(pick('w1-02')).not.toContain('pressure')
+  })
+  it('has the pressure card last in the order, with its copy', () => {
+    expect(BASICS_ORDER[BASICS_ORDER.length - 1]).toBe('pressure')
+    expect(BASICS_ORDER).toHaveLength(7)
+    expect(BASICS.pressure.title).toBe('Minimum pressure')
+    expect(BASICS.pressure.copy).toMatch(/buzz/)
+    expect(basicsCard('pressure', true)).toBe(BASICS.pressure)
   })
   it('never gives more than two', () => {
     for (const l of LESSONS) {

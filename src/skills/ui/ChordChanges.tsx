@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChordDiagram } from '../../components/PartViews'
 import { guitarShape } from '../../music/parts'
 import { parseChord } from '../../music/theory'
-import { CHANGE_CHORDS, countStrum, emptyCount, judgeStrum, pairKey } from '../chords'
+import { CHANGE_CHORDS, RETIRE_AT, countStrum, emptyCount, judgeStrum, pairKey } from '../chords'
 import { bestKey, dailyBest } from '../data'
 import { finishRound, loadStats } from '../store'
 import { useGuitar, useKeys, useRoundActivity, useTick } from '../hooks'
@@ -22,9 +22,15 @@ function Shape({ name, on }: { name: string; on: boolean }) {
   )
 }
 
-export function ChordChanges({ keyboard, onBack }: { keyboard: boolean; onBack: () => void }) {
-  const [a, setA] = useState('E')
-  const [b, setB] = useState('A')
+/** The two chords of a pair key like 'A-E', when both are on offer. */
+function splitPair(pair: string | undefined): [string, string] | null {
+  const [a, b] = pair?.split('-') ?? []
+  return a && b && CHANGE_CHORDS.includes(a) && CHANGE_CHORDS.includes(b) && a !== b ? [a, b] : null
+}
+
+export function ChordChanges({ keyboard, onBack, pair: startPair }: { keyboard: boolean; onBack: () => void; pair?: string }) {
+  const [a, setA] = useState(() => splitPair(startPair)?.[0] ?? 'E')
+  const [b, setB] = useState(() => splitPair(startPair)?.[1] ?? 'A')
   const [running, setRunning] = useState(false)
   const [endAt, setEndAt] = useState(0)
   const [count, setCount] = useState(emptyCount)
@@ -75,7 +81,7 @@ export function ChordChanges({ keyboard, onBack }: { keyboard: boolean; onBack: 
     setRunning(false)
     pending.current.forEach((c) => c())
     pending.current = []
-    const r = finishRound('changes', count.changes, Math.min(20, Math.round(count.changes / 2)), pair)
+    const r = finishRound('changes', count.changes, pair)
     setStats(r.stats)
     const tried = count.strums + count.muddy
     setDone({
@@ -86,7 +92,12 @@ export function ChordChanges({ keyboard, onBack }: { keyboard: boolean; onBack: 
       ],
       best: r.best,
       xp: r.xp,
-      note: count.changes < 20 ? 'Switch slowly and land every finger together. Speed comes on its own.' : undefined,
+      note:
+        count.changes >= RETIRE_AT
+          ? 'That pair is retired: 60 a minute. Pick another pair.'
+          : count.changes < 20
+            ? 'Switch slowly and land every finger together. Speed comes on its own.'
+            : undefined,
     })
   }, [running, left, count, pair, a, b])
 
@@ -113,8 +124,8 @@ export function ChordChanges({ keyboard, onBack }: { keyboard: boolean; onBack: 
         <>
           {!running && (
             <div className="sk-pick-row">
-              <ChordPick label="First chord" value={a} other={b} onPick={setA} />
-              <ChordPick label="Second chord" value={b} other={a} onPick={setB} />
+              <ChordPick label="First chord" value={a} other={b} onPick={setA} best={stats.best} />
+              <ChordPick label="Second chord" value={b} other={a} onPick={setB} best={stats.best} />
             </div>
           )}
           <div className="sk-chords">
@@ -128,7 +139,13 @@ export function ChordChanges({ keyboard, onBack }: { keyboard: boolean; onBack: 
                 {last && <span className={`sk-flash ${last}`}>{last === 'clean' ? 'Clean' : 'Muddy'}</span>}
               </p>
             ) : (
-              <p className="ls-muted">{best !== undefined ? `Your best for this pair: ${best}.` : 'Start slow: one strum on each chord.'}</p>
+              <p className="ls-muted">
+                {best === undefined
+                  ? 'Start slow: one strum on each chord. Your first round is your baseline.'
+                  : best >= RETIRE_AT
+                    ? 'Retired: 60 a minute. Pick another pair.'
+                    : `Your best for this pair: ${best}. Retire it at ${RETIRE_AT}.`}
+              </p>
             )}
           </div>
           <div className="sk-actions">
@@ -148,14 +165,14 @@ export function ChordChanges({ keyboard, onBack }: { keyboard: boolean; onBack: 
   )
 }
 
-function ChordPick({ label, value, other, onPick }: { label: string; value: string; other: string; onPick: (c: string) => void }) {
+function ChordPick({ label, value, other, onPick, best }: { label: string; value: string; other: string; onPick: (c: string) => void; best: Record<string, number> }) {
   return (
     <label className="ls-field sk-field">
       <span className="ls-field-label">{label}</span>
       <select className="ls-select" value={value} onChange={(ev) => onPick(ev.target.value)}>
         {CHANGE_CHORDS.filter((c) => c !== other).map((c) => (
           <option key={c} value={c}>
-            {c}
+            {`${c}${(best[bestKey('changes', pairKey(c, other))] ?? 0) >= RETIRE_AT ? ' · retired' : ''}`}
           </option>
         ))}
       </select>

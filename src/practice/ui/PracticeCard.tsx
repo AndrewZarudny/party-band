@@ -1,10 +1,10 @@
 import './practice.css'
-import { STREAK_SEC, fmtDay, fmtDuration, usePractice } from '../stats'
+import { fmtDay, fmtDuration, usePractice } from '../stats'
 
 /** The account menu's practice block: today, this week, total, and this week's days as small bars. */
 export function PracticeCard({ onOpen }: { onOpen: () => void }) {
   const p = usePractice()
-  const top = Math.max(STREAK_SEC * 6, ...p.week7.map((d) => d.total))
+  const top = Math.max(1800, ...p.week7.map((d) => d.total))
   const todayKey = p.last30[p.last30.length - 1].key
   return (
     <section className="prac-card" aria-labelledby="prac-card-h">
@@ -30,7 +30,7 @@ export function PracticeCard({ onOpen }: { onOpen: () => void }) {
           return (
             <li key={d.key} className={`${d.key === todayKey ? 'today' : ''}${future ? ' future' : ''}`}>
               <span className="prac-week-bar" aria-hidden="true">
-                <i className={d.total >= STREAK_SEC ? 'met' : ''} style={{ height: `${Math.min(100, (d.total / top) * 100)}%` }} />
+                <i style={{ height: `${Math.min(100, (d.total / top) * 100)}%` }} />
               </span>
               <span className="prac-week-day" aria-hidden="true">
                 {name.slice(0, 1)}

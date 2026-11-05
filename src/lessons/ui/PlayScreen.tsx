@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChartEvent, ChordEv, Cosmetic, DinoMood, Lesson, LessonResult, NoteEv, Prefs, RunState, Speed, Verdict } from '../types'
+import type { ChartEvent, ChordEv, Cosmetic, DinoMood, Lesson, LessonResult, NoteEv, Prefs, RunState, Speed, TabLevel, Verdict } from '../types'
 import { LessonRun, autoplayFromUrl } from '../run'
 import { MIN_SPEED } from '../speed'
 import { VERDICT_LABEL } from '../scoring'
@@ -18,7 +18,9 @@ import { prefersStill } from '../runwayDraw'
 import { FINGER_NAME, fingeringFor, guidesOn } from '../fingering'
 import { guideMarkers, nextAtBeat } from '../guides'
 import { holdReload, practice } from '../../account/activity'
+import { QUIET_BAND } from '../listen'
 import './play.css'
+import './listen.css'
 
 type Overlay = 'paused' | 'disconnected' | 'error' | 'listened' | null
 
@@ -39,6 +41,7 @@ const EMPTY_HUD: Hud = { points: 0, chain: 0, roar: false, verdict: null, vKey: 
 const ROAR_AT = 16
 const MOOD_MS: Partial<Record<DinoMood, number>> = { happy: 450, oops: 380, sad: 2600 }
 const END_SWEEP_MS = 900 // a good run's closing sweep on the runway, before the results
+const PEEK_MS = 3000 // Peek shows the full tab this long
 
 function setMoodClass(svg: Element, m: DinoMood) {
   for (const c of Array.from(svg.classList)) if (c.startsWith('mood-')) svg.classList.remove(c)
@@ -96,6 +99,10 @@ export function PlayScreen({
   onSlower,
   onConnect,
   listen = false,
+  tab = 'full',
+  quiet = false,
+  shuffle = false,
+  cold = false,
 }: {
   lesson: Lesson
   prefs: Prefs
@@ -110,7 +117,17 @@ export function PlayScreen({
   onConnect: () => void
   /** Demo playback ("Listen first"): no judging, no result. */
   listen?: boolean
+  /** How much tab shows: full, faded (dim numbers) or hidden (timing only). */
+  tab?: TabLevel
+  /** Listen mode: band louder, no live verdicts, chain or score; the summary comes at the end. */
+  quiet?: boolean
+  /** Shuffle mode: a straight lesson played swung, practice only. */
+  shuffle?: boolean
+  /** A cold-start test: first try, no warm-up. */
+  cold?: boolean
 }) {
+  const [peek, setPeek] = useState(false)
+  const peekedRef = useRef(false)
   const [attempt, setAttempt] = useState(0)
   // A lesson run (even paused) isn't reloaded away under the player.
   useEffect(() => {
@@ -129,9 +146,9 @@ export function PlayScreen({
   const [improv, setImprov] = useState<{ chord: string; chips: { beat: number; midi: number; kind: 'chord' | 'scale' | 'out' }[] }>({ chord: '', chips: [] })
 
   // Latest props for callbacks that live as long as a run.
-  const live = useRef({ lesson, prefs, listen, onEnd, onPrefs, speed })
+  const live = useRef({ lesson, prefs, listen, onEnd, onPrefs, speed, tab, quiet, shuffle })
   useEffect(() => {
-    live.current = { lesson, prefs, listen, onEnd, onPrefs, speed }
+    live.current = { lesson, prefs, listen, onEnd, onPrefs, speed, tab, quiet, shuffle }
   })
 
   const dinoRef = useRef<HTMLDivElement>(null)
@@ -147,6 +164,7 @@ export function PlayScreen({
     let lastHappy = 0
     /** A momentary mood on the dino: swaps its mood-* class without a React render. */
     const flashMood = (m: DinoMood) => {
+      if (live.current.quiet) return // listen mode: no live verdicts, the dino included
       const svg = dinoRef.current?.querySelector('svg.dino')
       if (!svg) return
       setMoodClass(svg, m)
@@ -167,10 +185,14 @@ export function PlayScreen({
       mic: p.input === 'mic',
       listen: isListen,
       autoplay: autoplayFromUrl(),
+      shuffle: live.current.shuffle,
+      bandLevel: live.current.quiet ? QUIET_BAND : 1,
     })
     let cancelled = false
     let misses = 0
     let roarSeen = false
+    peekedRef.current = false
+    setPeek(false)
     setRun(r)
     setRunState('idle')
     setHud({ ...EMPTY_HUD, next: firstPlayable(r.chart.events) })
@@ -191,7 +213,8 @@ export function PlayScreen({
       const bad = res.verdict === 'miss' || res.verdict === 'wrong' || res.verdict === 'ringing'
       if (bad) {
         misses++
-        if (misses === 4) {
+        // listen mode: no "slow it down" nudge mid-run
+        if (misses === 4 && !live.current.quiet) {
           flashMood('sad')
           setSad(true)
           window.setTimeout(() => setSad(false), MOOD_MS.sad)
@@ -205,7 +228,7 @@ export function PlayScreen({
           flashMood('happy')
         }
       }
-      if (h.roar && !roarSeen) {
+      if (h.roar && !roarSeen && !live.current.quiet) {
         roarSeen = true
         if (!live.current.prefs.seenRoar) {
           setRoarTip(true)
@@ -232,10 +255,13 @@ export function PlayScreen({
     }
     let endTimer = 0
     let endHeld: LessonResult | null = null
-    r.onEnd = (result) => {
+    r.onEnd = (raw) => {
       if (cancelled) return
+      // how much tab was shown: a peek counts as the full tab
+      const peeked = peekedRef.current
+      const result: LessonResult = { ...raw, tab: peeked ? 'full' : live.current.tab, quiet: live.current.quiet, peeked }
       if (live.current.listen) setOverlay('listened')
-      else if (result.stars >= 2 && !prefersStill()) {
+      else if (result.stars >= 2 && !prefersStill() && !live.current.quiet) {
         // two stars or more: a short sweep along the strings, then the results
         fxBusFor(r).celebrate()
         endHeld = result
@@ -356,6 +382,18 @@ export function PlayScreen({
     setAttempt((a) => a + 1)
   }
 
+  // Peek: the full tab for a few seconds; the run then counts as played with the full tab
+  const peekNow = () => {
+    peekedRef.current = true
+    setPeek(true)
+  }
+  useEffect(() => {
+    if (!peek) return
+    const id = window.setTimeout(() => setPeek(false), PEEK_MS)
+    return () => window.clearTimeout(id)
+  }, [peek])
+  const shownTab: TabLevel = peek ? 'full' : tab
+
   const chart = run?.chart
   const bars = chart?.bars ?? lesson.bars
 
@@ -437,7 +475,7 @@ export function PlayScreen({
             <i ref={progressRef} />
           </div>
         </div>
-        {!listen && (
+        {!listen && !quiet && (
           <div className="lp-score" aria-live="off">
             <span>Score</span>
             <b>{hud.points.toLocaleString()}</b>
@@ -445,7 +483,7 @@ export function PlayScreen({
         )}
         <div className="lp-dino" ref={dinoRef}>
           <Dino stage={stage} mood={baseMood} size={72} cosmetics={cosmetics} />
-          {!listen && (
+          {!listen && !quiet && (
             <div className={`lp-roar${hud.roar ? ' on' : ''}`} title={`Roar at a chain of ${ROAR_AT}`}>
               <i style={{ transform: `scaleX(${roarFill})` }} />
             </div>
@@ -455,14 +493,21 @@ export function PlayScreen({
       </header>
 
       <div className="lp-stage">
-        {run && <Runway run={run} zoom={prefs.zoom} nudgeMs={prefs.visualNudgeMs} guides={guides} />}
+        {run && <Runway run={run} zoom={prefs.zoom} nudgeMs={prefs.visualNudgeMs} guides={guides} tab={shownTab} quiet={quiet && !listen} />}
         {listen && playing && <span className="lp-listen-tag">{guides ? 'Just watch: the numbers show which finger.' : 'Just watch and listen.'}</span>}
-        {hud.verdict && (
+        {!listen && (quiet || cold || shuffle) && (
+          <div className="lp-mode-tags">
+            {cold && playing && <span className="lp-mode-tag cold">Cold start: first try, no warm-up.</span>}
+            {quiet && <span className="lp-mode-tag">Listen mode: play by ear, the summary comes at the end.</span>}
+            {shuffle && <span className="lp-mode-tag">Shuffle: practice only.</span>}
+          </div>
+        )}
+        {hud.verdict && !quiet && (
           <span key={hud.vKey} className={`lp-verdict v-${hud.verdict}`}>
             {VERDICT_LABEL[hud.verdict]}
           </span>
         )}
-        {hud.milestone && (
+        {hud.milestone && !quiet && (
           <span key={`m${hud.mKey}`} className="lp-milestone">
             {hud.milestone}
           </span>
@@ -544,7 +589,16 @@ export function PlayScreen({
         )}
       </div>
 
-      {!listen && (
+      {!listen && tab !== 'full' && (
+        <div className="lp-tabbar">
+          <button type="button" className={`lp-peek${peek ? ' on' : ''}`} onClick={peekNow} disabled={peek || !playing} aria-pressed={peek}>
+            Peek (3 s)
+          </button>
+          <span className="lp-tabbar-note">{tab === 'hidden' ? 'Tab hidden: play it from memory.' : 'Tab faded: lean on your memory.'}</span>
+        </div>
+      )}
+
+      {!listen && !quiet && (
         <div className="lp-under">
           <div className={`lp-chain${hud.chain > 0 ? '' : ' zero'}`}>
             <span>Chain</span>
@@ -562,7 +616,7 @@ export function PlayScreen({
         </div>
       )}
 
-      {helper?.kind === 'chords' && (helper.cur || helper.after) && (
+      {helper?.kind === 'chords' && shownTab !== 'hidden' && (helper.cur || helper.after) && (
         <div className="lp-chords">
           {helper.cur && (
             <figure className="lp-chord now">
@@ -579,7 +633,7 @@ export function PlayScreen({
         </div>
       )}
 
-      {prefs.showFretboard && helper && helper.kind !== 'chords' && (
+      {prefs.showFretboard && helper && helper.kind !== 'chords' && !quiet && !(helper.kind === 'notes' && shownTab !== 'full') && (
         <div className="lp-fretboard">
           <Fretboard
             markers={helper.markers}
@@ -612,7 +666,7 @@ export function PlayScreen({
         </div>
       )}
 
-      {lesson.type === 'improv' && improv.chips.length > 0 && (
+      {lesson.type === 'improv' && !quiet && improv.chips.length > 0 && (
         <ol className="lp-chips" aria-label="Notes you played">
           {improv.chips.map((n, i) => (
             <li key={`${n.beat}-${i}`} className={`k-${n.kind}`}>

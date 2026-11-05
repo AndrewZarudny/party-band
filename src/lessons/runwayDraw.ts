@@ -1,8 +1,9 @@
 // The tab runway: string lanes (high e on top), notes as fret-number pills scrolling right to left into the pick line.
 // Pure canvas drawing. The caller scales the context for devicePixelRatio and passes sizes in CSS pixels.
 
-import type { Chart, ChartEvent, ChartFingering, ChordEv, ChordFingering, Finger, JudgeResult, LiveHud, NoteEv, PickDir, Shift } from './types'
+import type { Chart, ChartEvent, ChartFingering, ChordEv, ChordFingering, Finger, JudgeResult, LiveHud, NoteEv, PickDir, Shift, TabLevel } from './types'
 import { STANDARD_TUNING, noteName } from '../music/theory'
+import { swungBeat } from './clock'
 import type { PillXf, RunwayFx } from './fx/runwayFx'
 
 export interface RunwayColors {
@@ -37,7 +38,11 @@ export interface RunwayView {
   played: { beat: number; midi: number; kind: 'chord' | 'scale' | 'out' }[]
   result(id: number): JudgeResult | undefined
   pendingEvent(): ChartEvent | null
+  swing?: boolean // events sit on the swung grid (they cross the pick line when they sound)
 }
+
+/** Alpha of fret numbers and finger badges on a faded tab. */
+export const FADED_ALPHA = 0.35
 
 // Calm dark, in case the tokens can't be read
 const FALLBACK: RunwayColors = {
@@ -91,6 +96,8 @@ export function readColors(el: Element): RunwayColors {
 // Set at the start of each frame: the app's UI font, and whether decoration should hold still.
 let FONT = 'system-ui, sans-serif'
 let still = false
+// Set at the start of each frame: alpha of fret numbers and finger badges (the tab level)
+let labelA = 1
 // Set per judged pill by enterPill(): its alpha multiplier and whether it is cracked (a miss)
 let fade = 1
 let cracked = false
@@ -260,6 +267,7 @@ function laneForMidi(midi: number) {
  * `countIn = false` hides the big count-in number (the intro's still preview).
  * `fx` adds the live effects (hit bursts, string shake, beat pulse, Roar); the caller ticks it first.
  * `guides` adds finger badges, pick strokes and hand-move tags (looked up by event id).
+ * `tab`: 'faded' dims fret numbers and finger badges; 'hidden' shows only timing pills on the rhythm lane.
  */
 export function drawRunway(
   g: CanvasRenderingContext2D,
@@ -273,14 +281,21 @@ export function drawRunway(
   countIn = true,
   fx?: RunwayFx,
   guides?: ChartFingering | null,
+  tab: TabLevel = 'full',
 ): void {
   FONT = c.font || 'system-ui, sans-serif'
   still = reduced
+  labelA = tab === 'faded' ? FADED_ALPHA : 1
+  const hidden = tab === 'hidden'
+  if (hidden) guides = null
   const { chart } = view
+  const sw = !!view.swing
   const spb = 60 / view.bpm
   const ppb = clamp(((210 * 60) / view.bpm) * zoom, 90, 260)
   const pickX = Math.round(w * 0.2)
   const X = (b: number) => pickX + (b - beat) * ppb
+  // where an event sounds: off-beat 8ths sit later on a swung grid (bar lines and beats stay straight)
+  const XS = (b: number) => X(swungBeat(b, sw))
   const bFrom = beat - (pickX - GUTTER) / ppb - 0.25
   const bTo = beat + (w - pickX) / ppb + 0.25
 
@@ -368,12 +383,12 @@ export function drawRunway(
 
   // Calls (played by the app): faint
   if (chart.calls.length) {
-    const dots = callsAsDots(chart)
+    const dots = hidden || callsAsDots(chart)
     g.globalAlpha = 0.35
     for (const cn of chart.calls) {
       if (cn.beat + cn.dur < bFrom || cn.beat > bTo) continue
-      const x = X(cn.beat)
-      const y = laneY(cn.string)
+      const x = XS(cn.beat)
+      const y = hidden ? rhythmY : laneY(cn.string)
       if (dots) {
         g.fillStyle = c.text
         g.beginPath()
@@ -399,14 +414,21 @@ export function drawRunway(
       lastChordSym = ev.symbol
       lastChordBeat = ev.beat
       if (ev.beat + ev.dur < bFrom) continue
-      const cx = X(ev.beat)
+      const cx = XS(ev.beat)
+      if (hidden) {
+        if (enterPill(g, fx, ev.id, cx, rhythmY, 0.3)) {
+          drawBlank(g, cx, cx, rhythmY, pillH, view.result(ev.id), ev.id === pendId, ev, beat, spb, c)
+          leavePill(g)
+        }
+        continue
+      }
       if (enterPill(g, fx, ev.id, cx, (laneY(5) + laneY(0)) / 2, 0.3)) {
         const r = view.result(ev.id)
         drawChord(g, ev, cx, laneY, rhythmY, pillH, r, ev.id === pendId, showName, beat, spb, c)
         const ef = guides ? guides.events[ev.id] : undefined
         if (ef && ef.kind === 'chord') {
           const a = (r ? 0.45 : 1) * fade
-          if (showName) chordBadges(g, ef.fingering, ev.frets, cx, laneY, a, c)
+          if (showName) chordBadges(g, ef.fingering, ev.frets, cx, laneY, a * labelA, c)
           if (!ev.dir) pickGlyph(g, cx, rhythmY, ef.pick, a, c)
         }
         leavePill(g)
@@ -415,18 +437,23 @@ export function drawRunway(
     }
     if (ev.beat + ev.dur < bFrom) continue
     const r = view.result(ev.id)
-    const x = X(ev.beat)
+    const x = XS(ev.beat)
     if (ev.kind === 'note') {
-      const xEnd = X(ev.beat + ev.dur)
-      const y = laneY(ev.string)
+      const xEnd = XS(ev.beat + ev.dur)
+      const y = hidden ? rhythmY : laneY(ev.string)
       // a note with a sustain tail stays visible while it rings; a short one thins to a ghost
-      if (enterPill(g, fx, ev.id, x, y, xEnd - x > 24 ? 0.7 : 0.25)) {
+      if (hidden) {
+        if (enterPill(g, fx, ev.id, x, y, xEnd - x > 24 ? 0.7 : 0.25)) {
+          drawBlank(g, x, xEnd, y, pillH, r, ev.id === pendId, ev, beat, spb, c)
+          leavePill(g)
+        }
+      } else if (enterPill(g, fx, ev.id, x, y, xEnd - x > 24 ? 0.7 : 0.25)) {
         drawNote(g, ev, x, xEnd, y, pillH, r, ev.id === pendId, beat, spb, c)
         const ef = guides ? guides.events[ev.id] : undefined
         if (ef && ef.kind === 'note') {
           const a = (r ? 0.45 : 1) * fade
           // an open string's pill already reads 0
-          if (!ev.hidden && pillH >= 14 && ev.fret > 0 && ef.finger !== 0) fingerBadge(g, x + (ev.fret >= 10 ? 15 : 12) - 1, y + pillH / 2 - 2, 6, ef.finger, a, c)
+          if (!ev.hidden && pillH >= 14 && ev.fret > 0 && ef.finger !== 0) fingerBadge(g, x + (ev.fret >= 10 ? 15 : 12) - 1, y + pillH / 2 - 2, 6, ef.finger, a * labelA, c)
           if (ef.pick) pickGlyph(g, x, rhythmY, ef.pick, a, c)
         }
         leavePill(g)
@@ -436,7 +463,7 @@ export function drawRunway(
         drawMute(g, x, rhythmY, r, ev.id === pendId, c)
         leavePill(g)
       }
-    } else drawRest(g, x, X(ev.beat + ev.dur), rhythmY, pillH, r, c)
+    } else drawRest(g, x, XS(ev.beat + ev.dur), rhythmY, pillH, r, c)
   }
 
   // Hand moves: a tag in the top band, over the chord names, tied to the note it is for
@@ -446,14 +473,14 @@ export function drawRunway(
       if (ev.beat < bFrom - 1 || (ev.kind !== 'note' && ev.kind !== 'chord')) continue
       const ef = guides.events[ev.id]
       if (!ef || (ef.kind !== 'note' && ef.kind !== 'chord') || !ef.shift || ef.shift.kind !== 'shift') continue
-      const x = X(ev.beat)
+      const x = XS(ev.beat)
       const pillTop = ev.kind === 'note' ? laneY(ev.string) - pillH / 2 : laneY(5) - pillH / 2 + 1
       shiftTag(g, x, x - Math.min(ppb * 0.5, 22), pillTop, ef.shift, view.result(ev.id) ? 0.45 : 1, c)
     }
   }
 
-  // Improv: what you played, as dots on the nearest string lane
-  if (view.played.length) {
+  // Improv: what you played, as dots on the nearest string lane (not with the tab hidden: play by ear)
+  if (view.played.length && !hidden) {
     g.font = `700 9px ${FONT}`
     for (const p of view.played) {
       if (p.beat < bFrom || p.beat > bTo) continue
@@ -521,8 +548,55 @@ function drawPill(g: CanvasRenderingContext2D, x: number, y: number, ph: number,
   g.stroke()
   g.fillStyle = text
   g.font = `700 ${Math.round(ph * 0.62)}px ${FONT}`
+  const a = g.globalAlpha
+  g.globalAlpha = a * labelA
   g.fillText(label, x, y + 0.5)
+  g.globalAlpha = a
   return pw
+}
+
+/** Hidden tab: a blank timing pill on the rhythm lane (no string, fret, finger or chord name). */
+function drawBlank(
+  g: CanvasRenderingContext2D,
+  x: number,
+  xEnd: number,
+  y: number,
+  ph: number,
+  r: JudgeResult | undefined,
+  pending: boolean,
+  ev: { beat: number },
+  beat: number,
+  spb: number,
+  c: RunwayColors,
+) {
+  const pw = 18
+  const hit = !!r && isHit(r)
+  const missed = !!r && r.verdict === 'miss'
+  const h = Math.round(ph * 0.75)
+  g.globalAlpha = (missed ? 0.4 : 1) * fade
+  // a held note keeps a thin tail, so its length still reads
+  if (xEnd - x > pw / 2 + 6) {
+    g.fillStyle = hit ? c.target : c.muted
+    g.globalAlpha = (missed ? 0.2 : 0.4) * fade
+    rr(g, x, y - 2, xEnd - x - 3, 4, 2)
+    g.fill()
+    g.globalAlpha = (missed ? 0.4 : 1) * fade
+  }
+  rr(g, x - pw / 2, y - h / 2, pw, h, h / 2)
+  g.fillStyle = c.panel2
+  g.fill()
+  if (hit) {
+    g.globalAlpha = 0.35 * fade
+    g.fillStyle = c.target
+    g.fill()
+    g.globalAlpha = fade
+  }
+  g.lineWidth = pending ? 2 : 1.5
+  g.strokeStyle = r && r.verdict === 'wrong' ? c.played : pending ? c.accent : missed ? c.line : c.muted
+  g.stroke()
+  if (cracked) crack(g, x, y, h / 2, c)
+  if (hit && r && !still) ring(g, x, y, h / 2, ev, r, beat, spb, c.target)
+  g.globalAlpha = 1
 }
 
 // ---- Guides: fingers, pick strokes, hand moves ----
@@ -688,7 +762,10 @@ function drawNote(
   g.stroke()
   g.fillStyle = missed ? c.muted : c.text
   g.font = `700 ${Math.round(ph * 0.62)}px ${FONT}`
+  const a = g.globalAlpha
+  g.globalAlpha = a * labelA
   g.fillText(ev.hidden ? '?' : String(ev.fret), x, y + 0.5)
+  g.globalAlpha = a
   if (cracked) crack(g, x, y, ph / 2, c)
 
   // technique marks above the pill
@@ -784,12 +861,15 @@ function drawChord(
   g.stroke()
 
   g.font = `700 ${Math.round(ph * 0.55)}px ${FONT}`
+  const a = g.globalAlpha
+  g.globalAlpha = a * labelA
   for (let s = 0; s < 6; s++) {
     const f = ev.frets[s]
     const muted = f === undefined || f < 0
     g.fillStyle = muted ? c.muted : missed ? c.muted : c.text
     g.fillText(muted ? 'x' : String(f), x, laneY(s) + 0.5)
   }
+  g.globalAlpha = a
 
   if (showName) {
     g.font = `700 12px ${FONT}`

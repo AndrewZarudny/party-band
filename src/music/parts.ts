@@ -188,6 +188,33 @@ export const FEELS: Record<string, Feel> = {
     drums: { hat: 'x_x_x_x_', snare: '____x___', kick: '____x___' },
     leadTip: 'Sparse melodic lines between the chops.',
   },
+  // 12/8 is approximated as swung 8ths in 4/4: the hat plays the first and third triplet of each beat
+  // (the middle one isn't played), because the band engine has 8 slots per bar.
+  slowblues: {
+    label: 'Slow blues',
+    swing: true,
+    strum: 'D___D___',
+    guitarTip: 'Slow 12/8 feel: count 1-2-3, 2-2-3. Let the chords ring and leave space.',
+    keys: 'X---X---',
+    keysTip: 'Hold the chord through each half bar, soft.',
+    bass: 'R_5_8_5_',
+    bassTip: 'Root, fifth, octave, fifth: slow and round.',
+    drums: { hat: 'xxxxxxxx', snare: '__x___x_', kick: 'x___x___' },
+    leadTip: 'Fewer notes, more feeling. Bend into chord tones and hold them.',
+  },
+  // A minor blues: no major 3rd or 6th in the bass walk, so it never clashes with the minor box.
+  minorblues: {
+    label: 'Minor blues',
+    swing: true,
+    strum: 'D_D_D_D_',
+    guitarTip: 'Shuffle feel (long-short). Short minor chords, or just the root and fifth.',
+    keys: '__X___X_',
+    keysTip: 'Comp short chords on beats 2 and 4, shuffle feel.',
+    bass: 'R_5_8_5_',
+    bassTip: 'Root, fifth, octave, fifth each bar.',
+    drums: { hat: 'x_x_x_x_', snare: '__x___x_', kick: 'x___x___' },
+    leadTip: 'Minor pentatonic: the same box fits every chord. Land on the root or the minor 3rd.',
+  },
 }
 
 export const COUNTS = ['1', '&', '2', '&', '3', '&', '4', '&']

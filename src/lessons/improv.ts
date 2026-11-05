@@ -1,6 +1,6 @@
 // Improv lessons: what kind of note was played, technique spotting and the free-play metrics.
 // Pure: no engine or DOM.
-import type { Chart, ImprovMetric, ImprovReport, ImprovSpec, InputFrame, InputOnset, PlayedNote, TechHit } from './types'
+import type { Chart, ImprovMetric, ImprovReport, ImprovSpec, InputFrame, InputOnset, JamStats, PlayedNote, TechHit } from './types'
 import { SCALES, noteName, parseChord, pc } from '../music/theory'
 
 // Vibrato check (shared with judge.ts).
@@ -223,17 +223,13 @@ export function analyseImprov(spec: ImprovSpec, chart: Chart, notes: PlayedNote[
   const techKinds = new Set(techs.map((h) => h.kind)).size
   const techniqueBonus = spec.technique ? Math.min(20, 5 * techKinds) : 0
 
+  const jam = jamStats(chart, play)
+
   if (play.length < spec.minNotes) {
-    return { notes: play.length, metrics: {}, techniqueBonus, tooFew: true, tips: [`Play at least ${spec.minNotes} notes. Silence can't win this one.`] }
+    return { notes: play.length, metrics: {}, techniqueBonus, tooFew: true, tips: [`Play at least ${spec.minNotes} notes. Silence can't win this one.`], jam }
   }
 
-  // Phrases: split at gaps of a beat or more.
-  const phrases: PlayedNote[][] = []
-  for (const n of play) {
-    const cur = phrases.length ? phrases[phrases.length - 1] : null
-    if (cur && n.beat - cur[cur.length - 1].beat < 1) cur.push(n)
-    else phrases.push([n])
-  }
+  const phrases = splitPhrases(play)
   const half = Math.max(1, playBars.length / 2)
 
   const metric: Record<ImprovMetric, () => number> = {
@@ -344,7 +340,60 @@ export function analyseImprov(spec: ImprovSpec, chart: Chart, notes: PlayedNote[
       tips.push(tip)
     }
   }
-  return { notes: play.length, metrics, techniqueBonus, tooFew: false, tips }
+  return { notes: play.length, metrics, techniqueBonus, tooFew: false, tips, jam }
+}
+
+/** Phrases: notes split at gaps of a beat or more (notes sorted by beat). */
+function splitPhrases(play: PlayedNote[]): PlayedNote[][] {
+  const phrases: PlayedNote[][] = []
+  for (const n of play) {
+    const cur = phrases.length ? phrases[phrases.length - 1] : null
+    if (cur && n.beat - cur[cur.length - 1].beat < 1) cur.push(n)
+    else phrases.push([n])
+  }
+  return phrases
+}
+
+const STRONG_NEAR = 0.25 // beats either side of beat 1 or 3
+const STRONG_MIN = 4 // fewer strong-beat notes than this: no share
+const PHRASES_MIN = 2
+
+/**
+ * Jam quality for the progress screen: strong-beat notes on chord tones, rests between phrases, silent bars.
+ * `play` = the notes that count (no call-bar notes), sorted by beat.
+ */
+export function jamStats(chart: Chart, play: PlayedNote[]): JamStats {
+  const listen = new Set(chart.listenBars)
+  let strongN = 0
+  let strongOk = 0
+  const heard = new Set<number>()
+  for (const n of play) {
+    const bar = Math.floor(n.beat / 4)
+    if (bar >= 0 && bar < chart.bars) heard.add(bar)
+    // the nearest beat 1 or 3 (a note just before the bar line belongs to the next bar)
+    const half = Math.round(n.beat / 2)
+    if (Math.abs(n.beat - 2 * half) > STRONG_NEAR + 1e-9) continue
+    const b = Math.floor((2 * half) / 4)
+    if (b < 0 || b >= chart.bars || listen.has(b)) continue
+    const tones = chordPcs(chart.chordTimeline[b]?.symbol ?? '')
+    if (!tones.length) continue
+    strongN++
+    if (tones.includes(pc(n.midi))) strongOk++
+  }
+  const phrases = splitPhrases(play)
+  let rest = 0
+  for (let i = 1; i < phrases.length; i++) {
+    const prev = phrases[i - 1]
+    rest += phrases[i][0].beat - prev[prev.length - 1].beat
+  }
+  let silentBars = 0
+  for (let b = 0; b < chart.bars; b++) if (!listen.has(b) && !heard.has(b)) silentBars++
+  return {
+    strong: strongN >= STRONG_MIN ? strongOk / strongN : null,
+    restBeats: phrases.length >= PHRASES_MIN ? rest / (phrases.length - 1) : null,
+    phrases: phrases.length,
+    silentBars,
+  }
 }
 
 export function improvScore(spec: ImprovSpec, r: ImprovReport): number {

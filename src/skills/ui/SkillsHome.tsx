@@ -1,7 +1,7 @@
 // The Skills area: five short games next to the lessons, each with its best result.
 import { useState } from 'react'
 import { bestKey } from '../data'
-import type { GameId } from '../data'
+import type { GameId, SkillStart } from '../data'
 import { loadStats } from '../store'
 import { FretGame } from './FretGame'
 import { ChordChanges } from './ChordChanges'
@@ -32,7 +32,7 @@ const topOf = (b: Record<string, number>, g: GameId) => {
 const CARDS: Card[] = [
   { id: 'find', title: 'Find every note', text: 'Every A on the neck, string by string.', best: (b) => (bestOf(b, 'find') !== undefined ? `Best ${bestOf(b, 'find')} spots` : null) },
   { id: 'name', title: 'Name that note', text: 'A spot lights up. Play it.', best: (b) => (bestOf(b, 'name') !== undefined ? `Best ${bestOf(b, 'name')} right` : null) },
-  { id: 'changes', title: 'One-minute changes', text: 'Two chords, 60 seconds, count the clean switches.', best: (b) => (topOf(b, 'changes') !== undefined ? `Best ${topOf(b, 'changes')} changes` : null) },
+  { id: 'changes', title: 'One-minute changes', text: 'Two chords, 60 seconds, count the clean switches. Retire a pair at 60.', best: (b) => (topOf(b, 'changes') !== undefined ? `Best ${topOf(b, 'changes')} changes` : null) },
   { id: 'clock', title: 'Inner clock', text: 'The click drops out. Stay on the beat.', best: (b) => (bestOf(b, 'clock') !== undefined ? `Best ${bestOf(b, 'clock')} ms off` : null) },
   { id: 'ear', title: 'Ear training', text: 'Hear a short phrase, play it back.', best: (b) => (bestOf(b, 'ear') !== undefined ? `Longest ${bestOf(b, 'ear')} notes` : null) },
   { id: 'record', title: 'Record yourself', text: 'Record a take, listen back, note what to fix.', best: () => null },
@@ -55,18 +55,21 @@ function CardIcon({ id }: { id: Card['id'] }) {
   )
 }
 
-export function SkillsHome({ keyboard, onBack, onConnect }: { keyboard: boolean; onBack: () => void; onConnect: () => void }) {
-  const [screen, setScreen] = useState<Screen>('home')
+export function SkillsHome({ keyboard, onBack, onConnect, start }: { keyboard: boolean; onBack: () => void; onConnect: () => void; start?: SkillStart }) {
+  // A start (from the session plan or a pocket session) opens that game at once; the mental card isn't a game here.
+  const [screen, setScreen] = useState<Screen>(() => (start && start.game !== 'mental' ? start.game : 'home'))
   const [stats, setStats] = useState(loadStats)
   const home = () => {
     setStats(loadStats())
     setScreen('home')
   }
+  const pair = start?.game === 'changes' ? start.pair : undefined
+  const band = start?.game === 'record' ? start.band : undefined
 
   if (screen === 'find' || screen === 'name') return <FretGame key={screen} mode={screen} keyboard={keyboard} onBack={home} />
-  if (screen === 'changes') return <ChordChanges keyboard={keyboard} onBack={home} />
+  if (screen === 'changes') return <ChordChanges keyboard={keyboard} onBack={home} pair={pair} />
   if (screen === 'clock') return <InnerClock keyboard={keyboard} onBack={home} />
-  if (screen === 'record') return <RecordTakes keyboard={keyboard} onBack={home} />
+  if (screen === 'record') return <RecordTakes keyboard={keyboard} onBack={home} band={band} />
   if (screen === 'ear') return <EarGame keyboard={keyboard} onBack={home} />
 
   return (

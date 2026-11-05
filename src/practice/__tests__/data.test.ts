@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { mergeLogs, mergePracticeRaw, parseLog, prune, totalsOf } from '../data'
+import { mergeLogs, mergePracticeRaw, nextDay, parseLog, practiceDaySec, prune, totalsOf } from '../data'
 
 const log = (devices: Record<string, { days: Record<string, number[]>; before?: number[]; upto?: string }>) =>
   JSON.stringify({ v: 1, devices: Object.fromEntries(Object.entries(devices).map(([id, d]) => [id, { before: [0, 0, 0, 0], upto: '', ...d }])) })
@@ -43,6 +43,24 @@ describe('practice log merge', () => {
   it('parseLog drops bad days and numbers', () => {
     const p = parseLog(JSON.stringify({ v: 1, devices: { A: { days: { 'nope': [1], '2026-11-04': [5.4, -3, 'x'] }, before: 'x', upto: 'bad' } } }))
     expect(p.devices.A).toEqual({ days: { '2026-11-04': [5, 0, 0, 0] }, before: [0, 0, 0, 0], upto: '' })
+  })
+})
+
+describe('practice day (4 am to 4 am)', () => {
+  it('seconds after midnight belong to the day before, not the next one', () => {
+    // Mon 23:30 to Tue 00:30: 1800 s on Monday, 1800 s on Tuesday before 4 am.
+    const raw = JSON.stringify({ v: 1, devices: { A: { days: { '2026-11-02': [1800, 0, 0, 0], '2026-11-03': [1800, 0, 0, 0] }, before: [0, 0, 0, 0], upto: '', early: { '2026-11-03': 1800 } } } })
+    const t = totalsOf(parseLog(raw))
+    expect(practiceDaySec(t, '2026-11-02')).toBe(3600)
+    expect(practiceDaySec(t, '2026-11-03')).toBe(0)
+    expect(nextDay('2026-12-31')).toBe('2027-01-01')
+  })
+
+  it('early seconds merge per device like the days and are pruned with them', () => {
+    const a = parseLog(JSON.stringify({ v: 1, devices: { A: { days: { '2026-11-03': [100, 0, 0, 0] }, early: { '2026-11-03': 40 } } } }))
+    const b = parseLog(JSON.stringify({ v: 1, devices: { A: { days: { '2026-11-03': [90, 0, 0, 0] }, early: { '2026-11-03': 60, '2024-01-01': 5 } } } }))
+    const m = mergeLogs(a, b, NOW)
+    expect(m.devices.A.early).toEqual({ '2026-11-03': 60 })
   })
 })
 

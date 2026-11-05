@@ -392,56 +392,11 @@
   gap: 8px;
   justify-items: start;
 }
-.lessons .ls-daily {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: var(--fs-ui);
-  color: var(--muted);
-}
-.lessons .ls-daily b {
-  color: var(--text);
-  font-size: var(--fs-body);
-}
-.lessons .ls-daily svg {
-  width: 44px;
-  height: 44px;
-}
-.lessons .ls-daily circle {
-  fill: none;
-  stroke-width: 6;
-}
-.lessons .ls-daily .track {
-  stroke: var(--panel-2);
-}
-.lessons .ls-daily .fill {
-  stroke: var(--target);
-  stroke-linecap: round;
-  transition: stroke-dasharray 700ms var(--ls-out);
-}
-.lessons .ls-streak {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-ui);
-  color: var(--muted);
-}
-.lessons .ls-streak b {
-  color: var(--text);
-  font-size: var(--fs-body);
-}
 .lessons .ls-foot {
   width: 22px;
   height: 22px;
   fill: var(--muted);
 }
-.lessons .ls-eggs {
-  margin-left: 6px;
-  color: var(--text);
-  letter-spacing: 2px;
-  font-size: var(--fs-xs);
-}
-
 /* ---- Home: continue ------------------------------------------------------------ */
 
 .lessons .ls-continue {
@@ -1893,17 +1848,6 @@
   font-weight: 600;
   color: var(--ls-set-muted);
 }
-.lessons .ls-set-streak {
-  display: flex;
-  flex-basis: 100%;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--fs-ui);
-  color: var(--ls-set-muted);
-}
-.lessons .ls-set-streak b {
-  color: var(--ls-set-ink);
-}
 .lessons .ls-set .ls-foot {
   width: 18px;
   height: 18px;
@@ -1914,28 +1858,6 @@
   margin-top: 6px;
   font-size: var(--fs-ui);
   color: var(--ls-set-muted);
-}
-/* Catch-up after a long break: a pencilled note on the setlist. */
-.lessons .ls-set-catchup {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 12px;
-  margin-top: 10px;
-  padding: 8px 10px;
-  border-left: 3px solid var(--ls-set-tape);
-  font-size: var(--fs-ui);
-  color: var(--ls-set-muted);
-}
-.lessons .ls-set-catchup p {
-  flex: 1 1 220px;
-  margin: 0;
-}
-.lessons .ls-set-catchup b {
-  color: var(--ls-set-ink);
-}
-.lessons .ls-set-catchup .ls-btn {
-  min-height: 44px;
 }
 .lessons .ls-set-list {
   list-style: none;

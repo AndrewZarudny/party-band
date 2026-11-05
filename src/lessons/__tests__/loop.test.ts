@@ -2,11 +2,13 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { JudgeResult, LoopSpec, LoopSummary, Progress } from '../types'
 import { LESSONS } from '../data'
 import { buildChart } from '../charts'
-import { LOOP_MIN_SPEED, LOOP_REPS, LoopSession, hardRange, loopLesson, loopSpecFor, loopTitle, playable, recordLoop, sliceChart, withCalls } from '../loop'
+import { FAST_PASSES, LOOP_MIN_SPEED, LOOP_REPS, LoopSession, REST_SEC, SLOW_PASSES, decideFast, hardRange, loopLesson, loopSpecFor, loopTitle, playable, recordLoop, sliceChart, slowSpeed, withCalls } from '../loop'
+import type { LoopView } from '../loop'
 import { LessonRun } from '../run'
 import { drillLesson } from '../drill'
 import { newProgress } from '../progress'
-import { jr, rec, result } from './fixtures'
+import { snapSpeed, tempoStep } from '../speed'
+import { at, jr, rec, result } from './fixtures'
 
 const notesL = LESSONS.find((l) => l.type === 'notes' && !l.calls && !l.seq?.includes('r'))!
 const callsL = LESSONS.filter((l) => l.calls)
@@ -80,32 +82,59 @@ describe('sliceChart and loopLesson', () => {
 })
 
 describe('loopSpecFor speed ramp', () => {
-  it.each([
-    [0.6, 0.5, 0.8],
-    [0.7, 0.5, 0.8],
-    [0.85, 0.6, 1],
-    [1, 0.7, 1],
-    [1.1, 0.75, 1],
-  ])('a run at %s loops from %s to %s', (speed, start, target) => {
+  // 70% of the run's speed (at least two tempo steps under it), up to full speed; far under full speed aims nearer
+  const step = tempoStep(notesL)
+  it.each([0.6, 0.7, 0.85, 1, 1.1])('a run at %s', (speed) => {
     const s = loopSpecFor(notesL, result({ speed }), 1, 1)
+    const start = Math.max(LOOP_MIN_SPEED, Math.min(1, snapSpeed(Math.min(speed * 0.7, speed - 2 * step))))
     expect(s.startSpeed).toBeCloseTo(start)
-    expect(s.targetSpeed).toBeCloseTo(target)
     expect(s.startSpeed).toBeGreaterThanOrEqual(LOOP_MIN_SPEED)
     expect(s.startSpeed).toBeLessThan(speed)
+    if (speed >= 0.8) expect(s.targetSpeed).toBe(1)
+    else expect(s.targetSpeed).toBeCloseTo(Math.min(1, snapSpeed(Math.max(speed + 2 * step, start + 6 * step))))
     expect(s).toMatchObject({ kind: 'bars', fromBar: 1, toBar: 1, sourceId: notesL.id, title: 'Bar 2' })
   })
 })
 
 describe('recordLoop', () => {
-  const sum = (clean: number, topSpeed: number) => ({ passes: [], clean, topSpeed, reached: false, results: [], chart: buildChart(notesL), calibrated: false }) as LoopSummary
+  const sum = (clean: number, earned: number) => ({ passes: [], clean, topSpeed: earned, reached: false, earned, results: [], chart: buildChart(notesL), calibrated: false }) as LoopSummary
+  const now = at('2026-03-04')
 
-  it('counts a loop with a clean pass on the lesson record, nothing else', () => {
+  it('counts a loop with a clean pass on the lesson record, and marks the day (not cold any more)', () => {
     const p: Progress = { ...newProgress(), lessons: { [notesL.id]: rec({ loops: 1, loopTop: 0.9 }) } }
-    expect(recordLoop(p, notesL.id, sum(0, 0))).toBe(p)
-    expect(recordLoop(p, 'nope', sum(2, 1))).toBe(p)
-    const q = recordLoop(p, notesL.id, sum(2, 0.8))
-    expect(q.lessons[notesL.id]).toMatchObject({ loops: 2, loopTop: 0.9 })
+    expect(recordLoop(p, notesL.id, sum(0, 0), now)).toBe(p)
+    expect(recordLoop(p, 'nope', sum(2, 1), now)).toBe(p)
+    const q = recordLoop(p, notesL.id, sum(2, 0.8), now)
+    expect(q.lessons[notesL.id]).toMatchObject({ loops: 2, loopTop: 0.9, loopDay: '2026-03-04' })
+    expect(recordLoop(p, notesL.id, sum(1, 0.95), now).lessons[notesL.id].loopTop).toBe(0.95)
     expect(p.lessons[notesL.id].loops).toBe(1)
+  })
+})
+
+describe('decideFast', () => {
+  const W = 0.8
+  const T = 1
+  const S = 0.04
+  it.each([
+    [[], null, false],
+    [[false], 0.76, false],
+    [[true], null, false],
+    [[true, false], null, false],
+    [[true, true, true], 0.84, true],
+    [[true, false, true, true], 0.84, true],
+    [[true, false, false, true], 0.8, false],
+    [[true, true, false, false], 0.8, false],
+  ] as [boolean[], number | null, boolean][])('%j -> %s', (passes, next, earned) => {
+    const d = decideFast(passes, W, T, S)
+    expect(d.earned).toBe(earned)
+    if (next === null) expect(d.next).toBeNull()
+    else expect(d.next).toBeCloseTo(next)
+  })
+
+  it('earned at the target is done; never under the loop floor; never over the target', () => {
+    expect(decideFast([true, true, true], 1, 1, S)).toEqual({ next: 'done', earned: true })
+    expect(decideFast([false], LOOP_MIN_SPEED, 1, S).next).toBe(LOOP_MIN_SPEED)
+    expect(decideFast([true, true, true], 0.98, 1, S).next).toBe(1)
   })
 })
 
@@ -145,9 +174,10 @@ afterAll(() => {
   vi.restoreAllMocks()
 })
 
-/** Plays passes; share(pass, speed) is the share of good events in it. */
-async function drive(spec: LoopSpec, share: (pass: number, speed: number) => number, maxPasses = 60) {
+/** Plays passes; share(pass, speed) is the share of good events in it. `keepRest`: end the last run, but leave its rest running. */
+async function drive(spec: LoopSpec, share: (pass: number, speed: number) => number, maxPasses = 60, log: LoopView[] = [], o: { keepRest?: boolean } = {}) {
   const ses = new LoopSession(spec, OPTS)
+  ses.onChange = (v) => log.push(v)
   const cur: { run: LessonRun | null; k: number } = { run: null, k: 0 }
   ses.onRun = (r) => {
     cur.run = r
@@ -181,43 +211,84 @@ async function drive(spec: LoopSpec, share: (pass: number, speed: number) => num
     cur.k++
     played++
   }
+  if (o.keepRest && cur.run) {
+    cur.run.state = 'ended'
+    cur.run.onState?.('ended')
+  }
   return ses
 }
 
 describe('LoopSession', () => {
-  it('clean passes go up 5% each until a clean pass at the target', async () => {
-    const ses = await drive(loopSpecFor(notesL, result({ speed: 0.6 }), 1, 1), () => 1)
-    expect(ses.view.passes.map((p) => p.speed)).toEqual([0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8])
-    expect(ses.view.phase).toBe('done')
-    const s = ses.summary()!
-    expect(s).toMatchObject({ reached: true, clean: 7 })
-    expect(s.topSpeed).toBeCloseTo(0.8)
-  })
-
-  it('three sloppy passes in a row ease off 5%, never under the 50% floor', async () => {
-    const ses = await drive(loopSpecFor(notesL, result({ speed: 1 }), 1, 1), () => 0.4, 40)
-    const sp = ses.view.passes.map((p) => p.speed)
-    const drops: number[] = []
-    for (let i = 1; i < sp.length; i++) if (sp[i] !== sp[i - 1]) drops.push(i)
-    expect(drops.length).toBeGreaterThan(0)
-    expect(drops.every((i, j) => i === 3 * (j + 1))).toBe(true)
-    for (const i of drops) expect(sp[i - 1] - sp[i]).toBeCloseTo(0.05)
-    expect(Math.min(...sp)).toBeGreaterThanOrEqual(LOOP_MIN_SPEED - 1e-9)
-    expect(sp[sp.length - 1]).toBeCloseTo(LOOP_MIN_SPEED)
-  })
-
-  it('up twice, then eased after 3 sloppy passes', async () => {
-    const seq = [1, 1, 0.3, 0.3, 0.3, 1]
-    const ses = await drive(loopSpecFor(notesL, result({ speed: 1 }), 1, 1), (i) => seq[i] ?? 1, 6)
-    expect(ses.view.passes.map((p) => p.speed)).toEqual([0.7, 0.75, 0.8, 0.8, 0.8, 0.75])
-  })
-
-  it('a drill ramps from 85% to 100%', async () => {
+  const drill = (start: number, target: number): LoopSpec => {
     const d = drillLesson('n:2.7', 'wrong', notesL)!
-    const spec: LoopSpec = { kind: 'drill', lesson: d, fromBar: 0, toBar: 1, startSpeed: 0.85, targetSpeed: 1, title: 'x', sourceId: notesL.id }
-    const ses = await drive(spec, () => 1)
-    expect(ses.view.passes.map((p) => p.speed)).toEqual([0.85, 0.9, 0.95, 1])
+    return { kind: 'drill', lesson: d, fromBar: 0, toBar: 1, startSpeed: start, targetSpeed: target, title: 'x', sourceId: notesL.id }
+  }
+  /** The segments in order: 'F0.85' fast at 0.85, 'S0.76' slow, 'R' a rest. */
+  const segments = (log: LoopView[]) => {
+    const out: string[] = []
+    for (const v of log) {
+      const tag = v.phase === 'rest' ? 'R' : v.phase === 'idle' ? `${v.seg === 'fast' ? 'F' : 'S'}${v.speed}` : null
+      if (tag && out[out.length - 1] !== tag) out.push(tag)
+    }
+    return out
+  }
+
+  it('earns a tempo with 3 clean passes; fast, slow, rest, then one step faster until done at the target', async () => {
+    const spec = drill(0.85, 1)
+    const step = tempoStep(spec.lesson)
+    const log: LoopView[] = []
+    const ses = await drive(spec, () => 1, 200, log)
+    const w = [0.85, snapSpeed(0.85 + step), snapSpeed(0.85 + 2 * step)]
     expect(ses.view.phase).toBe('done')
+    const fast = ses.view.passes.filter((p) => !p.slow)
+    const slow = ses.view.passes.filter((p) => p.slow)
+    expect(fast.slice(0, 6).map((p) => p.speed)).toEqual([w[0], w[0], w[0], w[1], w[1], w[1]])
+    expect(slow.slice(0, SLOW_PASSES).map((p) => p.speed)).toEqual([slowSpeed(w[0], step), slowSpeed(w[0], step)])
+    expect(segments(log).slice(0, 4)).toEqual([`F${w[0]}`, `S${slowSpeed(w[0], step)}`, 'R', `F${w[1]}`])
+    const s = ses.summary()!
+    expect(s.reached).toBe(true)
+    expect(s.earned).toBe(1)
+    expect(s.clean).toBe(fast.length)
+  })
+
+  it('a first pass that is not clean ends the fast segment; the next one is a step slower', async () => {
+    const spec = drill(0.85, 1)
+    const step = tempoStep(spec.lesson)
+    const log: LoopView[] = []
+    const ses = await drive(spec, (i) => (i === 0 ? 0.5 : 1), 4, log)
+    const p = ses.view.passes
+    expect(p[0]).toMatchObject({ speed: 0.85, clean: false })
+    expect(p.slice(1, 3).every((x) => x.slow)).toBe(true)
+    expect(p[3].speed).toBe(snapSpeed(0.85 - step))
+    expect(segments(log)).toEqual(['F0.85', `S${slowSpeed(0.85, step)}`, 'R', `F${snapSpeed(0.85 - step)}`])
+    expect(ses.summary()!.earned).toBe(0)
+  })
+
+  it('four passes without 3 clean: the same tempo again after slow passes and a rest', async () => {
+    const seq = [1, 0.5, 0.5, 1]
+    const ses = await drive(drill(0.85, 1), (i) => seq[i] ?? 1, FAST_PASSES + SLOW_PASSES + 1)
+    const p = ses.view.passes
+    expect(p.slice(0, 4).map((x) => x.clean)).toEqual([true, false, false, true])
+    expect(p[FAST_PASSES + SLOW_PASSES].speed).toBe(0.85)
+  })
+
+  it('slow passes never decide anything and never count as clean', async () => {
+    const seq = [0.5, 1, 1, 1]
+    const ses = await drive(drill(0.85, 1), (i) => seq[i] ?? 1, 3)
+    expect(ses.view.clean).toBe(0)
+    expect(ses.summary()!.clean).toBe(0)
+  })
+
+  it('"Go now" ends a rest at once, and does nothing outside a rest', async () => {
+    const seq = [0.5, 1, 1]
+    const ses = await drive(drill(0.85, 1), (i) => seq[i] ?? 1, 3, [], { keepRest: true })
+    expect(ses.view.phase).toBe('rest')
+    expect(ses.view.restLeft).toBe(REST_SEC)
+    ses.skipRest()
+    expect(ses.view).toMatchObject({ phase: 'idle', seg: 'fast' })
+    ses.skipRest()
+    expect(ses.view).toMatchObject({ phase: 'idle', seg: 'fast' })
+    ses.stop()
   })
 
   it.each(['fail', 'pass'] as const)('waits for a pending chord check before closing the pass (%s)', async (outcome) => {
@@ -254,12 +325,15 @@ describe('LoopSession', () => {
     const p = ses.view.passes
     expect(p).toHaveLength(1)
     if (outcome === 'fail') {
+      // a first pass that isn't clean decides at once: one step slower
       expect(p[0].clean).toBe(false)
       expect(p[0].acc).toBeCloseTo((n - 1) / n)
-      expect(ses.view.next).toBeNull()
+      expect(ses.view.next).toBeCloseTo(snapSpeed(0.85 - ses.step))
     } else {
+      // clean, but one clean pass doesn't earn the tempo yet
       expect(p[0].clean).toBe(true)
-      expect(ses.view.next).toBeCloseTo(0.9)
+      expect(ses.view.next).toBeNull()
+      expect(ses.view.note).toMatch(/2 more clean/)
     }
   })
 })

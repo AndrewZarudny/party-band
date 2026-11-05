@@ -5,8 +5,8 @@ import { KINDS, dayKey, daysBefore, sum, zero } from './data'
 import type { PracticeSnapshot } from './log'
 import { getPracticeSnapshot, subscribePractice } from './log'
 
-/** A day counts towards the streak with this much practice. */
-export const STREAK_SEC = 300
+// Practice time is shown, never judged: no daily goal and no streak here. The one weekly measure is the lessons'
+// session goal (lessons/review.ts weekStatus), which ignores pocket sessions.
 /** Days with less than this aren't "practice days" for the average (a stray strum). */
 const PRACTICE_DAY_SEC = 60
 
@@ -25,7 +25,6 @@ export interface PracticeSummary {
   last30: DayBar[] // oldest first, ending today
   byKind30: Secs
   total30: number
-  streak: number
   best: DayBar | null
   average: number
   practiceDays: number
@@ -66,13 +65,7 @@ export function summarize(snap: PracticeSnapshot): PracticeSummary {
   }
   if (best && best.total === 0) best = null
 
-  // Today still counts as "in progress": a streak isn't broken until a whole day is missed.
-  let streak = 0
   const todayTotal = sum(snap.days.get(todayKey) ?? zero())
-  for (let i = todayTotal >= STREAK_SEC ? 0 : 1; i <= snap.days.size; i++) {
-    if (sum(snap.days.get(dayKey(daysBefore(now, i))) ?? zero()) < STREAK_SEC) break
-    streak++
-  }
 
   const byKind30 = KINDS.map((_, k) => last30.reduce((n, d) => n + d.secs[k], 0))
   return {
@@ -83,7 +76,6 @@ export function summarize(snap: PracticeSnapshot): PracticeSummary {
     last30,
     byKind30,
     total30: sum(byKind30),
-    streak,
     best,
     average: practiceDays ? Math.round(practiced / practiceDays) : 0,
     practiceDays,

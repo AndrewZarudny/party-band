@@ -1,5 +1,5 @@
 // Chain and points during a run, and the final score, stars and coach tip. Pure.
-import type { Chart, ImprovReport, JudgeResult, JudgeSummary, Lesson, LessonResult, NoteEv, Speed, Stars, SyncOutcome, Verdict } from './types'
+import type { Chart, ChartEvent, ChordStats, ImprovReport, JudgeResult, JudgeSummary, Lesson, LessonResult, NoteEv, Speed, Stars, SyncOutcome, Verdict } from './types'
 import { improvScore } from './improv'
 
 const ROAR_CHAIN = 16
@@ -110,10 +110,11 @@ function extraMet(lesson: Lesson, chart: Chart, results: JudgeResult[]): boolean
   if (!x) return true
   const byId = new Map(results.map((r) => [r.eventId, r]))
   const notes = chart.events.filter((e): e is NoteEv => e.kind === 'note')
-  let rel: NoteEv[]
+  let rel: ChartEvent[]
   let good: (r: JudgeResult) => boolean
   if (x.kind === 'palmMute') {
-    rel = notes.filter((e) => e.tech === 'pm')
+    // palm-muted notes and palm-muted strums
+    rel = chart.events.filter((e) => (e.kind === 'note' && e.tech === 'pm') || (e.kind === 'chord' && e.dir === 'P'))
     good = (r) => r.pmOk === true
   } else if (x.kind === 'legato') {
     rel = notes.filter((e) => e.tech === 'hammer' || e.tech === 'pull')
@@ -128,6 +129,37 @@ function extraMet(lesson: Lesson, chart: Chart, results: JudgeResult[]): boolean
     return !!r && good(r)
   }).length
   return ok / rel.length >= x.share
+}
+
+/** 0–1: events played good or better, rests included (0 for an empty run). */
+export function cleanShare(results: JudgeResult[]): number {
+  return results.length ? results.filter(goodOrBetter).length / results.length : 0
+}
+
+/** How the chord checks went; null when no chord was checked (or could have been). */
+export function chordStats(chart: Chart, results: JudgeResult[]): ChordStats | null {
+  const byId = new Map(chart.events.map((e) => [e.id, e]))
+  let ok = 0
+  let wrong = 0
+  let unsure = 0
+  const confs: number[] = []
+  for (const r of results) {
+    const e = byId.get(r.eventId)
+    if (!e || e.kind !== 'chord' || (!e.chroma && !e.power)) continue
+    if (r.chordConf !== undefined) confs.push(r.chordConf)
+    if (r.chordOk === true) ok++
+    else if (r.chordOk === false) wrong++
+    // a hit the check couldn't call; key and autoplay hits on chroma chords have no chordConf and don't count
+    else if (r.grade !== 'miss' && r.verdict !== 'miss' && r.chordConf !== undefined) unsure++
+  }
+  if (!ok && !wrong && !unsure) return null
+  return { ok, wrong, unsure, conf: confs.length ? confs.reduce((s, c) => s + c, 0) / confs.length : null }
+}
+
+/** Mean of the graded bends' distance from the target, in cents; null when no bend was graded. */
+export function meanBendCents(results: JudgeResult[]): number | null {
+  const cs = results.filter((r) => r.bendCents !== undefined).map((r) => r.bendCents!)
+  return cs.length ? Math.round(cs.reduce((s, c) => s + c, 0) / cs.length) : null
 }
 
 function coachTip(counts: Record<Verdict, number>, mean: number | null, graded: number): string {
@@ -151,6 +183,8 @@ export function buildResult(a: {
   secPerBeat: number
   playedSec: number
   calibrated?: boolean
+  swing?: boolean // judged against the swung grid
+  shuffle?: boolean // a straight lesson played in shuffle mode
 }): LessonResult {
   const { lesson, chart, summary, improv, chain } = a
   const counts = emptyCounts()
@@ -198,6 +232,8 @@ export function buildResult(a: {
 
   const clean = results.length >= CLEAN_MIN_EVENTS && counts.miss === 0 && counts.wrong === 0 && counts.ringing === 0
   const tip = improv ? (improv.tips[0] ?? 'Nice run.') : coachTip(counts, meanErrMs, errs.length)
+  const scored = !!summary && lesson.type !== 'improv' && lesson.type !== 'sync'
+  const cs = scored ? chordStats(chart, results) : null
 
   return {
     lessonId: lesson.id,
@@ -224,6 +260,11 @@ export function buildResult(a: {
     coachTip: tip,
     hardestBar,
     bendsInTune,
+    swing: !!a.swing,
+    ...(a.shuffle ? { shuffle: true } : {}),
+    ...(scored ? { cleanShare: cleanShare(results) } : {}),
+    ...(cs ? { chordStats: cs } : {}),
+    bendCents: meanBendCents(results),
     barAcc: summary ? barAccuracy(chart, results) : undefined,
     results: summary ? results : undefined,
   }

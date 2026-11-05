@@ -11,18 +11,21 @@ import type { Lesson, Prefs, Progress, Speed } from '../types'
 import { buildChart } from '../charts'
 import { fingeringFor } from '../fingering'
 import { scalePcsOf } from '../improv'
-import { KEYBOARD_DEVICE, deviceKey, loadLatency, micWarning } from '../calibration'
+import { FEELS } from '../../music/parts'
+import { KEYBOARD_DEVICE, deviceKey, latencyAdvice, loadLatency, micWarning } from '../calibration'
 import { clicksMuted } from '../clock'
 import { DINO_STAGES, dinoStageFor } from '../progress'
 import { connectSource } from '../source'
-import { MANUAL_SPEEDS, autoSpeed, pct, pickFor, speedCap, speedLimits } from '../speed'
+import { EARN_PASSES, MANUAL_SPEEDS, autoSpeed, bpmAt, bpmPct, pickFor, speedCap } from '../speed'
 import { Dino } from './Dino'
 import { InputPicker } from './InputPicker'
+import { LatencyNote } from './LatencyNote'
 import { StarGlyph, StarPips } from './LessonMap'
 import { LessonOverview } from './teach/LessonOverview'
 import { TeachPanel } from './teach/TeachPanel'
 import { useWatch } from './teach/useWatch'
 import type { WatchSpeed } from './teach/useWatch'
+import './timing.css'
 
 /** Improv lessons: the box on the fretboard, home notes marked. */
 function BoxPreview({ lesson }: { lesson: Lesson }) {
@@ -88,7 +91,7 @@ export function LessonIntro({
   progress: Progress
   prefs: Prefs
   onPrefs: (p: Prefs) => void
-  onStart: () => void
+  onStart: (o?: { shuffle?: boolean; quiet?: boolean }) => void
   onListen: () => void
   onSync: () => void
   onBack: () => void
@@ -96,23 +99,29 @@ export function LessonIntro({
 }) {
   const e = useEngineState()
   const [toneSet, setToneSet] = useState(false)
+  const [shuffle, setShuffle] = useState(false)
+  const [quiet, setQuiet] = useState(false)
   const [, bump] = useState(0)
   const startRef = useRef<HTMLButtonElement>(null)
 
   // Speed trainer: Auto unless the player picked a speed for this lesson.
   const rec = progress.lessons[lesson.id]
   const auto = autoSpeed(lesson, rec)
-  const lim = speedLimits(lesson)
   const autoHint =
     lesson.type === 'improv'
-      ? `Jams play at full speed. Auto slows the band only under ${lim.down}%, and goes back up after a pass.`
-      : `Auto goes up after a ${lim.up}% run and down under ${lim.down}%.`
+      ? 'Jams play at full speed. Auto slows the band only far under the pass mark, and goes back up after a pass.'
+      : `Auto: ${bpmAt(lesson, auto)} BPM. A tempo counts after a clean first try and two more clean runs. Then it goes up about 3 BPM.`
+  const trial = rec?.trial
   const pick = pickFor(prefs, lesson.id)
   const speed = pick ?? auto
   const speedOptions: { v: 'auto' | Speed; label: string }[] = [
-    { v: 'auto', label: `Auto (${pct(auto)})` },
-    ...MANUAL_SPEEDS.filter((s) => s <= speedCap(rec)).map((s) => ({ v: s, label: pct(s) })),
+    { v: 'auto', label: `Auto (${bpmPct(lesson, auto)})` },
+    ...MANUAL_SPEEDS.filter((s) => s <= speedCap(rec)).map((s) => ({ v: s, label: bpmPct(lesson, s) })),
   ]
+  // Shuffle mode: a straight chords or rhythm part, swung. Practice only.
+  const ownSwing = !!lesson.backing && !!FEELS[lesson.backing.feel]?.swing
+  const canShuffle = (lesson.type === 'chords' || lesson.type === 'rhythm') && !ownSwing
+  const start = () => onStart({ shuffle: canShuffle && shuffle, quiet })
 
   // The whole chart and its fingering: the demos, the overview and Watch all use these.
   const chart = useMemo(() => {
@@ -156,7 +165,10 @@ export function LessonIntro({
   }, [onBack, stopWatch])
 
   const keyboardMode = prefs.keyboard || !e.running
-  const calibrated = !!loadLatency(keyboardMode ? KEYBOARD_DEVICE : deviceKey())
+  const cal = loadLatency(keyboardMode ? KEYBOARD_DEVICE : deviceKey())
+  const calibrated = !!cal
+  // only a live guitar or mic hears the delay; the keyboard has no sound to lag behind
+  const latency = latencyAdvice(e.running && !keyboardMode ? engine.latencyMs : 0, keyboardMode ? null : cal)
   // The picker already asks mic users for headphones.
   const mic = e.running && prefs.input === 'cable' ? micWarning() : null
   const connect = () => {
@@ -240,7 +252,7 @@ export function LessonIntro({
 
       <div className="ls-intro-grid">
         <div className="ls-controls">
-          <div className="ls-field">
+          <div className="ls-field tm-speeds">
             <span className="ls-field-label">Speed</span>
             <Seg
               label="Speed"
@@ -249,14 +261,39 @@ export function LessonIntro({
               onPick={(v) => onPrefs({ ...prefs, speedPick: v === 'auto' ? null : { lessonId: lesson.id, speed: v } })}
             />
             {pick === null && <small className="ls-muted">{autoHint}</small>}
+            {lesson.type !== 'improv' && trial && trial.first && (
+              <small className="ls-muted">
+                At <span className="ls-num">{bpmAt(lesson, trial.speed)}</span> BPM: <span className="ls-num">{trial.clean}</span> of {EARN_PASSES} clean.
+              </small>
+            )}
             {speed < 1 && (
               <small className="ls-muted">
-                Practice speed: 75% XP, up to 2 <StarGlyph />
-                <span className="ls-sr">stars</span>. Pass at 100% for all 3.
+                Practice speed: up to 2 <StarGlyph />
+                <span className="ls-sr">stars</span>. Pass at full tempo for all 3.
               </small>
             )}
           </div>
-          <Switch on={prefs.easyTiming} set={(v) => onPrefs({ ...prefs, easyTiming: v })} label="Easy timing" note="wider windows, 80% XP" />
+          {canShuffle && (
+            <div className="ls-field">
+              <span className="ls-field-label">Feel</span>
+              <Seg
+                label="Feel"
+                value={shuffle ? 'shuffle' : 'straight'}
+                options={[
+                  { v: 'straight', label: 'Straight' },
+                  { v: 'shuffle', label: 'Shuffle' },
+                ]}
+                onPick={(v) => setShuffle(v === 'shuffle')}
+              />
+              {shuffle && (
+                <small className="ls-muted">Shuffle: the same part, swung long-short and judged on the swung grid. Practice only: it never changes your straight record.</small>
+              )}
+            </div>
+          )}
+          {lesson.type !== 'sync' && (
+            <Switch on={quiet} set={setQuiet} label="Listen mode" note="band louder, no tab, the summary at the end" />
+          )}
+          <Switch on={prefs.easyTiming} set={(v) => onPrefs({ ...prefs, easyTiming: v })} label="Easy timing" note="wider windows" />
           {lesson.backing && (
             <Switch on={prefs.backingOn} set={(v) => onPrefs({ ...prefs, backingOn: v })} label="Band" note={prefs.input === 'mic' ? 'Use headphones' : 'Off: click only'} />
           )}
@@ -301,8 +338,9 @@ export function LessonIntro({
               </button>
             </p>
           )}
+          {latency.warn && <LatencyNote advice={latency} />}
           {e.running ? (
-            <button ref={startRef} className="ls-btn primary big" onClick={leave(onStart)}>
+            <button ref={startRef} className="ls-btn primary big" onClick={leave(start)}>
               Start
             </button>
           ) : (
@@ -310,7 +348,7 @@ export function LessonIntro({
               <button ref={startRef} className="ls-btn primary big" onClick={connect}>
                 {prefs.input === 'mic' ? 'Connect microphone' : 'Connect guitar'}
               </button>
-              <button className="ls-btn" onClick={leave(onStart)}>
+              <button className="ls-btn" onClick={leave(start)}>
                 Try with the keyboard
               </button>
             </div>

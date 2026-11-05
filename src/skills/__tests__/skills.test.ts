@@ -1,9 +1,93 @@
 import { describe, expect, it } from 'vitest'
 import type { SkillStats } from '../data'
-import { dailyBest, emptyStats, mergeStatsRaw, parseStats, record } from '../data'
+import { dailyBest, emptyStats, fretTimeRows, lowerBetter, mergeStatsRaw, parseStats, record, skillXp } from '../data'
 import { MAX_LEN, MIN_LEN, gradePhrase, nextLength } from '../ear'
 import { barDrifts, cycleOk, STEADY_MS } from '../clock'
 import { widenAfter } from '../fret'
+import { CORE_PAIRS, RETIRE_AT, weakestPair } from '../chords'
+import { findUnrated } from '../takes'
+
+describe('measurement entries', () => {
+  it('the new game ids parse and merge; lower is better for clock, fretTime and drift', () => {
+    const a = stats({ history: [entry('a', 1, 'fretTime', 2100), entry('b', 2, 'drift', 12)], best: { 'fretTime:0': 2100, 'drift:4': 12 } })
+    const b = stats({ history: [entry('c', 3, 'earFirst', 75), entry('d', 4, 'rate', 4)], best: { 'fretTime:0': 1800, 'drift:4': 20, earFirst: 75 } })
+    const s = parseStats(mergeStatsRaw(a, b))
+    expect(s.history.map((e) => e.game)).toEqual(['rate', 'earFirst', 'drift', 'fretTime'])
+    expect(s.best).toEqual({ 'fretTime:0': 1800, 'drift:4': 12, earFirst: 75 })
+    expect(['clock', 'fretTime', 'drift'].every((g) => lowerBetter(g as never))).toBe(true)
+    expect(lowerBetter('earFirst')).toBe(false)
+  })
+
+  it('fret times: median per string, strings with 2 or more answers only', () => {
+    const rows = fretTimeRows([
+      { string: 0, ms: 1000 },
+      { string: 0, ms: 3000 },
+      { string: 0, ms: 2000 },
+      { string: 1, ms: 900 },
+      { string: 4, ms: 1500 },
+      { string: 4, ms: 2500 },
+    ])
+    expect(rows).toEqual([
+      { string: 0, ms: 2000 },
+      { string: 4, ms: 2000 },
+    ])
+  })
+})
+
+describe('weakestPair', () => {
+  it('picks the lowest best, skips retired pairs, core pairs first on ties', () => {
+    const s = { ...emptyStats(), best: { 'changes:A-D': 30, 'changes:A-E': 22, 'changes:D-E': RETIRE_AT } }
+    expect(weakestPair(s, ['A', 'D', 'E'])).toBe('A-E')
+    // never-played pairs count as 0; ties go to the core pairs in order
+    expect(weakestPair(emptyStats(), ['E', 'A', 'D', 'G'])).toBe(CORE_PAIRS[0])
+    expect(weakestPair(emptyStats(), ['E5', 'A5'])).toBe('A5-E5')
+    expect(weakestPair({ ...emptyStats(), best: { 'changes:A5-E5': 61 } }, ['E5', 'A5'])).toBeNull()
+    expect(weakestPair(emptyStats(), ['E'])).toBeNull()
+  })
+})
+
+describe('skill XP: real gains only', () => {
+  it('the first round is a baseline; gains pay, capped', () => {
+    const s0 = emptyStats()
+    expect(skillXp(s0, 'changes', 25, 'A-E')).toBe(0)
+    const s1 = record(s0, 'changes', 25, 'A-E', 1).stats
+    expect(skillXp(s1, 'changes', 28, 'A-E')).toBe(6)
+    expect(skillXp(s1, 'changes', 45, 'A-E')).toBe(20)
+    expect(skillXp(s1, 'changes', 20, 'A-E')).toBe(0)
+    expect(skillXp(s0, 'find', 9)).toBe(0)
+    const f = record(s0, 'find', 9, undefined, 1).stats
+    expect(skillXp(f, 'find', 12)).toBe(3)
+    expect(skillXp(f, 'find', 30)).toBe(10)
+    const e = record(s0, 'ear', 3, undefined, 1).stats
+    expect(skillXp(e, 'ear', 4)).toBe(10)
+    expect(skillXp(e, 'ear', 3)).toBe(0)
+    const c = record(s0, 'clock', 40, undefined, 1).stats
+    expect(skillXp(c, 'clock', 30)).toBe(10)
+    expect(skillXp(c, 'clock', 50)).toBe(0)
+    for (const g of ['record', 'rate', 'fretTime', 'earFirst', 'drift'] as const) expect(skillXp(record(s0, g, 1, undefined, 1).stats, g, 5)).toBe(0)
+  })
+
+  it('retiring a pair pays 30 once', () => {
+    const s = record(emptyStats(), 'changes', 55, 'A-D', 1).stats
+    expect(skillXp(s, 'changes', 60, 'A-D')).toBe(10 + 30)
+    const after = record(s, 'changes', 60, 'A-D', 2).stats
+    expect(skillXp(after, 'changes', 62, 'A-D')).toBe(4)
+  })
+})
+
+describe('unrated takes', () => {
+  it('finds a take from before today, after the given time, with no rating', () => {
+    const now = new Date(2026, 10, 5, 19)
+    const yesterday = new Date(2026, 10, 4, 20).getTime()
+    const today = new Date(2026, 10, 5, 18).getTime()
+    expect(findUnrated([{ at: yesterday }], 0, now)).toBe(true)
+    expect(findUnrated([{ at: yesterday, rating: 3 }], 0, now)).toBe(false)
+    expect(findUnrated([{ at: today }], 0, now)).toBe(false)
+    expect(findUnrated([{ at: yesterday }], yesterday + 1, now)).toBe(false)
+    // before 4 am still belongs to the day before
+    expect(findUnrated([{ at: new Date(2026, 10, 5, 2).getTime() }], 0, now)).toBe(true)
+  })
+})
 
 const stats = (o: Partial<SkillStats>) => JSON.stringify({ ...emptyStats(), ...o })
 const entry = (id: string, at: number, game: SkillStats['history'][number]['game'] = 'find', score = 1) => ({ id, game, at, score })

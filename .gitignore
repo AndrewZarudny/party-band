@@ -33,3 +33,6 @@ public/soundfont
 .claude/
 __pycache__/
 *.pyc
+
+# Windows download marks
+*:Zone.Identifier

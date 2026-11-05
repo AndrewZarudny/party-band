@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import './practice.css'
 import { KINDS } from '../data'
 import type { PracticeSummary } from '../stats'
-import { KIND_LABEL, STREAK_SEC, fmtDay, fmtDuration, usePractice } from '../stats'
+import { KIND_LABEL, fmtDay, fmtDuration, usePractice } from '../stats'
 
 // Chart geometry (SVG units; the chart scales to the dialog's width).
 const W = 600
@@ -37,7 +37,6 @@ function Chart({ p }: { p: PracticeSummary }) {
   const lines: number[] = []
   for (let s = step; s <= top; s += step) lines.push(s)
   const caption = summaryText(p)
-  const showGoal = top / STREAK_SEC <= 24
   return (
     <figure className="prac-chart">
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-labelledby="prac-chart-cap">
@@ -49,7 +48,6 @@ function Chart({ p }: { p: PracticeSummary }) {
             </text>
           </g>
         ))}
-        {showGoal && <line className="prac-goal" x1={LEFT} x2={W} y1={y(STREAK_SEC)} y2={y(STREAK_SEC)} />}
         <line className="prac-base" x1={LEFT} x2={W} y1={y(0)} y2={y(0)} />
         {p.last30.map((d, i) => {
           const x = LEFT + i * SLOT + SLOT * 0.18
@@ -85,18 +83,12 @@ function Chart({ p }: { p: PracticeSummary }) {
             {KIND_LABEL[k]} <span>{fmtDuration(p.byKind30[i])}</span>
           </li>
         ))}
-        {showGoal && (
-          <li>
-            <i className="prac-sw prac-sw-goal" aria-hidden="true" />
-            Streak line, {fmtDuration(STREAK_SEC)}
-          </li>
-        )}
       </ul>
     </figure>
   )
 }
 
-/** "Your practice": the last 30 days, the streak, the best day and the average. A modal. */
+/** "Your practice": the last 30 days, the best day and the average. A modal. Time is shown, not judged. */
 export function PracticePanel({ guest, onClose }: { guest: boolean; onClose: () => void }) {
   const p = usePractice()
   const box = useRef<HTMLDivElement>(null)
@@ -151,13 +143,6 @@ export function PracticePanel({ guest, onClose }: { guest: boolean; onClose: () 
         </p>
 
         <dl className="prac-stats">
-          <div>
-            <dt>Streak</dt>
-            <dd>
-              {p.streak} {p.streak === 1 ? 'day' : 'days'}
-            </dd>
-            <dd className="prac-note">{fmtDuration(STREAK_SEC)} or more a day</dd>
-          </div>
           <div>
             <dt>Best day</dt>
             <dd>{p.best ? fmtDuration(p.best.total) : 'None yet'}</dd>

@@ -6,12 +6,15 @@ import { VERDICT_LABEL } from '../scoring'
 import { DINO_STAGES, levelFor } from '../progress'
 import { ACHIEVEMENTS } from '../achievements'
 import { WORLDS, lessonById } from '../data'
-import { MIN_SPEED, pct } from '../speed'
+import { EARN_PASSES, MIN_SPEED, bpmAt, tempoStep } from '../speed'
 import { buildChart } from '../charts'
 import { hardRange } from '../loop'
+import { retentionGap } from '../review'
 import { BarStrip } from './BarStrip'
 import { Dino } from './Dino'
 import { STAR } from './LessonMap'
+import { RestTimer } from './RestTimer'
+import './timing.css'
 
 const COUNT_ORDER: Verdict[] = ['perfect', 'good', 'early', 'late', 'miss', 'wrong', 'clean-stop', 'ringing']
 const METRIC_NAME: Record<ImprovMetric, string> = {
@@ -169,11 +172,40 @@ function GrowthScene({ from, to, name, cosmetics, still, onClose }: { from: numb
   )
 }
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+/** "12 ms late on average, spread 20 ms": timing against the band. */
+function timingLine(r: LessonResult): string | null {
+  if (r.meanErrMs === null) return null
+  const m = Math.round(r.meanErrMs)
+  const where = m === 0 ? 'right on the beat on average' : `${Math.abs(m)} ms ${m > 0 ? 'late' : 'early'} on average`
+  const spread = r.spreadMs !== null ? `, spread ${r.spreadMs} ms` : ''
+  return `Timing vs the band: ${where}${spread}${r.swing ? ' (shuffle grid)' : ''}.`
+}
+
+/** The speed trainer's lines after a run: earned, in a trial, or a first try that wasn't clean. */
+function speedLines(lesson: Lesson, o: NonNullable<ApplyOutcome['speed']>, pick: number | null): string[] {
+  const bpm = bpmAt(lesson, o.played)
+  const next = bpmAt(lesson, o.next)
+  const out: string[] = []
+  if (lesson.type === 'improv') out.push(`Played at ${bpm} BPM. Next time: ${next} BPM.`)
+  else if (o.earned) out.push(`${bpm} BPM earned. Next time: ${next} BPM.`)
+  else if (o.trial) {
+    const left = EARN_PASSES - o.trial.clean
+    out.push(`At ${bpm} BPM: ${o.trial.clean} of ${EARN_PASSES} clean runs. ${left === 1 ? 'One more clean run' : `${left} more clean runs`} and it's yours.`)
+  } else if (o.next < o.played - 1.5 * tempoStep(lesson)) out.push(`Next time: ${next} BPM, a little slower. Get it clean there, then speed up.`)
+  else if (o.next < o.played) out.push(`Your first try at ${bpm} BPM wasn't clean. Next time: ${next} BPM. Get the first try right, then speed up.`)
+  else out.push(`Played at ${bpm} BPM. Next time: ${next} BPM.`)
+  if (pick !== null) out.push(`Next time: ${bpmAt(lesson, pick)} BPM (your pick). Auto would play ${next} BPM.`)
+  return out
+}
+
 export function ResultCard({
   lesson,
   result,
   outcome,
   pick,
+  rest,
   onNext,
   onAgain,
   onSlower,
@@ -186,6 +218,8 @@ export function ResultCard({
   outcome: ApplyOutcome
   /** This lesson's manual speed, null on Auto. */
   pick: number | null
+  /** Seconds to rest before the next rep; null = no rest prompt. */
+  rest: number | null
   onNext: (() => void) | null
   onAgain: () => void
   onSlower: () => void
@@ -199,6 +233,7 @@ export function ResultCard({
   const [growOpen, setGrowOpen] = useState(false)
   const [grown, setGrown] = useState(false)
   const [tallied, setTallied] = useState(still)
+  const [resting, setResting] = useState(rest !== null)
   const primary = useRef<HTMLButtonElement>(null)
   const p = outcome.progress
 
@@ -230,7 +265,13 @@ export function ResultCard({
 
   const counts = COUNT_ORDER.filter((v) => result.counts[v] > 0)
   const graded = result.counts.perfect + result.counts.good + result.counts.early + result.counts.late
-  const lean = result.meanErrMs !== null && Math.abs(result.meanErrMs) >= 10 ? Math.round(result.meanErrMs) : null
+  const timing = timingLine(result)
+  const competence = outcome.competence
+  const cold = outcome.cold
+  const coldGap = cold && outcome.review ? outcome.review.due - cold.s : null
+  // the newest clean cold attempt is this one only when this run was clean from cold
+  const gapInfo = cold && cold.clean ? retentionGap(p.lessons[lesson.id]) : null
+  const chords = result.chordStats
   const showResync = result.meanErrMs !== null && Math.abs(result.meanErrMs) > 40 && graded >= 12
   const mood = result.stars >= 2 ? 'proud' : result.passed ? 'happy' : 'idle'
   const short = Math.max(0, lesson.pass - result.score)
@@ -285,10 +326,18 @@ export function ResultCard({
               ))}
             </ul>
           )}
-          {lean !== null && (
-            <p className="ls-lean">
-              You tend to play ~<span className="ls-num">{Math.abs(lean)}</span> ms {lean > 0 ? 'late' : 'early'}.
-            </p>
+          {timing && <p className="ls-lean">{timing}</p>}
+          {chords && (
+            <ul className="tm-lines">
+              <li>
+                Chords: {chords.ok} rang true, {chords.wrong} sounded off{chords.unsure ? `, ${chords.unsure} I couldn't tell` : ''}.
+                {chords.conf !== null && <span className="ls-muted"> How sure: {Math.round(chords.conf * 100)}%</span>}
+              </li>
+              {chords.unsure > 0 && <li className="ls-muted">When the sound isn't clear, Fretwise doesn't mark the chord wrong.</li>}
+            </ul>
+          )}
+          {result.bendCents !== undefined && result.bendCents !== null && (
+            <p className="ls-muted">Bends: {result.bendCents} cents off on average (100 cents is one fret).</p>
           )}
           {result.improv && (
             <div className="ls-metrics">
@@ -320,23 +369,24 @@ export function ResultCard({
           )}
           <p className="ls-coach">{result.coachTip}</p>
           {outcome.speed && (
+            <ul className="tm-lines ls-muted">
+              {speedLines(lesson, outcome.speed, pick).map((l) => (
+                <li key={l}>{l}</li>
+              ))}
+              {result.passed && outcome.speed.played < 1 && <li>Pass at full tempo for the 3rd star.</li>}
+            </ul>
+          )}
+          {cold && (
             <p className="ls-muted">
-              Played at <b className="ls-num">{pct(outcome.speed.played)}</b>.{' '}
-              {pick === null ? (
-                <>
-                  Next time: <b className="ls-num">{pct(outcome.speed.next)}</b>.
-                </>
-              ) : (
-                <>
-                  Next time: <b className="ls-num">{pct(pick)}</b> (your pick). Auto would play <b className="ls-num">{pct(outcome.speed.next)}</b>.
-                </>
-              )}
-              {outcome.speed.topAfter > outcome.speed.topBefore && (
-                <>
-                  {' '}New top speed: <b className="ls-num">{pct(outcome.speed.topAfter)}</b>.
-                </>
-              )}
-              {result.passed && outcome.speed.played < 1 && ' Pass at 100% for the 3rd star.'}
+              {cold.clean
+                ? `Cold start at ${cold.bpm} BPM: clean.${coldGap !== null && coldGap > 0 ? ` Next check in ${plural(coldGap, 'session')}.` : ''}`
+                : `Cold start at ${cold.bpm} BPM: not clean yet. You'll see it again next session, a little slower.`}
+            </p>
+          )}
+          {gapInfo && gapInfo.gap !== null && gapInfo.best !== null && gapInfo.cold !== null && (
+            <p className="ls-muted">
+              Retention gap: best last session {gapInfo.best} BPM, cold today {gapInfo.cold} BPM, a {gapInfo.gap} BPM gap.
+              {gapInfo.gap > 10 && ' A big gap usually means the tempo went up too early. Slow down; it will stick better.'}
             </p>
           )}
           {showResync && (
@@ -352,6 +402,16 @@ export function ResultCard({
         </div>
 
         <div className="ls-result-col">
+          {competence.length > 0 && (
+            <section className="tm-better" aria-labelledby="tm-better-h">
+              <h3 id="tm-better-h">What got better</h3>
+              <ul>
+                {competence.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+            </section>
+          )}
           <ol className="ls-xp">
             {lines.map((l, i) => (
               <li key={l.label} style={{ '--i': i } as CSSProperties}>
@@ -371,8 +431,8 @@ export function ResultCard({
               <span style={{ transform: `scaleX(${barShare})` }} />
             </div>
           </div>
+          {outcome.xp === 0 && <p className="ls-muted">No XP this run. XP comes from real gains: clean tempos, cold starts, learned items, week goals.</p>}
           {levelUp && tallied && <p className="ls-levelup ls-display">Level {outcome.levelAfter}!</p>}
-          {outcome.streakNote && <p className="ls-muted">{outcome.streakNote}</p>}
 
           {(outcome.unlocked.length > 0 || world || outcome.newAchievements.length > 0) && (
             <ul className="ls-unlocks">
@@ -393,6 +453,13 @@ export function ResultCard({
           )}
         </div>
       </div>
+
+      {rest !== null && resting && (
+        <div className="tm-rest-box">
+          <p>Rest 20–30 s between runs. It helps your hands, and your next run.</p>
+          <RestTimer sec={rest} onDone={() => setResting(false)} />
+        </div>
+      )}
 
       <div className="ls-actions">
         {onNext && (

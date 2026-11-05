@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { ChainMeter, barAccuracy, buildResult, goodOrBetter, noteScore, starsFor } from '../scoring'
-import { chartOf, jr, lesson, note } from './fixtures'
-import type { JudgeResult } from '../types'
+import { ChainMeter, barAccuracy, buildResult, chordStats, cleanShare, goodOrBetter, meanBendCents, noteScore, starsFor } from '../scoring'
+import { chartOf, chord, jr, lesson, note } from './fixtures'
+import type { Chart, JudgeResult, Lesson } from '../types'
 
 const L = lesson({ stars: [60, 80, 95], pass: 60 })
 
@@ -105,6 +105,12 @@ describe('buildResult', () => {
     expect(r.passed).toBe(true)
   })
 
+  it('gives the share of events good or better, for the speed trainer', () => {
+    const rs = Array.from({ length: 10 }, (_, i) => jr(i, 'note', i === 3 ? 'late' : 'good', 0))
+    expect(build(rs).cleanShare).toBeCloseTo(0.9)
+    expect(cleanShare([])).toBe(0)
+  })
+
   it('finds the bar with the most slips, and a run with misses is not clean', () => {
     const rs = Array.from({ length: 12 }, (_, i) => jr(i, 'note', i >= 4 && i < 7 ? 'miss' : 'perfect', i >= 4 && i < 7 ? null : 0))
     const r = build(rs)
@@ -112,5 +118,54 @@ describe('buildResult', () => {
     expect(r.clean).toBe(false)
     expect(r.counts.miss).toBe(3)
     expect(r.score).toBe(75)
+  })
+})
+
+describe('chord stats, bends and palm-muted strums', () => {
+  const C = [0, 4, 7]
+  const chords = (n: number, over = {}) => Array.from({ length: n }, (_, i) => chord(i, i, 'C', C, { chroma: true, ...over }))
+  const run = (l: Lesson, chart: Chart, results: JudgeResult[]) =>
+    buildResult({ lesson: l, chart, summary: { results, extras: 0, listenViolations: 0 }, improv: null, chain: new ChainMeter(), bpm: 60, speed: 1, easyTiming: false, secPerBeat: 1, playedSec: 10 })
+
+  it('counts chords heard right, wrong and unsure; a miss is none of them', () => {
+    const chart = chartOf(chords(5), 2)
+    const rs = [
+      jr(0, 'chord', 'good', 0, { chordOk: true, chordConf: 0.9 }),
+      jr(1, 'chord', 'good', 0, { chordOk: true, chordConf: 0.7 }),
+      jr(2, 'chord', 'good', 0, { chordOk: false, chordConf: 0.8 }),
+      jr(3, 'chord', 'good', 0, { chordOk: null, chordConf: 0.2 }),
+      jr(4, 'chord', 'miss', null),
+    ]
+    const s = chordStats(chart, rs)
+    expect(s).toMatchObject({ ok: 2, wrong: 1, unsure: 1 })
+    expect(s?.conf).toBeCloseTo(0.65)
+    expect(run(lesson({ type: 'chords' }), chart, rs).chordStats).toMatchObject({ ok: 2, wrong: 1, unsure: 1 })
+  })
+
+  it('has no chord stats without checked chords (key and autoplay runs, notes lessons)', () => {
+    const chart = chartOf(chords(2), 1)
+    expect(chordStats(chart, [jr(0, 'chord', 'good', 0, { chordOk: null }), jr(1, 'chord', 'good', 0, { chordOk: null })])).toBeNull()
+    const notes = chartOf([note(0, 0, 0, 0)], 1)
+    expect(run(lesson(), notes, [jr(0, 'note', 'good', 0)]).chordStats).toBeUndefined()
+  })
+
+  it('averages the bends in cents, null when no bend was graded', () => {
+    expect(meanBendCents([jr(0, 'note', 'good', 0, { bendCents: 10 }), jr(1, 'note', 'good', 0, { bendCents: 31 }), jr(2, 'note', 'good', 0)])).toBe(21)
+    expect(meanBendCents([jr(0, 'note', 'good', 0)])).toBeNull()
+  })
+
+  it('palm-muted strums count toward the palm-mute star', () => {
+    const l = lesson({ type: 'chords', starExtra: { kind: 'palmMute', share: 1 } })
+    const chart = chartOf(chords(4, { dir: 'P', chroma: false, power: true, pcs: [4, 11] }), 1)
+    const ok = chart.events.map((e) => jr(e.id, 'chord', 'perfect', 0, { pmOk: true }))
+    const rang = chart.events.map((e) => jr(e.id, 'chord', 'perfect', 0, { pmOk: e.id !== 2 }))
+    expect(run(l, chart, ok).stars).toBe(3)
+    expect(run(l, chart, rang).stars).toBe(2)
+  })
+
+  it('marks shuffle and swing on the result', () => {
+    const chart = chartOf([note(0, 0, 0, 0)], 1)
+    const r = buildResult({ lesson: L, chart, summary: { results: [jr(0, 'note', 'good', 0)], extras: 0, listenViolations: 0 }, improv: null, chain: new ChainMeter(), bpm: 60, speed: 1, easyTiming: false, secPerBeat: 1, playedSec: 4, swing: true, shuffle: true })
+    expect(r).toMatchObject({ swing: true, shuffle: true })
   })
 })

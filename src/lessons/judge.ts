@@ -2,7 +2,8 @@
 // No engine or DOM: every time passed in is already corrected by the run's offset.
 import type { Chart, ChartEvent, Grade, InputFrame, InputOnset, JudgeResult, JudgeSummary, NoteEv, Timing, Verdict, Windows } from './types'
 import { pc } from '../music/theory'
-import { checkChord } from './chroma'
+import { CONF_LOW, checkChord, chordConfidence } from './chroma'
+import { swungBeat } from './clock'
 import { vibratoCheck } from './improv'
 
 export const WINDOWS: Record<Timing, Windows> = {
@@ -68,6 +69,7 @@ export interface JudgeOpts {
   octaveOk: boolean
   restGate: () => number
   listenBars: number[]
+  swing: boolean // off-beat 8ths are judged on the swung grid
 }
 
 /** The most common midi in the 100 ms after an onset (ties or no frames: the onset's own midi). */
@@ -158,10 +160,11 @@ export class Judge {
     this.chartMidis = new Set(chart.events.flatMap((e) => (e.kind === 'note' ? [e.midi] : [])))
     const W = o.windows
     const spb = o.secPerBeat
+    const sw = (b: number) => o.start + swungBeat(b, o.swing) * spb
     this.evs = chart.events.map((e) => ({
       e,
-      te: o.start + e.beat * spb,
-      end: o.start + (e.beat + e.dur) * spb,
+      te: sw(e.beat),
+      end: sw(e.beat + e.dur),
       next: Infinity,
       perfect: W.perfect,
       good: W.good,
@@ -401,6 +404,15 @@ export class Judge {
         this.chroma.set(e.id, { from, to, frames: [] })
         this.posts.push({ id: e.id, until: to, run: () => this.chordCheck(v, r, m) })
       } else this.chordCheck(v, r, m)
+      // a palm-muted strum gets the same decay check as a palm-muted note
+      if (e.dir === 'P') {
+        if (instant) r.pmOk = true
+        else {
+          r.pmOk = null
+          const hit = m.o.t
+          this.posts.push({ id: e.id, until: hit + PM_PEAK_SEC + PM_SEC, run: () => this.pmCheck(r, hit) })
+        }
+      }
     } else if (e.kind === 'mute') {
       if (m.stable >= MUTE_STABLE && m.voted !== null) r.credit *= MUTE_RANG
     }
@@ -469,26 +481,45 @@ export class Judge {
 
   // ---- post checks (they adjust a result that was already reported) ----
 
+  // Honest chord check: a chord is only marked wrong when the check is sure (chordConf >= CONF_LOW).
+  // Per-string strum checks (did the bass strings ring?) aren't feasible: a 12-bin chroma has no string information.
   private chordCheck(v: Ev, r: JudgeResult, m: Match) {
     const e = v.e
     if (e.kind !== 'chord') return
     const w = this.chroma.get(e.id)
     this.chroma.delete(e.id)
+    const instant = m.o.source === 'key' || m.o.source === 'auto'
     if (e.chroma && w && w.frames.length >= CHROMA_MIN_FRAMES) {
       const avg = new Float32Array(12)
       for (const f of w.frames) for (let i = 0; i < 12; i++) avg[i] += f[i] / w.frames.length
       const c = checkChord(avg, e.symbol)
+      const conf = chordConfidence(c, w.frames.length)
+      r.chordConf = conf
+      if (conf < CONF_LOW) {
+        r.chordOk = null
+        return
+      }
       r.chordOk = c.ok
       if (!c.ok) {
         r.credit *= CHORD_FAIL
         r.chordMissing = c.missing
       }
     } else if (e.power) {
+      // power chords and dyads (power too): judged by the pitch vote; an unsteady vote is "couldn't tell"
+      r.chordConf = m.stable
+      if (m.stable < CONF_LOW) {
+        r.chordOk = null
+        return
+      }
       const p = m.voted === null ? null : pc(m.voted)
-      const ok = p !== null && (p === e.pcs[0] || p === e.pcs[1])
+      const ok = p !== null && e.pcs.includes(p)
       r.chordOk = ok
       if (!ok) r.credit *= POWER_FAIL
-    } else r.chordOk = null
+    } else {
+      r.chordOk = null
+      // too few chroma frames on a live run; key and autoplay runs never read chroma, so they aren't counted
+      if (e.chroma && !instant) r.chordConf = 0
+    }
   }
 
   private bendCheck(v: Ev, e: NoteEv, r: JudgeResult, hit: number) {
@@ -502,6 +533,9 @@ export class Judge {
       const rest = fs.slice(i)
       ok = rest.filter((f) => Math.abs(f.midiF! - to) <= BEND_REACH).length >= BEND_HOLD * rest.length
     }
+    // how far from the target while held: from the reach point, or the whole note when it never got there
+    const held = i >= 0 ? fs.slice(i) : fs
+    if (held.length) r.bendCents = Math.round((100 * held.reduce((s, f) => s + Math.abs(f.midiF! - to), 0)) / held.length)
     r.techOk = ok
     if (!ok) r.credit *= BEND_FAIL
   }

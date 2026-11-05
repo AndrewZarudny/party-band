@@ -1,7 +1,7 @@
 // Compiles a Lesson into a timed Chart: judged events, lead-voice calls and the chord timeline.
 // Must not import data.ts (data.ts imports this for validateLessons).
 import type { CallNote, Chart, ChartEvent, ChordBar, ImprovSpec, Lesson, NoteEv, SeqItem } from './types'
-import { STANDARD_TUNING, parseChord } from '../music/theory'
+import { STANDARD_TUNING, parseChord, pc } from '../music/theory'
 import { guitarShape } from '../music/parts'
 import { boxNotes, makePhrase } from '../music/phrase'
 import { seq } from './seq'
@@ -57,9 +57,22 @@ function seqEvents(lesson: Lesson): Draft[] {
     if (it.k === 'note') out.push(noteDraft(it, 0))
     else if (it.k === 'rest') out.push({ kind: 'rest', beat: it.beat, dur: it.len })
     else if (it.k === 'mute') out.push({ kind: 'mute', beat: it.beat, dur: 0.5 })
+    else if (lesson.dyad) out.push({ kind: 'chord', beat: it.beat, dur: it.len, symbol: it.symbol, ...dyadInfo(it.symbol, lesson.shapes?.[it.symbol]), chroma: false })
     else out.push({ kind: 'chord', beat: it.beat, dur: it.len, symbol: it.symbol, ...chordInfo(it.symbol, lesson.shapes?.[it.symbol]), chroma: true })
   }
   return out
+}
+
+// A two-note shape (boogie): judged by pitch like a power chord, on the notes that actually sound, lowest string first.
+function dyadInfo(symbol: string, override: number[] | undefined) {
+  const { frets } = chordInfo(symbol, override)
+  const pcs: number[] = []
+  frets.forEach((f, s) => {
+    if (f < 0) return
+    const p = pc(STANDARD_TUNING[s] + f)
+    if (!pcs.includes(p)) pcs.push(p)
+  })
+  return { frets, pcs, power: true }
 }
 
 function callNote(it: Extract<SeqItem, { k: 'note' }>, offset: number): CallNote {

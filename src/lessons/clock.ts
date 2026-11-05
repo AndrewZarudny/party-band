@@ -4,7 +4,17 @@ import { engine } from '../audio/engine'
 const LOOKAHEAD = 0.12 // seconds scheduled ahead, as in JamMode
 const TIMER_MS = 25
 const MAX_SMOOTH = 0.03 // never extrapolate ctx.currentTime by more than this
-const SWING = 0.33 // odd 8ths are pushed by this share of an 8th when swinging
+export const SWING = 0.33 // odd 8ths are pushed by this share of an 8th when swinging
+
+/** The beat at which an event sounds: off-beat 8ths move later by SWING / 2 beat when the feel swings.
+ *  16th notes stay straight (a shuffle rarely has them). */
+export function swungBeat(beat: number, swing: boolean): number {
+  if (!swing) return beat
+  const k = beat * 2
+  const r = Math.round(k)
+  if (Math.abs(k - r) > 1e-6 || r % 2 === 0) return beat
+  return beat + SWING / 2
+}
 
 /** ctx.currentTime only moves in audio-block steps; this smooths it with performance.now(). */
 export class AudioClock {

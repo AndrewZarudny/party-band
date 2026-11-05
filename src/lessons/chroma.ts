@@ -29,12 +29,25 @@ export function chordTemplate(pcs: number[], power: boolean): number[] {
   return normalise(t)
 }
 
+export const CONF_LOW = 0.5 // heuristic: under this confidence a chord is neither right nor wrong
+const CONF_SPAN = 0.1 // heuristic: 0.1 of cosine margin spans unsure to sure
+const CONF_FRAMES = 6 // heuristic: chroma frames for full confidence
+
 export interface ChordCheck {
   match: number
   rank: number
   best: string
   missing: number[]
   ok: boolean
+  other: number // best score among the other triads
+}
+
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
+
+/** 0–1: how sure the check is, from the margin to the line it was judged by and the frames it heard. */
+export function chordConfidence(c: ChordCheck, frames: number): number {
+  const margin = c.ok ? c.match - Math.max(CHORD_MATCH, c.other) : c.other - c.match
+  return clamp01(0.5 + margin / CONF_SPAN) * clamp01(frames / CONF_FRAMES)
 }
 
 const TRIADS = Array.from({ length: 24 }, (_, i) => {
@@ -52,7 +65,7 @@ const dot = (a: ArrayLike<number>, b: number[]) => {
 
 export function checkChord(avg: Float32Array, symbol: string): ChordCheck {
   const chord = parseChord(symbol)
-  if (!chord || !chord.tones.length) return { match: 0, rank: 99, best: '', missing: [], ok: false }
+  if (!chord || !chord.tones.length) return { match: 0, rank: 99, best: '', missing: [], ok: false, other: 0 }
   const v = normalise(Array.from(avg.subarray(0, 12)))
   const power = chord.quality === '5'
   const match = dot(v, chordTemplate(chord.tones, power))
@@ -60,9 +73,11 @@ export function checkChord(avg: Float32Array, symbol: string): ChordCheck {
   let rank = 1
   let best = chord.symbol
   let bestScore = match
+  let other = 0
   for (const tr of TRIADS) {
     if (tr.key === key) continue // the target itself
     const s = dot(v, tr.tpl)
+    other = Math.max(other, s)
     if (s > match) rank++
     if (s > bestScore) {
       bestScore = s
@@ -72,7 +87,7 @@ export function checkChord(avg: Float32Array, symbol: string): ChordCheck {
   const max = Math.max(...v)
   const missing = [...new Set(chord.tones.map(pc))].filter((p) => v[p] < MISSING_SHARE * max)
   const ok = match >= CHORD_MATCH && (rank <= 2 || match >= bestScore - CHORD_MARGIN)
-  return { match, rank, best, missing, ok }
+  return { match, rank, best, missing, ok, other }
 }
 
 /** engine.chroma behind a guard: false when unavailable (old HMR instance, no input, too quiet). */

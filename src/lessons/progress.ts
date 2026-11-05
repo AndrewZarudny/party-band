@@ -1,14 +1,44 @@
-// Player progress: XP, levels, unlocks, streak, dino stage. Saved in localStorage.
-import type { ApplyOutcome, Cosmetic, DayPlan, DinoStage, Lesson, LessonRecord, LessonResult, PlanKind, PlanStep, Progress, Stars, WorldId, XpLine } from './types'
-import { LESSONS, WORLDS, lessonById } from './data'
+// Player progress: XP, levels, unlocks, dino stage, the session log. Saved in localStorage.
+import type {
+  ApplyOutcome,
+  ColdAttempt,
+  Cosmetic,
+  DinoStage,
+  HistEntry,
+  JamStats,
+  ChordStats,
+  Lesson,
+  LessonRecord,
+  LessonResult,
+  PainLevel,
+  Progress,
+  ReviewState,
+  RunSample,
+  SessionDay,
+  SessionMin,
+  SessionPlan,
+  SessionStep,
+  Stars,
+  StepKind,
+  TabLevel,
+  TempoTrial,
+  WeekShape,
+  WorldId,
+  XpLine,
+} from './types'
+import { LEGACY_IDS, LESSONS, PLAN_PATH, WORLDS, lessonById } from './data'
 import { ACHIEVEMENTS, checkAchievements } from './achievements'
 import { MIN_GRADED, RECENT_MAX, pickLines, pushRecent } from './facts/pick'
-import { cleanSpeed, nextSpeed } from './speed'
+import { bpmAt, cleanSpeed, nextSpeed } from './speed'
 import { normalizeHeat } from './heat'
+import { HIST_MAX, SESSION_GAPS, applyCold, firstReview, histEntry, isReviewItem, sessionNow, weekStatus } from './review'
 
 const KEY = 'lessons-progress'
 const BAK = 'lessons-progress-bak'
 const DAY_MS = 86400000
+export const RUNS_MAX = 300
+export const SESSION_LOG_MAX = 400
+const WEEK_XP_MAX = 20
 
 export const DINO_STAGES: DinoStage[] = [
   { stage: 0, name: 'Egg', after: null },
@@ -23,7 +53,6 @@ export const DINO_STAGES: DinoStage[] = [
 ]
 
 const COSMETICS: Cosmetic[] = ['shades', 'bandana', 'pick-crown', 'star-guitar']
-const GOALS: Progress['dailyGoal'][] = [100, 200, 350]
 
 /** The practice day: local date of (d − 4 h), so a late-night session still counts for the day before. */
 export function dayKey(d: Date): string {
@@ -41,26 +70,11 @@ export function daysBetween(a: string, b: string) {
   return Math.round((tb - ta) / DAY_MS)
 }
 
-/** Review gaps in days (Today's set). A pass on or after the due day moves a lesson one gap further. */
-export const REVIEW_DAYS = [1, 3, 7, 14, 30]
-
-/** Days overdue (0 = due today), or null when the lesson isn't passed or isn't due yet. */
-export function reviewDue(rec: LessonRecord, today: string): number | null {
-  const at = rec.lastPass ?? rec.passedAt
-  if (at === undefined) return null
-  const gap = daysBetween(dayKey(new Date(at)), today)
-  const need = REVIEW_DAYS[Math.min(rec.box ?? 0, REVIEW_DAYS.length - 1)]
-  return gap >= need ? gap - need : null
-}
-
 export function newProgress(): Progress {
   return {
     v: 1,
     xp: 0,
     lessons: {},
-    streak: { days: 0, last: '', eggs: 0 },
-    daily: { day: '', xp: 0, passes: 0 },
-    dailyGoal: 100,
     dinoName: 'Pebble',
     achievements: {},
     cosmetics: [],
@@ -68,8 +82,13 @@ export function newProgress(): Progress {
     recentFacts: [],
     totalSec: 0,
     plan: null,
-    planStreak: { days: 0, last: '' },
     created: Date.now(),
+    sessionMin: 30,
+    weekGoal: 3,
+    sessions: { log: [], before: 0 },
+    weekXp: [],
+    runs: [],
+    seenWeekly: true,
   }
 }
 
@@ -85,8 +104,68 @@ const num = (v: unknown, d: number) => (typeof v === 'number' && isFinite(v) ? v
 const str = (v: unknown, d: string) => (typeof v === 'string' ? v : d)
 const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null)
 const toStars = (v: unknown): Stars => Math.max(0, Math.min(3, Math.round(num(v, 0)))) as Stars
+const int = (v: unknown, lo: number, hi: number, d: number) => (typeof v === 'number' && isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : d)
+const isDay = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)
+const TABS: TabLevel[] = ['full', 'faded', 'hidden']
+const toTab = (v: unknown): TabLevel => TABS.find((t) => t === v) ?? 'full'
+const PAINS: PainLevel[] = ['none', 'mild', 'sharp']
+const SHAPES: WeekShape[] = ['A', 'B', 'C', 'D']
+const toMin = (v: unknown): SessionMin | undefined => (v === 20 || v === 30 ? v : undefined)
+const numOrNull = (v: unknown) => (typeof v === 'number' && isFinite(v) ? v : null)
 
-function normalizeRecord(raw: unknown): LessonRecord | null {
+/** The review calendar before sessions: days after the last pass, by box (migration only). */
+const OLD_REVIEW_DAYS = [1, 3, 7, 14, 30]
+
+function normalizeCold(raw: unknown): ColdAttempt | undefined {
+  const o = obj(raw)
+  if (!o || typeof o.s !== 'number' || !isDay(o.d)) return undefined
+  return { s: Math.round(o.s), d: o.d, bpm: num(o.bpm, 0), speed: num(o.speed, 1), clean: o.clean === true, score: num(o.score, 0), tab: toTab(o.tab) }
+}
+
+function normalizeHist(raw: unknown): HistEntry[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const out: HistEntry[] = []
+  for (const x of raw) {
+    const o = obj(x)
+    if (!o || typeof o.s !== 'number' || !isDay(o.d)) continue
+    const e: HistEntry = { s: Math.round(o.s), d: o.d }
+    if (typeof o.best === 'number' && isFinite(o.best)) e.best = o.best
+    const c = normalizeCold(o.cold)
+    if (c) e.cold = c
+    out.push(e)
+  }
+  return out.sort((a, b) => a.s - b.s).slice(-HIST_MAX)
+}
+
+function normalizeReview(raw: unknown): ReviewState | undefined {
+  const o = obj(raw)
+  if (!o || typeof o.due !== 'number') return undefined
+  const r: ReviewState = {
+    step: int(o.step, 0, SESSION_GAPS.length - 1, 0),
+    due: Math.max(1, Math.round(o.due)),
+    coldPasses: int(o.coldPasses, 0, 99, 0),
+    lastColdS: int(o.lastColdS, 0, 1e6, 0),
+    learned: o.learned === true,
+  }
+  if (typeof o.learnedAt === 'number') r.learnedAt = o.learnedAt
+  const cs = cleanSpeed(o.coldSpeed)
+  if (cs !== undefined) r.coldSpeed = cs
+  return r
+}
+
+/**
+ * A review state for a lesson passed under the old day calendar: its box becomes a review step and a due session.
+ * Never learned: "learned" needs clean cold starts in 2 separate sessions, and the old calendar had no cold starts.
+ */
+function migrateReview(rec: LessonRecord, box: number | undefined, lastPass: number | undefined, today: string): ReviewState {
+  const b = Math.max(0, Math.min(OLD_REVIEW_DAYS.length - 1, Math.round(box ?? 0)))
+  const step = Math.min(SESSION_GAPS.length - 1, b)
+  const at = lastPass ?? rec.passedAt ?? 0
+  const wasDue = daysBetween(dayKey(new Date(at)), today) >= OLD_REVIEW_DAYS[b]
+  return { step, due: wasDue ? 1 : 1 + SESSION_GAPS[step], coldPasses: 0, lastColdS: 0, learned: false }
+}
+
+function normalizeRecord(raw: unknown, lesson: Lesson | undefined, today: string): LessonRecord | null {
   const o = obj(raw)
   if (!o) return null
   const rec: LessonRecord = {
@@ -111,60 +190,148 @@ function normalizeRecord(raw: unknown): LessonRecord | null {
   const top = cleanSpeed(o.topSpeed)
   if (top !== undefined) rec.topSpeed = top
   if (o.overdrive === true) rec.overdrive = true
-  if (typeof o.miss === 'number') rec.miss = Math.max(0, Math.round(num(o.miss, 0)))
-  if (typeof o.lastPass === 'number') rec.lastPass = o.lastPass
-  if (typeof o.box === 'number') rec.box = Math.max(0, Math.min(REVIEW_DAYS.length - 1, Math.round(num(o.box, 0))))
+  const tr = obj(o.trial)
+  const trSpeed = cleanSpeed(tr?.speed)
+  if (tr && trSpeed !== undefined) rec.trial = { speed: trSpeed, first: tr.first === true, clean: int(tr.clean, 0, 99, 0) } satisfies TempoTrial
   if (typeof o.loops === 'number') rec.loops = Math.max(0, Math.round(num(o.loops, 0)))
   const loopTop = cleanSpeed(o.loopTop)
   if (loopTop !== undefined) rec.loopTop = loopTop
+  if (isDay(o.loopDay)) rec.loopDay = o.loopDay
+  const hist = normalizeHist(o.hist)
+  if (hist) rec.hist = hist
+  // firstS 0: played before session numbers existed (an old save), so never "new this week".
+  if (typeof o.firstS === 'number' && isFinite(o.firstS)) rec.firstS = Math.max(0, Math.round(o.firstS))
+  else if (rec.plays > 0) rec.firstS = 0
+  if (typeof o.shuffleBest === 'number' && isFinite(o.shuffleBest)) rec.shuffleBest = o.shuffleBest
+  const review = normalizeReview(o.review)
+  if (review) rec.review = review
+  // The old day calendar (box, lastPass) becomes a session review; miss, box and lastPass are dropped.
+  else if (lesson && isReviewItem(lesson) && rec.passedAt !== undefined) {
+    rec.review = migrateReview(rec, typeof o.box === 'number' ? o.box : undefined, typeof o.lastPass === 'number' ? o.lastPass : undefined, today)
+  }
   return rec
 }
 
-const PLAN_KINDS: PlanKind[] = ['warmup', 'review', 'new', 'jam']
+const STEP_KINDS: StepKind[] = ['warmup', 'listenback', 'cold', 'new', 'mix', 'changes', 'ear', 'jam']
+const SKILL_GAMES = ['changes', 'find', 'name', 'ear', 'clock', 'record', 'mental']
+const strList = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : undefined)
 
-function normalizePlan(raw: unknown): DayPlan | null {
-  const o = obj(raw)
-  if (!o || typeof o.day !== 'string' || !Array.isArray(o.steps)) return null
-  const steps: PlanStep[] = []
-  for (const s of o.steps) {
-    const x = obj(s)
-    const kind = PLAN_KINDS.find((k) => k === x?.kind)
-    if (!x || !kind || typeof x.lessonId !== 'string' || !lessonById(x.lessonId)) continue
-    const from = obj(x.from)
-    const step: PlanStep = {
-      kind,
-      lessonId: x.lessonId,
-      min: num(x.min, 2),
-      state: x.state === 'done' || x.state === 'skipped' ? x.state : 'todo',
-      why: str(x.why, ''),
-      from: { best: num(from?.best, 0), stars: toStars(from?.stars), speed: num(from?.speed, 1), loops: num(from?.loops, 0) },
-    }
-    if (typeof x.score === 'number') step.score = x.score
-    if (typeof x.speed === 'number') step.speed = x.speed
-    if (typeof x.drill === 'string' && /^[nct]:/.test(x.drill)) step.drill = x.drill
-    steps.push(step)
+function normalizeStep(raw: unknown): SessionStep | null {
+  const x = obj(raw)
+  const kind = STEP_KINDS.find((k) => k === x?.kind)
+  if (!x || !kind) return null
+  const lessonId = typeof x.lessonId === 'string' && lessonById(x.lessonId) ? x.lessonId : null
+  const sk = obj(x.skill)
+  const skill = sk && typeof sk.game === 'string' && SKILL_GAMES.includes(sk.game) ? (sk as unknown as SessionStep['skill']) : undefined
+  if (!lessonId && !skill && kind !== 'mix') return null
+  const from = obj(x.from)
+  const step: SessionStep = {
+    kind,
+    lessonId,
+    min: num(x.min, 2),
+    state: x.state === 'done' || x.state === 'skipped' ? x.state : 'todo',
+    why: str(x.why, ''),
+    from: { best: num(from?.best, 0), stars: toStars(from?.stars), speed: num(from?.speed, 1), loops: num(from?.loops, 0) },
   }
-  const plan: DayPlan = { day: o.day, steps, bonus: o.bonus === true }
+  if (skill) step.skill = skill
+  const items = strList(x.items)?.filter((id) => lessonById(id))
+  if (items) step.items = items
+  const played = strList(x.played)
+  if (played) step.played = played
+  if (kind === 'mix' && !items?.length) return null
+  if (x.consolidate === true) step.consolidate = true
+  if (typeof x.score === 'number') step.score = x.score
+  if (typeof x.speed === 'number') step.speed = x.speed
+  if (typeof x.drill === 'string' && /^[nct]:/.test(x.drill)) step.drill = x.drill
+  return step
+}
+
+/** Only v2 session plans are read; an old day plan becomes null, so a fresh plan is made today. */
+function normalizePlan(raw: unknown): SessionPlan | null {
+  const o = obj(raw)
+  if (!o || o.v !== 2 || !isDay(o.day) || !Array.isArray(o.steps)) return null
+  const steps = o.steps.map(normalizeStep).filter((s): s is SessionStep => s !== null)
+  const plan: SessionPlan = { v: 2, day: o.day, min: toMin(o.min) ?? 30, shape: SHAPES.find((s) => s === o.shape) ?? 'A', steps }
   if (typeof o.away === 'number' && isFinite(o.away) && o.away >= 0) plan.away = Math.round(o.away)
   return plan
 }
 
+function normalizeDay(raw: unknown): SessionDay | null {
+  const o = obj(raw)
+  if (!o || !isDay(o.day)) return null
+  const d: SessionDay = { day: o.day, sec: Math.max(0, num(o.sec, 0)), set: o.set === true, counted: o.counted === true, pocket: o.pocket === true }
+  const min = toMin(o.min)
+  if (min) d.min = min
+  const shape = SHAPES.find((s) => s === o.shape)
+  if (shape) d.shape = shape
+  const pain = PAINS.find((s) => s === o.pain)
+  if (pain) d.pain = pain
+  if (typeof o.goal === 'number' && Number.isInteger(o.goal) && o.goal >= 2 && o.goal <= 5) d.goal = o.goal
+  return d
+}
+
+/** Sorted by day, one entry per day, at most SESSION_LOG_MAX: trimmed counted days move into `before`. */
+export function trimLog(log: SessionDay[], before: number): { log: SessionDay[]; before: number } {
+  const byDay = new Map<string, SessionDay>()
+  for (const d of log) byDay.set(d.day, d)
+  const sorted = [...byDay.values()].sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0))
+  const cut = Math.max(0, sorted.length - SESSION_LOG_MAX)
+  const gone = sorted.slice(0, cut).filter((d) => d.counted).length
+  return { log: sorted.slice(cut), before: before + gone }
+}
+
+function normalizeJam(raw: unknown): JamStats | undefined {
+  const o = obj(raw)
+  if (!o) return undefined
+  return { strong: numOrNull(o.strong), restBeats: numOrNull(o.restBeats), phrases: num(o.phrases, 0), silentBars: num(o.silentBars, 0) }
+}
+
+function normalizeChordStats(raw: unknown): ChordStats | undefined {
+  const o = obj(raw)
+  if (!o) return undefined
+  return { ok: num(o.ok, 0), wrong: num(o.wrong, 0), unsure: num(o.unsure, 0), conf: numOrNull(o.conf) }
+}
+
+function normalizeRun(raw: unknown): RunSample | null {
+  const o = obj(raw)
+  if (!o || typeof o.at !== 'number' || typeof o.id !== 'string') return null
+  const s: RunSample = {
+    at: o.at,
+    id: o.id,
+    bpm: num(o.bpm, 0),
+    swing: o.swing === true,
+    mean: numOrNull(o.mean),
+    spread: numOrNull(o.spread),
+    n: num(o.n, 0),
+    tab: toTab(o.tab),
+    quiet: o.quiet === true,
+    cold: o.cold === true,
+    clean: o.clean === true,
+    bend: numOrNull(o.bend),
+  }
+  const jam = normalizeJam(o.jam)
+  if (jam) s.jam = jam
+  const chords = normalizeChordStats(o.chords)
+  if (chords) s.chords = chords
+  return s
+}
+
 /** Checks a parsed value and fills missing fields; null when it isn't progress at all. */
-function normalize(raw: unknown): Progress | null {
+function normalize(raw: unknown, now = new Date()): Progress | null {
   const o = obj(raw)
   if (!o || o.v !== 1 || typeof o.xp !== 'number' || !obj(o.lessons)) return null
+  const today = dayKey(now)
   const p = newProgress()
   p.xp = Math.max(0, num(o.xp, 0))
   const lessons = obj(o.lessons) ?? {}
-  for (const id of Object.keys(lessons)) {
-    const rec = normalizeRecord(lessons[id])
-    if (rec) p.lessons[id] = rec
+  for (const raw of Object.keys(lessons)) {
+    // Renamed lessons move to their new id; the record played more wins when both exist.
+    const id = LEGACY_IDS[raw] ?? raw
+    const rec = normalizeRecord(lessons[raw], lessonById(id), today)
+    if (!rec) continue
+    const had = p.lessons[id]
+    if (!had || rec.plays > had.plays) p.lessons[id] = rec
   }
-  const streak = obj(o.streak)
-  if (streak) p.streak = { days: num(streak.days, 0), last: str(streak.last, ''), eggs: num(streak.eggs, 0) }
-  const daily = obj(o.daily)
-  if (daily) p.daily = { day: str(daily.day, ''), xp: num(daily.xp, 0), passes: num(daily.passes, 0) }
-  p.dailyGoal = GOALS.find((g) => g === o.dailyGoal) ?? 100
   p.dinoName = str(o.dinoName, '').trim() || 'Pebble'
   const ach = obj(o.achievements)
   if (ach) for (const id of Object.keys(ach)) if (typeof ach[id] === 'number') p.achievements[id] = ach[id]
@@ -175,10 +342,19 @@ function normalize(raw: unknown): Progress | null {
   p.totalSec = Math.max(0, num(o.totalSec, 0))
   p.created = num(o.created, p.created)
   p.plan = normalizePlan(o.plan)
-  const ps = obj(o.planStreak)
-  if (ps) p.planStreak = { days: num(ps.days, 0), last: str(ps.last, '') }
   const heat = normalizeHeat(o.heat)
   if (heat) p.heat = heat
+  p.sessionMin = toMin(o.sessionMin) ?? 30
+  p.weekGoal = typeof o.weekGoal === 'number' && Number.isInteger(o.weekGoal) && o.weekGoal >= 2 && o.weekGoal <= 5 ? o.weekGoal : 3
+  const ses = obj(o.sessions)
+  if (ses) {
+    const log = Array.isArray(ses.log) ? ses.log.map(normalizeDay).filter((d): d is SessionDay => d !== null) : []
+    p.sessions = trimLog(log, int(ses.before, 0, 1e6, 0))
+  }
+  if (Array.isArray(o.weekXp)) p.weekXp = [...new Set(o.weekXp.filter(isDay))].sort().slice(-WEEK_XP_MAX)
+  if (Array.isArray(o.runs)) p.runs = o.runs.map(normalizeRun).filter((r): r is RunSample => r !== null).sort((a, b) => a.at - b.at).slice(-RUNS_MAX)
+  // The one-time "weeks, not days" note: shown to a save from the day-streak era, and until dismissed.
+  if (o.seenWeekly !== true && ('streak' in o || 'dailyGoal' in o || 'sessions' in o)) delete p.seenWeekly
   return p
 }
 
@@ -246,9 +422,10 @@ export function exportProgress(p: Progress): string {
   return JSON.stringify(p, null, 2)
 }
 
-export function importProgress(json: string): Progress | null {
+/** `now` decides which migrated reviews are due (tests pin it). */
+export function importProgress(json: string, now = new Date()): Progress | null {
   try {
-    return normalize(JSON.parse(json))
+    return normalize(JSON.parse(json), now)
   } catch {
     return null
   }
@@ -302,8 +479,11 @@ export function eggCracked(p: Progress): boolean {
 
 // ---- Unlocks -------------------------------------------------------------------
 
+const isFree = (id: string) => lessonById(id)?.free === true
+
+/** Stars in a world's lessons; free jams are left out. */
 export function starsInWorld(p: Progress, w: WorldId): { got: number; max: number } {
-  const ids = worldDef(w)?.lessons ?? []
+  const ids = (worldDef(w)?.lessons ?? []).filter((id) => !isFree(id))
   const got = ids.reduce((a, id) => a + (p.lessons[id]?.stars ?? 0), 0)
   return { got, max: 3 * ids.length }
 }
@@ -317,10 +497,21 @@ export function worldUnlocked(p: Progress, w: WorldId): boolean {
   return s.max > 0 && s.got >= Math.ceil(0.7 * s.max)
 }
 
+/** On the 12-week plan's path and the path lesson before it is passed (the first is always open). */
+export function planOpen(p: Progress, lessonId: string): boolean {
+  const i = PLAN_PATH.indexOf(lessonId)
+  return i === 0 || (i > 0 && isPassed(p, PLAN_PATH[i - 1]))
+}
+
 export function isUnlocked(p: Progress, lessonId: string): boolean {
   const lesson = lessonById(lessonId)
-  if (!lesson || !worldUnlocked(p, lesson.world)) return false
-  const ids = worldDef(lesson.world)?.lessons ?? []
+  if (!lesson) return false
+  // The 12-week plan opens its lessons in order, ahead of the world they sit in.
+  if (planOpen(p, lessonId)) return true
+  if (!worldUnlocked(p, lesson.world)) return false
+  // A free jam opens with its world and never blocks the next lesson.
+  if (lesson.free) return true
+  const ids = (worldDef(lesson.world)?.lessons ?? []).filter((id) => !isFree(id))
   const i = ids.indexOf(lessonId)
   if (i <= 0 || lesson.boss || isPassed(p, lessonId)) return true
   const prevId = ids[i - 1]
@@ -333,40 +524,9 @@ export function nextLesson(p: Progress): string | null {
   // A sync lesson that was tried or skipped never blocks "Continue"; it stays a tap away on the map.
   const settled = (id: string) => isPassed(p, id) || (lessonById(id)?.type === 'sync' && (p.lessons[id]?.plays ?? 0) > 0)
   for (const w of WORLDS) {
-    for (const id of w.lessons) if (isUnlocked(p, id) && !settled(id)) return id
+    for (const id of w.lessons) if (!isFree(id) && isUnlocked(p, id) && !settled(id)) return id
   }
   return null
-}
-
-// ---- Streak --------------------------------------------------------------------
-
-export function streakStatus(p: Progress, now: Date): { days: number; alive: boolean; away: number } {
-  const { days, last, eggs } = p.streak
-  if (!last || days <= 0) return { days: 0, alive: false, away: 0 }
-  const away = Math.max(0, daysBetween(last, dayKey(now)))
-  const alive = away <= 1 + eggs
-  return { days: alive ? days : 0, alive, away }
-}
-
-/** Counts today for the streak. Returns the note to show, if any. */
-function updateStreak(p: Progress, today: string): string | null {
-  const s = p.streak
-  if (s.last === today) return null
-  let note: string | null = null
-  const gap = s.last ? daysBetween(s.last, today) : Infinity
-  if (gap === 1) {
-    s.days++
-  } else if (gap > 1 && gap <= 1 + s.eggs) {
-    s.eggs -= gap - 1
-    s.days++
-    note = 'Your nest egg kept the streak warm.'
-  } else {
-    if (s.days > 1) note = `${p.dinoName} missed you. New streak starts today.`
-    s.days = 1
-  }
-  if (s.days % 7 === 0) s.eggs = Math.min(2, s.eggs + 1)
-  s.last = today
-  return note
 }
 
 // ---- Runs ----------------------------------------------------------------------
@@ -388,67 +548,104 @@ export function recordSkip(p: Progress, lessonId: string, now: Date): Progress {
   if (rec.passedAt === undefined) rec.fails++
   rec.playsToday++
   rec.lastPlayed = now.getTime()
+  if (rec.firstS === undefined) rec.firstS = sessionNow(p, now)
   return next
 }
 
 const plus = (n: number) => `+${n}`
-const times = (m: number) => `x${m.toFixed(2)}`
 
 /** Lessons passed so far, optionally only of some types. */
 function passedCount(p: Progress, types?: Lesson['type'][]): number {
   return Object.keys(p.lessons).filter((id) => p.lessons[id].passedAt !== undefined && (!types || types.includes(lessonById(id)?.type ?? 'notes'))).length
 }
 
-/** `ctx.age` is the player's optional age (it decides which fun lines may show). */
-export function applyResult(p: Progress, lesson: Lesson, r: LessonResult, now: Date, ctx: { age: number | null }): ApplyOutcome {
+/** Graded hits of a run (perfect, good, early, late). */
+const gradedOf = (r: LessonResult) => r.counts.perfect + r.counts.good + r.counts.early + r.counts.late
+
+/** Days since the last practice day before today (any lesson played); null when none. */
+export function daysAway(p: Progress, today: string): number | null {
+  let last = ''
+  for (const rec of Object.values(p.lessons)) {
+    if (!rec.lastPlayed) continue
+    const d = dayKey(new Date(rec.lastPlayed))
+    if (d !== today && d > last) last = d
+  }
+  for (const d of p.sessions?.log ?? []) if (d.day !== today && d.day > last && (d.counted || d.pocket)) last = d.day
+  return last ? daysBetween(last, today) : null
+}
+
+/** A run sample for the progress screen. */
+function sampleOf(lesson: Lesson, r: LessonResult, cold: boolean, clean: boolean): RunSample {
+  const s: RunSample = {
+    at: r.at,
+    id: lesson.id,
+    bpm: r.bpm,
+    swing: !!r.swing,
+    mean: r.meanErrMs,
+    spread: r.spreadMs,
+    n: gradedOf(r),
+    tab: r.tab ?? 'full',
+    quiet: !!r.quiet,
+    cold,
+    clean,
+    bend: r.bendCents ?? null,
+  }
+  if (r.improv?.jam) s.jam = r.improv.jam
+  if (r.chordStats) s.chords = r.chordStats
+  return s
+}
+
+const pushRun = (p: Progress, s: RunSample) => {
+  p.runs = [...(p.runs ?? []), s].slice(-RUNS_MAX)
+}
+
+/**
+ * One finished run. `ctx.age` is the player's optional age (it decides which fun lines may show);
+ * `ctx.cold` says this run is the item's cold-start test (decided before the run by isCold).
+ * XP comes only from real gains: first pass, new stars, a first clean run, an earned tempo, cold starts, learned items.
+ */
+export function applyResult(p: Progress, lesson: Lesson, r: LessonResult, now: Date, ctx: { age: number | null; cold: boolean }): ApplyOutcome {
   const next = clone(p)
   const today = dayKey(now)
-  if (next.daily.day !== today) next.daily = { day: today, xp: 0, passes: 0 }
+  const s = sessionNow(p, now)
+  const old = p.lessons[lesson.id]
+  const firstPlayToday = !Object.values(p.lessons).some((x) => x.playsDay === today && x.playsToday > 0)
   const rec = recordFor(next, lesson.id, today)
   const playsToday = rec.playsToday
-
-  // Passed runs and honest practice (20 s or more) count for the streak.
-  let streakNote: string | null = null
-  if (r.passed || r.playedSec >= 20) streakNote = updateStreak(next, today)
-
-  const acc = Math.max(0, Math.min(1, r.score / 100))
-  const base = lesson.xp
-  const skill = Math.round(base * (0.4 + 0.6 * acc))
-  const lines: XpLine[] = []
-  let total: number
-
-  if (r.passed) {
-    const replayMult = [1, 0.6, 0.35, 0.2][Math.min(playsToday, 3)]
-    const firstClear = rec.passedAt !== undefined ? 0 : Math.round(0.5 * base)
-    const starXP = Math.round(0.25 * base) * Math.max(0, r.stars - rec.stars)
-    const cleanBonus = r.clean && !rec.clean ? 30 : 0
-    const chainBonus = Math.min(50, 5 * Math.floor(r.bestChain / 10))
-    const dailyBonus = next.daily.passes === 0 ? 40 : 0
-    const streakMult = 1 + 0.05 * Math.min(next.streak.days, 7)
-    const easyMult = r.easyTiming ? 0.8 : 1
-    const speedMult = r.speed < 1 ? 0.75 : 1
-    total = Math.round(((skill + chainBonus) * replayMult + firstClear + starXP + cleanBonus + dailyBonus) * streakMult * easyMult * speedMult)
-
-    const add = (label: string, v: number) => {
-      if (v !== 0) lines.push({ label, value: plus(v) })
-    }
-    add('Play', Math.round(skill * replayMult))
-    add('New stars', starXP)
-    add('First clear', firstClear)
-    add('Clean run', cleanBonus)
-    add('Chain bonus', Math.round(chainBonus * replayMult))
-    add('First win today', dailyBonus)
-    if (streakMult !== 1) lines.push({ label: 'Streak', value: times(streakMult) })
-    if (easyMult !== 1) lines.push({ label: 'Easy timing', value: times(easyMult) })
-    if (speedMult !== 1) lines.push({ label: 'Slower practice', value: times(speedMult) })
-    next.daily.passes++
-  } else {
-    total = Math.max(10, Math.round(skill * 0.25))
-    lines.push({ label: 'Practice', value: plus(total) })
+  const title = lesson.title
+  const base = {
+    progress: next,
+    levelBefore: levelFor(p.xp).level,
+    stageBefore: dinoStageFor(p),
+    unlocked: [] as string[],
+    worldUnlocked: null,
   }
-  lines.push({ label: 'Total', value: plus(total) })
+
+  // Shuffle mode: practice only. The straight record (stars, pass, review, tempo) stays as it was.
+  if (r.shuffle) {
+    rec.plays++
+    rec.playsToday = playsToday + 1
+    rec.lastPlayed = now.getTime()
+    rec.shuffleBest = Math.max(rec.shuffleBest ?? 0, r.score)
+    if (rec.firstS === undefined) rec.firstS = s
+    if (lesson.type !== 'sync') pushRun(next, sampleOf(lesson, r, false, false))
+    return {
+      ...base,
+      xp: 0,
+      lines: [{ label: 'Total', value: plus(0) }],
+      levelAfter: base.levelBefore,
+      stageAfter: base.stageBefore,
+      newAchievements: [],
+      competence: [`Shuffle mode: ${r.score}%. Practice only; your straight record is unchanged.`],
+      cold: null,
+      review: rec.review ?? null,
+      factLines: [],
+      speed: null,
+    }
+  }
 
   const wasPassed = rec.passedAt !== undefined
+  const wasClean = rec.clean
   // Record
   rec.best = Math.max(rec.best, r.score)
   rec.stars = Math.max(rec.stars, r.stars) as Stars
@@ -459,32 +656,69 @@ export function applyResult(p: Progress, lesson: Lesson, r: LessonResult, now: D
   rec.clean = rec.clean || r.clean
   rec.playsToday = playsToday + 1
   rec.lastPlayed = now.getTime()
-  // Review schedule (Today's set): a pass on or after its due day waits longer next time; a failed review starts over.
-  if (lesson.type !== 'sync') {
-    if (r.passed) {
-      if (!wasPassed) rec.box = 0
-      else if (reviewDue(rec, today) !== null) rec.box = Math.min(REVIEW_DAYS.length - 1, (rec.box ?? 0) + 1)
-      rec.lastPass = now.getTime()
-    } else if (wasPassed) rec.box = 0
-  }
-  next.xp += total
-  next.daily.xp += total
-  next.stats.bendsInTune += r.bendsInTune
-  next.totalSec = (p.totalSec ?? 0) + Math.max(0, r.playedSec)
+  if (rec.firstS === undefined) rec.firstS = s
 
-  // Fun lines, chosen once here so they are saved with progress and never change on re-render.
-  const old = p.lessons[lesson.id]
   // Speed trainer: the next Auto speed for this lesson.
   let speed: ApplyOutcome['speed'] = null
+  let clean = false
+  let earnedXp = 0
+  const competence: string[] = []
   if (lesson.type !== 'sync') {
-    const s = nextSpeed(lesson, old, r)
-    rec.speed = s.speed
-    rec.miss = s.miss
-    if (s.top > 0) rec.topSpeed = s.top
-    if (s.overdrive) rec.overdrive = true
-    speed = { played: r.speed, next: s.speed, topBefore: s.topBefore, topAfter: s.top }
+    const st = nextSpeed(lesson, old, r)
+    clean = st.clean
+    // The fastest earned tempo (earnedTop: a record from before session history counts as earned at 100%).
+    const topBefore = st.topBefore
+    const top = st.top
+    rec.speed = st.speed
+    if (top > 0) rec.topSpeed = top
+    if (st.overdrive) rec.overdrive = true
+    if (st.trial) rec.trial = st.trial
+    else delete rec.trial
+    speed = { played: r.speed, next: st.speed, topBefore, topAfter: top, earned: st.earned, trial: st.trial ?? null, clean: st.clean }
+    if (st.earned && top > topBefore) {
+      earnedXp = 10
+      competence.push(`${title}: ${bpmAt(lesson, top)} BPM earned. Next: ${bpmAt(lesson, st.speed)} BPM.`)
+    }
+    // Session history: the in-session best is the fastest clean run.
+    const h = histEntry(rec, s, today)
+    if (clean) h.best = Math.max(h.best ?? 0, r.bpm)
   }
+
+  // Review: a first pass starts it; a cold-start test moves it.
+  let cold: ColdAttempt | null = null
+  const coldXp: XpLine[] = []
+  if (isReviewItem(lesson)) {
+    if (r.passed && !wasPassed && !rec.review) rec.review = firstReview(s)
+    else if (ctx.cold && rec.review) {
+      const c = applyCold(rec, lesson, r, s, today, clean)
+      cold = c.cold
+      competence.push(...c.lines)
+      coldXp.push(...c.xp)
+    }
+  }
+  if (r.passed && !wasPassed) competence.push(`First pass: ${title}.`)
+
+  // XP lines (heuristic amounts, all competence-based).
+  const lines: XpLine[] = []
+  const add = (label: string, v: number) => {
+    if (v > 0) lines.push({ label, value: plus(v) })
+  }
+  if (r.passed && !wasPassed) add('First pass', Math.round(0.5 * lesson.xp))
+  add('New stars', Math.round(0.25 * lesson.xp) * Math.max(0, r.stars - (old?.stars ?? 0)))
+  if (r.clean && !wasClean) add('First clean run', 30)
+  add('Tempo earned', earnedXp)
+  lines.push(...coldXp)
+  const total = lines.reduce((a, l) => a + Number(l.value.slice(1)), 0)
+  lines.push({ label: 'Total', value: plus(total) })
+
+  next.xp += total
+  next.stats.bendsInTune += r.bendsInTune
+  next.totalSec = (p.totalSec ?? 0) + Math.max(0, r.playedSec)
+  if (lesson.type !== 'sync') pushRun(next, sampleOf(lesson, r, ctx.cold, clean))
+
+  // Fun lines, chosen once here so they are saved with progress and never change on re-render.
   const beat: Lesson['type'][] = ['rhythm', 'sync']
+  const weeks = weekStatus(next, now).streak
   const factLines = pickLines({
     result: r,
     lessonType: lesson.type,
@@ -498,7 +732,10 @@ export function applyResult(p: Progress, lesson: Lesson, r: LessonResult, now: D
     firstBeatPass: r.passed && beat.includes(lesson.type) && passedCount(p, beat) === 0,
     passedBefore: passedCount(p),
     passedAfter: passedCount(next),
-    streak: { before: p.streak.days, after: next.streak.days, counted: next.streak.last !== p.streak.last },
+    // Today's session number; milestone lines show on the first run of the day.
+    sessions: { before: s - 1, after: s, counted: firstPlayToday },
+    away: firstPlayToday ? daysAway(p, today) : null,
+    weeks,
     totalSecBefore: p.totalSec ?? 0,
     totalSecAfter: next.totalSec,
     recent: p.recentFacts ?? [],
@@ -508,12 +745,11 @@ export function applyResult(p: Progress, lesson: Lesson, r: LessonResult, now: D
   })
   next.recentFacts = pushRecent(p.recentFacts ?? [], factLines)
   // Keep the spread only when the run had enough graded hits to compare against later.
-  const graded = r.counts.perfect + r.counts.good + r.counts.early + r.counts.late
-  rec.last = { score: r.score, spreadMs: graded >= MIN_GRADED ? r.spreadMs : null, bpm: r.bpm, bestChain: r.bestChain }
+  rec.last = { score: r.score, spreadMs: gradedOf(r) >= MIN_GRADED ? r.spreadMs : null, bpm: r.bpm, bestChain: r.bestChain }
   rec.flat = old && r.score <= old.best ? (old.flat ?? 0) + 1 : 0
 
   // Achievements: a newly earned cosmetic is put on right away.
-  const newAchievements = checkAchievements(p, next, lesson, r, now)
+  const newAchievements = checkAchievements(p, next, lesson, r, now, weeks)
   for (const id of newAchievements) {
     next.achievements[id] = now.getTime()
     const c = ACHIEVEMENTS.find((a) => a.id === id)?.cosmetic
@@ -524,17 +760,17 @@ export function applyResult(p: Progress, lesson: Lesson, r: LessonResult, now: D
   const newWorld = WORLDS.find((w) => !worldUnlocked(p, w.id) && worldUnlocked(next, w.id))
 
   return {
-    progress: next,
+    ...base,
     xp: total,
     lines,
-    levelBefore: levelFor(p.xp).level,
     levelAfter: levelFor(next.xp).level,
-    stageBefore: dinoStageFor(p),
     stageAfter: dinoStageFor(next),
     newAchievements,
     unlocked,
     worldUnlocked: newWorld ? newWorld.id : null,
-    streakNote,
+    competence,
+    cold,
+    review: rec.review ?? null,
     factLines,
     speed,
   }

@@ -5,7 +5,8 @@ import type { LoopView } from '../loop'
 import type { LessonRun } from '../run'
 import { autoplayFromUrl } from '../run'
 import { VERDICT_LABEL } from '../scoring'
-import { pct } from '../speed'
+import { bpmAt } from '../speed'
+import { RestTimer } from './RestTimer'
 import { engine } from '../../audio/engine'
 import { Fretboard } from '../../components/Fretboard'
 import type { Marker } from '../../components/Fretboard'
@@ -17,6 +18,7 @@ import { fxBusFor } from '../fx/bus'
 import { holdReload, practice } from '../../account/activity'
 import './play.css'
 import './loop.css'
+import './timing.css'
 
 const DOTS = 8 // pass dots shown
 
@@ -49,7 +51,7 @@ function PauseIcon() {
   )
 }
 
-/** Loop the hard part (or a drill): the same bars over and over, faster after each clean pass. No XP, no stars. */
+/** Loop the hard part (or a drill): fast passes, slow relaxed passes, a rest, again. A tempo is earned by 3 clean passes. No XP, no stars. */
 export function LoopScreen({
   spec,
   prefs,
@@ -128,7 +130,7 @@ export function LoopScreen({
     if (!session) return
     const active = () => {
       const ph = session.view.phase
-      return ph === 'idle' || ph === 'countin' || ph === 'playing' || ph === 'change'
+      return ph === 'idle' || ph === 'countin' || ph === 'playing' || ph === 'change' || ph === 'rest'
     }
     const pause = () => {
       if (active()) session.pause()
@@ -200,18 +202,15 @@ export function LoopScreen({
   const fill = live2.good / Math.max(1, live2.total)
   const target = spec.targetSpeed
   const drill = spec.kind === 'drill'
-  const banner =
-    phase === 'change' && v && v.next !== null
-      ? `${v.next > v.speed ? 'Faster' : 'Easing off'}: ${pct(v.next)}`
-      : phase === 'countin' && passes.length === 0
-        ? 'One bar to count in.'
-        : (v?.note ?? null)
+  const bpm = (s: number) => bpmAt(lesson, s)
+  const seg = v?.seg ?? 'fast'
+  const banner = phase === 'countin' && passes.length === 0 ? 'One bar to count in.' : (v?.note ?? null)
   const mood: DinoMood = phase === 'done' ? 'proud' : phase === 'countin' ? 'focus' : 'idle'
 
   return (
     <div className="lp-play lo-play">
       <header className="lp-top">
-        <button className="lp-pause" onClick={() => session?.pause()} aria-label="Pause (Esc)" title="Pause (Esc)" disabled={!playing && phase !== 'change'}>
+        <button className="lp-pause" onClick={() => session?.pause()} aria-label="Pause (Esc)" title="Pause (Esc)" disabled={!playing && phase !== 'change' && phase !== 'rest'}>
           <PauseIcon />
         </button>
         <div className="lp-title">
@@ -227,10 +226,12 @@ export function LoopScreen({
 
       <div className="lo-stats">
         <div className="lo-stat lo-speed">
-          <span>Speed</span>
-          <b className="ls-num">{pct(v?.speed ?? spec.startSpeed)}</b>
+          <span>
+            BPM <i className={`tm-seg ${seg}`}>{seg === 'fast' ? 'Fast' : 'Slow, relaxed'}</i>
+          </span>
+          <b className="ls-num">{bpm(v?.speed ?? spec.startSpeed)}</b>
           <em className="ls-muted">
-            to <span className="ls-num">{pct(target)}</span>
+            to <span className="ls-num">{bpm(target)}</span>
           </em>
         </div>
         <div className="lo-stat">
@@ -244,7 +245,8 @@ export function LoopScreen({
         <ol className="lo-dots" aria-label={`Last passes: ${dotsClean} clean of ${dots.length}`}>
           {Array.from({ length: DOTS }, (_, i) => {
             const d = dots[i]
-            return <li key={i} className={d ? (d.clean ? 'clean' : 'miss') : 'todo'} />
+            const cls = d ? `${d.clean ? 'clean' : 'miss'}${d.slow ? ' slow' : ''}` : 'todo'
+            return <li key={i} className={cls} />
           })}
         </ol>
       </div>
@@ -264,9 +266,19 @@ export function LoopScreen({
             {VERDICT_LABEL[v.last]}
           </span>
         )}
-        <p className="lo-banner" aria-live="polite">
-          {banner && <span key={banner}>{banner}</span>}
-        </p>
+        {phase === 'rest' && session && v ? (
+          <div className="tm-rest-stage">
+            <p>Rest {v.restLeft} s. Shake out your hands.</p>
+            <RestTimer sec={v.restLeft} onDone={() => session.skipRest()} />
+            <p className="ls-muted">
+              Next: <span className="ls-num">{bpm(v.work)}</span> BPM.
+            </p>
+          </div>
+        ) : (
+          <p className="lo-banner" aria-live="polite">
+            {banner && <span key={banner}>{banner}</span>}
+          </p>
+        )}
         {card && (
           <div className="lp-scrim">
             <div className="lp-card" ref={cardRef} role="dialog" aria-modal="true" aria-labelledby="lo-card-h">
@@ -324,7 +336,7 @@ export function LoopScreen({
                 <>
                   <h3 id="lo-card-h">{drill ? 'Drill done' : 'Loop locked in'}</h3>
                   <p>
-                    Clean at <b className="ls-num">{pct(target)}</b> after <b className="ls-num">{passes.length}</b> passes.
+                    Clean three times at <b className="ls-num">{bpm(target)}</b> BPM, after <b className="ls-num">{passes.length}</b> passes.
                   </p>
                   <div className="lp-card-btns">
                     {drill ? (

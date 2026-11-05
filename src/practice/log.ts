@@ -5,7 +5,7 @@
 import { engine } from '../audio/engine'
 import { onSignOut, practisingNow } from '../account/activity'
 import type { PracticeKind, Secs } from './data'
-import { DEVICE_KEY, KINDS, PRACTICE_KEY, dayKey, parseLog, prune, totalsOf, zero } from './data'
+import { DEVICE_KEY, EARLY_HOUR, KINDS, PRACTICE_KEY, dayKey, parseLog, prune, totalsOf, zero } from './data'
 
 const NOISE_RMS = 0.004 // above string noise and hum, below a softly picked note
 const IDLE_MS = 10000
@@ -18,6 +18,7 @@ let started = false
 let stopped = false // signing out: nothing more is written
 let lastSound = -Infinity
 let pending: Record<string, Secs> = {}
+let pendingEarly: Record<string, number> = {} // seconds before EARLY_HOUR, per calendar day
 let pendingCount = 0
 let lastSave = 0
 const tabId = Math.random().toString(36).slice(2, 10)
@@ -78,9 +79,14 @@ function save() {
     const cur = dev.days[day] ?? zero()
     dev.days[day] = cur.map((x, i) => x + s[i])
   }
+  for (const [day, n] of Object.entries(pendingEarly)) {
+    dev.early ??= {}
+    dev.early[day] = (dev.early[day] ?? 0) + n
+  }
   try {
     localStorage.setItem(PRACTICE_KEY, JSON.stringify(prune(log, new Date())))
     pending = {}
+    pendingEarly = {}
     pendingCount = 0
   } catch {
     /* storage full or blocked: keep counting in memory */
@@ -91,9 +97,11 @@ function tick() {
   if (stopped) return
   const k = kindNow()
   if (k && holdLease()) {
-    const day = dayKey(new Date())
+    const t = new Date()
+    const day = dayKey(t)
     const s = (pending[day] ??= zero())
     s[KINDS.indexOf(k)]++
+    if (t.getHours() < EARLY_HOUR) pendingEarly[day] = (pendingEarly[day] ?? 0) + 1
     pendingCount++
     snapshot = null
     listeners.forEach((fn) => fn())
@@ -115,6 +123,7 @@ export function startPracticeLog(): void {
     stop: () => {
       stopped = true
       pending = {}
+      pendingEarly = {}
       pendingCount = 0
     },
   })
@@ -132,6 +141,7 @@ export function startPracticeLog(): void {
 
 export interface PracticeSnapshot {
   days: Map<string, Secs> // every browser, plus seconds not saved yet
+  early: Map<string, number> // per calendar day, the seconds before EARLY_HOUR
   before: Secs
   today: Date
 }
@@ -151,6 +161,7 @@ export function getPracticeSnapshot(): PracticeSnapshot {
       cur.map((x, i) => x + s[i]),
     )
   }
+  for (const [day, n] of Object.entries(pendingEarly)) t.early.set(day, (t.early.get(day) ?? 0) + n)
   snapshot = { ...t, today: new Date() }
   snapshotRaw = raw
   return snapshot

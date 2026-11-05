@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { SyntheticEvent } from 'react'
 import type { Take } from '../takes'
-import { KEEP, addTake, deleteTake, listTakes, saveNote } from '../takes'
+import { KEEP, addTake, deleteTake, listTakes, rateTake, saveNote } from '../takes'
 import type { TakeSource } from '../recorder'
 import { BACKINGS, MAX_SEC, TakeRecorder, canRecord, takeSource } from '../recorder'
 import { finishRound } from '../store'
@@ -30,13 +30,13 @@ async function finishTake(r: TakeRecorder): Promise<{ saved: boolean; xp: number
   } catch {
     saved = false
   }
-  const g = finishRound('record', Math.round(out.sec), out.sec >= 30 ? 5 : 0)
+  const g = finishRound('record', Math.round(out.sec))
   return { saved, xp: g.xp }
 }
 
-export function RecordTakes({ keyboard, onBack }: { keyboard: boolean; onBack: () => void }) {
+export function RecordTakes({ keyboard, onBack, band }: { keyboard: boolean; onBack: () => void; band?: string }) {
   const [takes, setTakes] = useState<Take[]>([])
-  const [backing, setBacking] = useState<string>('none')
+  const [backing, setBacking] = useState<string>(() => (band && BACKINGS.some((b) => b.id === band) ? band : 'none'))
   const [recording, setRecording] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -186,6 +186,12 @@ function fixDuration(ev: SyntheticEvent<HTMLAudioElement>) {
 function TakeRow({ take, onDelete }: { take: Take; onDelete: () => void }) {
   const [url, setUrl] = useState<string | null>(null)
   const [note, setNote] = useState(take.note)
+  const [rating, setRating] = useState(take.rating)
+  const rate = (n: number) => {
+    setRating(n)
+    void rateTake(take.id, n).catch(() => {})
+    finishRound('rate', n, take.id)
+  }
   const [confirm, setConfirm] = useState(false)
   useEffect(() => {
     const u = URL.createObjectURL(take.blob)
@@ -201,6 +207,14 @@ function TakeRow({ take, onDelete }: { take: Take; onDelete: () => void }) {
         </span>
       </div>
       {url && <audio controls src={url} preload="metadata" onLoadedMetadata={fixDuration} aria-label={`Take, ${fmtSec(take.sec)} long`} />}
+      <div className="sk-take-foot" style={{ flexWrap: 'wrap', alignItems: 'center' }} role="group" aria-label="How did it sound? 1 to 5">
+        <span className="ls-muted">How did it sound? 1–5</span>
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button key={n} className={`ls-btn small ${rating === n ? 'primary' : 'ghost'}`} aria-pressed={rating === n} onClick={() => rate(n)}>
+            {n}
+          </button>
+        ))}
+      </div>
       <div className="sk-take-foot">
         <input
           className="sk-note"

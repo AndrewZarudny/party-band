@@ -5,12 +5,12 @@ import { engine } from '../audio/engine'
 import { BackingBand } from '../audio/backing'
 import type { BackingPart } from '../audio/backing'
 import { FEELS, keysVoicing } from '../music/parts'
-import type { KeysVoicing } from '../music/parts'
+import type { Feel, KeysVoicing } from '../music/parts'
 import { STANDARD_TUNING, parseChord } from '../music/theory'
 import type { Chord, FretPos } from '../music/theory'
 import { boxNotes, makePhrase } from '../music/phrase'
 import { buildChart } from './charts'
-import { AudioClock, LessonClock } from './clock'
+import { AudioClock, LessonClock, swungBeat } from './clock'
 import type { Tick } from './clock'
 import { LessonInput } from './input'
 import { KEYBOARD_DEVICE, defaultKeyOffsetMs, defaultOffsetMs, deviceKey, loadLatency } from './calibration'
@@ -41,6 +41,8 @@ export interface RunOpts {
   listen?: boolean // demo playback by LeadVoice, no judging, no result
   autoplay?: Autoplay | null
   chart?: Chart // a prepared chart (loops); default buildChart(lesson)
+  shuffle?: boolean // shuffle mode: a straight lesson swung (blues band), practice only
+  bandLevel?: number // band volume multiplier (listen mode), default 1
 }
 
 type Played = { beat: number; midi: number; kind: 'chord' | 'scale' | 'out' }
@@ -59,6 +61,8 @@ export class LessonRun {
   readonly chart: Chart
   readonly bpm: number
   readonly secPerBeat: number
+  /** Judged, drawn and played on the swung grid: shuffle mode, or a band feel that swings. */
+  readonly swing: boolean
   state: RunState = 'idle'
   hud: LiveHud = { chain: 0, bestChain: 0, roar: false, points: 0, last: null, lastPlayed: null, bend: null }
   calibrated = false
@@ -97,6 +101,16 @@ export class LessonRun {
     this.bpm = Math.round(o.lesson.bpm * o.speed)
     this.secPerBeat = 60 / this.bpm
     this.chart = o.chart ?? buildChart(o.lesson)
+    const backing = o.lesson.backing
+    this.swing = !!o.shuffle || (!!backing && !!FEELS[backing.feel]?.swing)
+  }
+
+  /** The band's feel: in shuffle mode a straight lesson borrows the blues shuffle. */
+  private feel(): Feel | null {
+    const b = this.lesson.backing
+    if (!b) return null
+    const own = FEELS[b.feel]
+    return this.opts.shuffle && !own?.swing ? FEELS.blues : own
   }
 
   async start(): Promise<void> {
@@ -145,7 +159,8 @@ export class LessonRun {
     const bandOn = !!backing && o.backingOn
     if (backing && o.backingOn) {
       this.band = new BackingBand(ctx, ctx.destination)
-      this.band.setVolume(BAND_GAIN * (backing.level ?? 1))
+      // listen mode lifts the band above its usual level; the total stays at or under unity gain
+      this.band.setVolume(Math.min(1, BAND_GAIN * (backing.level ?? 1) * (o.bandLevel ?? 1)))
     }
     this.listenBars = new Set(this.chart.listenBars)
     const chords: (Chord | null)[] = backing ? backing.chords.map((s) => parseChord(s)) : []
@@ -156,14 +171,12 @@ export class LessonRun {
       if (v) prev = v.right
       voicings.push(v)
     }
-    const swing = !!backing && !!FEELS[backing.feel]?.swing
-
     this.clock = new LessonClock()
     this.clock.run(ctx, {
       bpm: this.bpm,
       countInBeats: lesson.countInBeats ?? 4,
       totalBeats: this.chart.totalBeats,
-      swing,
+      swing: this.swing,
       // The click fills in whenever no band plays (no backing, or the Band switch is off).
       click: lesson.click ?? !bandOn,
       onTick: (k) => this.onTick(k, chords, voicings, listen),
@@ -190,6 +203,7 @@ export class LessonRun {
           octaveOk: !!lesson.octaveOk,
           restGate: () => input.peakMedian(),
           listenBars: this.chart.listenBars,
+          swing: this.swing,
         })
       }
       this.input.onOnset((on) => this.handleOnset(on))
@@ -204,7 +218,7 @@ export class LessonRun {
       const w = window as unknown as { __fretwiseLessons?: unknown }
       w.__fretwiseLessons = {
         run: this,
-        inject: (midi: number | null, beat: number) => this.input?.inject({ t: clock.timeOfBeat(beat), midi, source: 'auto' }),
+        inject: (midi: number | null, beat: number) => this.input?.inject({ t: clock.timeOfBeat(swungBeat(beat, this.swing)), midi, source: 'auto' }),
       }
     }
 
@@ -288,12 +302,13 @@ export class LessonRun {
     const spb = this.secPerBeat
     const bar = Math.floor(k.beat / 4)
     const backing = this.lesson.backing
-    if (this.band && backing && chords.length) {
+    const feel = this.feel()
+    if (this.band && backing && feel && chords.length) {
       const i = bar % chords.length
       const c = chords[i]
       const v = voicings[i]
       const parts = this.partsFor(backing, bar)
-      if (c && v && parts) this.band.playStep(k.t, k.step, 30 / this.bpm, c, FEELS[backing.feel], v, parts)
+      if (c && v && parts) this.band.playStep(k.t, k.step, 30 / this.bpm, c, feel, v, parts)
     }
     const lead = this.lead
     if (!lead) return
@@ -410,9 +425,7 @@ export class LessonRun {
       const summary = this.judge ? this.judge.finish() : null
       this.chain.end(now)
       if (this.spotter) this.processImprov(Infinity)
-      const backing = lesson.backing
-      const swing = !!backing && !!FEELS[backing.feel]?.swing
-      const improv = lesson.improv && this.spotter ? analyseImprov(lesson.improv, this.chart, this.improvNotes, this.spotter.hits, swing) : null
+      const improv = lesson.improv && this.spotter ? analyseImprov(lesson.improv, this.chart, this.improvNotes, this.spotter.hits, this.swing) : null
       result = buildResult({
         lesson,
         chart: this.chart,
@@ -425,6 +438,8 @@ export class LessonRun {
         secPerBeat: this.secPerBeat,
         playedSec: this.lastBeat * this.secPerBeat,
         calibrated: this.calibrated,
+        swing: this.swing,
+        shuffle: !!this.opts.shuffle,
       })
     }
     this.release()
@@ -480,7 +495,7 @@ export class LessonRun {
         for (; i < phrase.length; i++) {
           const nb = b + i * 0.5
           if (nb >= total || listen.has(Math.floor(nb / 4))) break
-          plan.push({ t: clock.timeOfBeat(nb), midi: phrase[i].midi })
+          plan.push({ t: clock.timeOfBeat(swungBeat(nb, this.swing)), midi: phrase[i].midi })
         }
         b += Math.max(1, i) * 0.5 + 1
       }
@@ -490,7 +505,7 @@ export class LessonRun {
     for (const e of this.chart.events) {
       if (e.kind === 'rest') continue
       if (sloppy && Math.random() < SLOPPY_SKIP) continue
-      let t = clock.timeOfBeat(e.beat)
+      let t = clock.timeOfBeat(swungBeat(e.beat, this.swing))
       let midi: number | null = null
       if (e.kind === 'note') midi = e.midi
       else if (e.kind === 'chord' && e.power) {

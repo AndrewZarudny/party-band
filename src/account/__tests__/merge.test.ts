@@ -91,30 +91,87 @@ describe('mergeLessonsProgress', () => {
     expect(merge(noHeat, noHeat).heat).toBeUndefined()
   })
 
-  it("today's set: the later day wins; same day, more done steps, keeping a given bonus", () => {
-    const step = (state: string) => ({ kind: 'review', lessonId: 'w1-02', min: 2, state, why: '', from: { best: 0, stars: 0, speed: 1 } })
-    const early = prog({ xp: 900, plan: { day: '2026-11-03', steps: [step('done'), step('done')], bonus: true } as Progress['plan'], planStreak: { days: 4, last: '2026-11-03' } })
-    const late = prog({ xp: 1, plan: { day: '2026-11-04', steps: [step('todo')], bonus: false } as Progress['plan'], planStreak: { days: 1, last: '2026-11-04' } })
+  it("today's plan: v2 only; the later day wins; same day, more done steps; no bonus field", () => {
+    const step = (state: string) => ({ kind: 'cold', lessonId: 'w1-02', min: 3, state, why: '', from: { best: 0, stars: 0, speed: 1 } })
+    const v2 = (day: string, states: string[]) => ({ v: 2, day, min: 30, shape: 'A', steps: states.map(step) }) as unknown as Progress['plan']
+    const early = prog({ xp: 900, plan: v2('2026-11-03', ['done', 'done']), planStreak: { days: 4, last: '2026-11-03' } })
+    const late = prog({ xp: 1, plan: v2('2026-11-04', ['todo']) })
     for (const m of [merge(early, late), merge(late, early)]) {
       expect(m.plan!.day).toBe('2026-11-04')
-      expect(m.planStreak).toEqual({ days: 1, last: '2026-11-04' })
+      expect(m.planStreak).toBeUndefined()
     }
-    const one = prog({ xp: 999, plan: { day: '2026-11-04', steps: [step('done'), step('todo')], bonus: true } as Progress['plan'] })
-    const two = prog({ xp: 1, plan: { day: '2026-11-04', steps: [step('done'), step('done')], bonus: false } as Progress['plan'] })
+    const one = prog({ xp: 999, plan: { ...v2('2026-11-04', ['done', 'todo'])!, bonus: true } as unknown as Progress['plan'] })
+    const two = prog({ xp: 1, plan: v2('2026-11-04', ['done', 'done']) })
     const m = merge(one, two)
     expect(m.plan!.steps.every((s) => s.state === 'done')).toBe(true)
-    expect(m.plan!.bonus).toBe(true)
+    expect((m.plan as unknown as Record<string, unknown>).bonus).toBeUndefined()
     expect(m.xp).toBe(999)
+    // An old day plan counts as none.
+    const old = prog({ xp: 5, plan: { day: '2026-11-05', steps: [], bonus: false } as unknown as Progress['plan'] })
+    expect(merge(old, late).plan!.day).toBe('2026-11-04')
   })
 
-  it('old copies without plan fields merge, and the result still loads as progress', () => {
-    const old = { v: 1, xp: 10, lessons: { 'w1-02': lessonRec({ plays: 1 }) } }
+  it('session logs: one entry per day, max time, any set/counted/pocket, the worse pain; before = max', () => {
+    const a = prog({ xp: 10, sessions: { log: [{ day: '2026-11-03', sec: 700, set: false, counted: true, pocket: false, pain: 'mild' }, { day: '2026-11-04', sec: 100, set: false, counted: false, pocket: true }], before: 3 } })
+    const b = prog({ xp: 20, sessions: { log: [{ day: '2026-11-03', sec: 400, set: true, counted: true, pocket: false, min: 20, shape: 'B', pain: 'sharp' }, { day: '2026-11-02', sec: 900, set: false, counted: true, pocket: false }], before: 5 } })
+    for (const m of [merge(a, b), merge(b, a)]) {
+      expect(m.sessions.before).toBe(5)
+      expect(m.sessions.log.map((d) => d.day)).toEqual(['2026-11-02', '2026-11-03', '2026-11-04'])
+      expect(m.sessions.log[1]).toEqual({ day: '2026-11-03', sec: 700, set: true, counted: true, pocket: false, min: 20, shape: 'B', pain: 'sharp' })
+      expect(m.sessions.log[2]).toMatchObject({ pocket: true, counted: false })
+    }
+  })
+
+  it('lesson history is combined by session; the review with the later cold pass wins', () => {
+    const cold = (clean: boolean) => ({ s: 2, d: '2026-11-03', bpm: 70, speed: 0.9, clean, score: 90, tab: 'faded' })
+    const a = prog({
+      xp: 10,
+      lessons: { 'w1-02': lessonRec({ plays: 9, hist: [{ s: 1, d: '2026-11-01', best: 70 }, { s: 2, d: '2026-11-03', best: 72, cold: cold(false) }] as LessonRecord['hist'], review: { step: 1, due: 4, coldPasses: 0, lastColdS: 0, learned: false } }) },
+    })
+    const b = prog({
+      xp: 20,
+      lessons: { 'w1-02': lessonRec({ plays: 4, hist: [{ s: 2, d: '2026-11-03', best: 75, cold: cold(true) }, { s: 3, d: '2026-11-05', best: 76 }] as LessonRecord['hist'], review: { step: 2, due: 6, coldPasses: 1, lastColdS: 2, learned: false } }) },
+    })
+    for (const m of [merge(a, b), merge(b, a)]) {
+      const r = m.lessons['w1-02']
+      expect(r.plays).toBe(9)
+      expect(r.hist).toEqual([
+        { s: 1, d: '2026-11-01', best: 70 },
+        { s: 2, d: '2026-11-03', best: 75, cold: cold(true) },
+        { s: 3, d: '2026-11-05', best: 76 },
+      ])
+      expect(r.review).toMatchObject({ lastColdS: 2, coldPasses: 1 })
+    }
+  })
+
+  it('a newer failed cold test on one copy is not undone by the other copy', () => {
+    const c = (s: number, clean: boolean) => ({ s, d: `2026-11-0${s}`, cold: { s, d: `2026-11-0${s}`, bpm: 70, speed: 1, clean, score: clean ? 95 : 50, tab: 'hidden' } })
+    const learned = { step: 2, due: 7, coldPasses: 2, lastColdS: 2, learned: true }
+    const failed = { step: 1, due: 5, coldPasses: 0, lastColdS: 2, learned: false }
+    const a = prog({ xp: 10, lessons: { 'w1-02': lessonRec({ plays: 3, hist: [c(1, true), c(2, true), c(4, false)] as LessonRecord['hist'], review: failed }) } })
+    const b = prog({ xp: 20, lessons: { 'w1-02': lessonRec({ plays: 5, hist: [c(1, true), c(2, true)] as LessonRecord['hist'], review: learned }) } })
+    for (const m of [merge(a, b), merge(b, a)]) expect(m.lessons['w1-02'].review).toEqual(failed)
+  })
+
+  it('week XP and run samples are combined; the weekly note stays dismissed', () => {
+    const run = (at: number, id = 'w1-02') => ({ at, id, bpm: 70, swing: false, mean: null, spread: null, n: 10, tab: 'full', quiet: false, cold: false, clean: true, bend: null })
+    const a = prog({ xp: 10, weekXp: ['2026-10-26', '2026-11-02'], runs: [run(1), run(3)] as Progress['runs'], seenWeekly: true })
+    const b = prog({ xp: 20, weekXp: ['2026-10-19', '2026-11-02'], runs: [run(2), run(3), run(3, 'w1-03')] as Progress['runs'] })
+    delete (b as Partial<Progress>).seenWeekly
+    const m = merge(b, a)
+    expect(m.weekXp).toEqual(['2026-10-19', '2026-10-26', '2026-11-02'])
+    expect(m.runs.map((r) => `${r.at}${r.id}`)).toEqual(['1w1-02', '2w1-02', '3w1-02', '3w1-03'])
+    expect(m.seenWeekly).toBe(true)
+  })
+
+  it('old copies without the new fields merge, and the result still loads as progress', () => {
+    const old = { v: 1, xp: 10, lessons: { 'w1-02': lessonRec({ plays: 1 }) }, planStreak: { days: 3, last: '2026-11-01' }, streak: { days: 3, last: '2026-11-01', eggs: 0 } }
     const m = merge(old, prog({ xp: 1 }))
     expect(m.plan).toBeNull()
-    expect(m.planStreak).toEqual({ days: 0, last: '' })
+    expect(m.planStreak).toBeUndefined()
+    expect(m.sessions).toEqual({ log: [], before: 0 })
     expect(importProgress(JSON.stringify(m))).not.toBeNull()
   })
-
   it('null when a side is unreadable', () => {
     expect(mergeLessonsProgress('{', '{}')).toBeNull()
     expect(mergeLessonsProgress('null', '{}')).toBeNull()

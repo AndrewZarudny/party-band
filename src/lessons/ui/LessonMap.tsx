@@ -1,11 +1,15 @@
 import { useState } from 'react'
-import type { DayPlan, Progress, Stars, WorldDef } from '../types'
+import type { PainLevel, Progress, SessionPlan, Stars, WorldDef } from '../types'
+import type { SkillStart } from '../../skills/data'
 import { WORLDS, lessonById } from '../data'
-import { DINO_STAGES, dayKey, dinoStageFor, eggCracked, isPassed, isUnlocked, levelFor, nextLesson, starsInWorld, streakStatus, worldUnlocked } from '../progress'
-import { planDone } from '../plan'
+import { DINO_STAGES, dinoStageFor, eggCracked, isPassed, isUnlocked, levelFor, nextLesson, starsInWorld, worldUnlocked } from '../progress'
+import { knownChords, planDone, pocketOpen } from '../session'
+import { weakestPair } from '../../skills/chords'
+import { loadStats } from '../../skills/store'
 import { ACHIEVEMENTS } from '../achievements'
 import { Dino } from './Dino'
 import { TodayCard } from './TodayPlan'
+import { PocketCard, WeekDots, WeeklyNote } from './SessionCards'
 
 // A guitar pick, point down. The node shape, star pips and bullets all reuse it.
 const PICK = 'M20 41C13 34 3 23 3 13.5 3 6 10.5 2.5 20 2.5S37 6 37 13.5C37 23 27 34 20 41Z'
@@ -64,23 +68,6 @@ export function FootGlyph() {
   )
 }
 
-function DailyRing({ xp, goal }: { xp: number; goal: number }) {
-  const r = 22
-  const c = 2 * Math.PI * r
-  const share = Math.min(1, xp / goal)
-  return (
-    <div className="ls-daily">
-      <svg viewBox="0 0 56 56" aria-hidden>
-        <circle cx="28" cy="28" r={r} className="track" />
-        <circle cx="28" cy="28" r={r} className={`fill ${share >= 1 ? 'done' : ''}`} strokeDasharray={`${c * share} ${c}`} transform="rotate(-90 28 28)" />
-      </svg>
-      <span>
-        <b className="ls-num">{xp}</b> / {goal} XP today
-      </span>
-    </div>
-  )
-}
-
 function DinoName({ name, onRename }: { name: string; onRename: (n: string) => void }) {
   const [edit, setEdit] = useState(false)
   const [draft, setDraft] = useState(name)
@@ -124,7 +111,7 @@ function WorldRow({ world, progress, current, onOpen }: { world: WorldDef; progr
   const open = worldUnlocked(progress, world.id)
   const { got, max } = starsInWorld(progress, world.id)
   const prev = WORLDS.find((w) => w.id === world.id - 1)
-  const need = prev ? Math.ceil(0.7 * 3 * prev.lessons.length) : 0
+  const need = prev ? Math.ceil(0.7 * starsInWorld(progress, prev.id).max) : 0
   return (
     <section className={`ls-world ${open ? 'open' : 'locked'}`} aria-labelledby={`ls-w${world.id}`}>
       <header className="ls-world-head">
@@ -149,7 +136,8 @@ function WorldRow({ world, progress, current, onOpen }: { world: WorldDef; progr
           if (!l) return null
           const rec = progress.lessons[id]
           const passed = isPassed(progress, id)
-          const unlocked = open && isUnlocked(progress, id)
+          // A 12-week plan lesson can open before its world does.
+          const unlocked = isUnlocked(progress, id)
           const state = passed ? 'done' : !unlocked ? 'locked' : id === current ? 'current' : 'open'
           const label = `${l.title}${l.boss ? ', boss' : ''}: ${state === 'locked' ? 'locked' : passed ? `${rec?.stars ?? 0} stars` : 'open'}`
           return (
@@ -177,47 +165,60 @@ export function LessonMap({
   onSettings,
   onRename,
   plan,
+  onPlanStep,
   onPlanSwap,
   onPlanSkip,
   onToday,
-  onDrill,
   onHeat,
   onSkills,
+  onProgress,
+  onWeeks,
+  onPocket,
+  onPain,
+  onPressure,
+  onSeenWeekly,
+  notice,
 }: {
   progress: Progress
   onOpen: (id: string) => void
-  onDrill: (key: string) => void
   onHeat: () => void
   onAchievements: () => void
   onSettings: () => void
   onRename: (name: string) => void
-  plan: DayPlan | null
+  plan: SessionPlan | null
+  onPlanStep: (i: number) => void
   onPlanSwap: (i: number) => void
   onPlanSkip: (i: number) => void
   onToday: () => void
   onSkills?: () => void
+  onProgress: () => void
+  onWeeks: () => void
+  onPocket: (s: SkillStart) => void
+  onPain: (p: PainLevel) => void
+  onPressure: () => void
+  onSeenWeekly: () => void
+  notice?: string | null
 }) {
   const [now] = useState(() => new Date())
+  const [pair] = useState(() => weakestPair(loadStats(), knownChords(progress)))
   const stage = dinoStageFor(progress)
   const stageName = DINO_STAGES[stage]?.name ?? ''
   const lv = levelFor(progress.xp)
-  const streak = streakStatus(progress, now)
-  const dailyXp = progress.daily.day === dayKey(now) ? progress.daily.xp : 0
   const current = nextLesson(progress)
   const currentLesson = current ? lessonById(current) : undefined
   const earned = Object.keys(progress.achievements).length
-  // Today's set leads the home screen and Continue is one quiet line under it.
-  // Once the set is done (or there is none), Continue is the main card again, above the set.
+  // Today's session leads the home screen and Continue is one quiet line under it.
+  // Once the session is done (or there is none), Continue is the main card again, above it.
   const showSet = !!plan && plan.steps.length > 0
   const setDone = showSet && planDone(plan)
-  // The set already plays the current lesson next: no second link to it.
+  // The session already plays the current lesson next: no second link to it.
   const inSetTodo = !!plan && plan.steps.some((s) => s.lessonId === current && !s.drill && s.state === 'todo')
 
   return (
     <div className="ls-home">
       <header className="ls-hud">
         <div className="ls-hud-dino">
-          <Dino stage={stage} mood={streak.away >= 2 ? 'sleepy' : 'idle'} size={140} cosmetics={progress.cosmetics} cracked={eggCracked(progress)} />
+          <Dino stage={stage} mood="idle" size={140} cosmetics={progress.cosmetics} cracked={eggCracked(progress)} />
         </div>
         <div className="ls-hud-who">
           <p className="ls-hud-name">
@@ -234,18 +235,16 @@ export function LessonMap({
           </div>
         </div>
         <div className="ls-hud-day">
-          <DailyRing xp={dailyXp} goal={progress.dailyGoal} />
-          <p className="ls-streak">
-            <FootGlyph />
-            <b className="ls-num">{streak.alive ? streak.days : 0}</b> days
-            {progress.streak.eggs > 0 && (
-              <span className="ls-eggs" title="Nest eggs keep your streak if you miss a day" aria-label={`${progress.streak.eggs} nest eggs`}>
-                {'●'.repeat(progress.streak.eggs)}
-              </span>
-            )}
-          </p>
+          <WeekDots progress={progress} now={now} />
         </div>
       </header>
+
+      {progress.seenWeekly !== true && <WeeklyNote goal={progress.weekGoal} onDone={onSeenWeekly} />}
+      {notice && (
+        <p className="sc-quiet-note" role="status">
+          {notice}
+        </p>
+      )}
 
       {onSkills && (
         <div className="sk-entry">
@@ -270,7 +269,11 @@ export function LessonMap({
         </div>
       )}
 
-      {showSet && <TodayCard progress={progress} plan={plan} onOpen={onOpen} onDrill={onDrill} onSwap={onPlanSwap} onSkip={onPlanSkip} onToday={onToday} />}
+      {showSet && (
+        <TodayCard progress={progress} plan={plan} onStep={onPlanStep} onSwap={onPlanSwap} onSkip={onPlanSkip} onToday={onToday} onPain={onPain} onPressure={onPressure} />
+      )}
+
+      {showSet && <PocketCard open={pocketOpen(progress, now)} pair={pair} onPick={onPocket} />}
 
       {currentLesson && showSet && !setDone && !inSetTodo && (
         <p className="ls-continue-also">
@@ -288,6 +291,12 @@ export function LessonMap({
       </div>
 
       <footer className="ls-foot-bar">
+        <button className="ls-btn ghost" onClick={onProgress}>
+          Your progress
+        </button>
+        <button className="ls-btn ghost" onClick={onWeeks}>
+          12-week plan
+        </button>
         <button className="ls-btn ghost" onClick={onAchievements}>
           Achievements <span className="ls-num">{earned}/{ACHIEVEMENTS.length || 16}</span>
         </button>

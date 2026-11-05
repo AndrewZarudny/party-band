@@ -46,24 +46,118 @@ const doneSteps = (x: unknown) => {
   return Array.isArray(s) ? s.filter((t) => t && typeof t === 'object' && (t as Item).state === 'done').length : 0
 }
 
-/** Today's set from two copies: the later day wins; on the same day the one with more done steps, keeping a given bonus. */
+/** Today's session plan from two copies (v2 plans only): the later day wins; on the same day the one with more done steps. */
 function mergePlan(a: unknown, b: unknown): unknown {
-  const da = dayOf(a)
-  const db = dayOf(b)
+  const v2 = (x: unknown) => (x && typeof x === 'object' && (x as Item).v === 2 ? x : null)
+  const pa = v2(a)
+  const pb = v2(b)
+  const da = dayOf(pa)
+  const db = dayOf(pb)
   if (!da && !db) return null
-  if (da !== db) return da > db ? a : b
-  const win = doneSteps(a) >= doneSteps(b) ? a : b
-  return { ...(win as Item), bonus: (a as Item).bonus === true || (b as Item).bonus === true }
+  if (da !== db) return da > db ? pa : pb
+  const win = { ...((doneSteps(pa) >= doneSteps(pb) ? pa : pb) as Item) }
+  delete win.bonus
+  return win
 }
 
-/** The plan streak with the later last day; on the same day, the longer one. */
-function mergeStreak(a: unknown, b: unknown): unknown {
-  const la = dayOf({ day: (a as Item | null)?.last })
-  const lb = dayOf({ day: (b as Item | null)?.last })
-  if (la !== lb) return la > lb ? a : b
-  return num((a as Item | null)?.days) >= num((b as Item | null)?.days) ? (a ?? null) : (b ?? null)
+const PAIN_RANK: Record<string, number> = { sharp: 3, mild: 2, none: 1 }
+
+/** Session logs: one entry per day; same day: the larger time, any set/counted/pocket, the worse pain. */
+function mergeSessions(a: unknown, b: unknown): { log: Item[]; before: number } {
+  const sa = (a && typeof a === 'object' ? a : {}) as Item
+  const sb = (b && typeof b === 'object' ? b : {}) as Item
+  const days = new Map<string, Item>()
+  const add = (list: unknown) => {
+    if (!Array.isArray(list)) return
+    for (const x of list) {
+      if (!x || typeof x !== 'object' || typeof (x as Item).day !== 'string') continue
+      const d = x as Item
+      const o = days.get(String(d.day))
+      if (!o) {
+        days.set(String(d.day), { ...d })
+        continue
+      }
+      const m: Item = {
+        ...(o.set !== true && d.set === true ? d : o),
+        sec: Math.max(num(o.sec), num(d.sec)),
+        set: o.set === true || d.set === true,
+        counted: o.counted === true || d.counted === true,
+        pocket: o.pocket === true || d.pocket === true,
+      }
+      const pain = (PAIN_RANK[String(d.pain)] ?? 0) > (PAIN_RANK[String(o.pain)] ?? 0) ? d.pain : o.pain
+      if (pain === undefined) delete m.pain
+      else m.pain = pain
+      // the week goal that applied that day
+      const goal = m.goal ?? o.goal ?? d.goal
+      if (goal !== undefined) m.goal = goal
+      days.set(String(d.day), m)
+    }
+  }
+  add(sa.log)
+  add(sb.log)
+  const log = [...days.values()].sort((x, y) => (String(x.day) < String(y.day) ? -1 : String(x.day) > String(y.day) ? 1 : 0))
+  return { log, before: Math.max(num(sa.before), num(sb.before)) }
 }
 
+const HIST_MAX = 16
+
+/** Session history of one lesson from two copies, by session number. */
+function mergeHist(a: unknown, b: unknown): Item[] | undefined {
+  if (!Array.isArray(a) && !Array.isArray(b)) return undefined
+  const by = new Map<number, Item>()
+  for (const list of [a, b]) {
+    if (!Array.isArray(list)) continue
+    for (const x of list) {
+      if (!x || typeof x !== 'object' || typeof (x as Item).s !== 'number') continue
+      const e = x as Item
+      const o = by.get(num(e.s))
+      if (!o) {
+        by.set(num(e.s), { ...e })
+        continue
+      }
+      const m: Item = { ...o }
+      if (typeof e.best === 'number') m.best = typeof o.best === 'number' ? Math.max(o.best, e.best) : e.best
+      const oc = o.cold as Item | undefined
+      const ec = e.cold as Item | undefined
+      if (ec && (!oc || (ec.clean === true && oc.clean !== true))) m.cold = ec
+      by.set(num(e.s), m)
+    }
+  }
+  return [...by.values()].sort((x, y) => num(x.s) - num(y.s)).slice(-HIST_MAX)
+}
+
+/** Session number of the newest cold attempt (clean or not) in a lesson's history; 0 when none. */
+function newestCold(hist: unknown): number {
+  if (!Array.isArray(hist)) return 0
+  return Math.max(0, ...hist.filter((e) => e && typeof e === 'object' && (e as Item).cold).map((e) => num((e as Item).s)))
+}
+
+/**
+ * The review of the copy with the newer cold attempt (a failed one moves the review too), then the later counted
+ * cold pass, then more cold passes; ties keep the winner's.
+ */
+function pickReview(win: unknown, other: unknown, winHist: unknown, otherHist: unknown): unknown {
+  const w = win as Item | undefined
+  const o = other as Item | undefined
+  if (!o) return w
+  if (!w) return o
+  const cw = newestCold(winHist)
+  const co = newestCold(otherHist)
+  if (cw !== co) return co > cw ? o : w
+  if (num(o.lastColdS) !== num(w.lastColdS)) return num(o.lastColdS) > num(w.lastColdS) ? o : w
+  return num(o.coldPasses) > num(w.coldPasses) ? o : w
+}
+
+/** Union of string lists, sorted, newest `max`. */
+const unionSorted = (a: unknown, b: unknown, max: number) =>
+  [...new Set([...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])].filter((x): x is string => typeof x === 'string'))].sort().slice(-max)
+
+/** Run samples by time and lesson, oldest first, newest 300. */
+function mergeRuns(a: unknown, b: unknown): Item[] {
+  const by = new Map<string, Item>()
+  for (const list of [a, b]) if (Array.isArray(list)) for (const x of list) if (x && typeof x === 'object') by.set(`${num((x as Item).at)}|${String((x as Item).id)}`, x as Item)
+  return [...by.values()].sort((x, y) => num(x.at) - num(y.at)).slice(-300)
+}
 /** Mistake heat from two copies: per cell the later day wins; on the same day the one with more events. */
 function mergeHeat(a: unknown, b: unknown): unknown {
   const ca = (a as Item | null | undefined)?.cells as Record<string, Item> | undefined
@@ -86,8 +180,9 @@ function mergeHeat(a: unknown, b: unknown): unknown {
 
 /**
  * Two copies of the same player's lessons progress: the one with more XP is the base, each lesson keeps the
- * record that was played more, achievements are combined, today's set and the plan streak take the later day,
- * heat cells take the later day. Loop counts live in lesson records and follow the record that wins.
+ * record that was played more (its session history combined, the review with the later cold pass), achievements
+ * are combined, today's plan takes the later day, session logs, met weeks and run samples are combined, heat cells
+ * take the later day. Loop counts live in lesson records and follow the record that wins.
  * Null when a side is unreadable.
  */
 export function mergeLessonsProgress(a: string, b: string): string | null {
@@ -97,20 +192,41 @@ export function mergeLessonsProgress(a: string, b: string): string | null {
     if (!pa || !pb || typeof pa !== 'object' || typeof pb !== 'object') return null
     const [base, other] = num(pa.xp) >= num(pb.xp) ? [pa, pb] : [pb, pa]
     const lessons: Record<string, Item> = { ...((other.lessons as Record<string, Item>) ?? {}) }
+    const otherLessons = (other.lessons as Record<string, Item>) ?? {}
     for (const [id, r] of Object.entries((base.lessons as Record<string, Item>) ?? {})) {
       const o = lessons[id]
       const better = !o || num(r.plays) > num(o.plays) || (num(r.plays) === num(o.plays) && num(r.lastPlayed) >= num(o.lastPlayed))
       if (better) lessons[id] = r
     }
+    // Session history is combined; the review follows the later cold pass.
+    for (const id of Object.keys(lessons)) {
+      const a = (base.lessons as Record<string, Item> | undefined)?.[id]
+      const b = otherLessons[id]
+      if (!a || !b) continue
+      const winner = lessons[id]
+      const lose = winner === a ? b : a
+      const win = { ...winner }
+      const hist = mergeHist(a.hist, b.hist)
+      if (hist) win.hist = hist
+      const review = pickReview(winner.review, lose.review, winner.hist, lose.hist)
+      if (review) win.review = review
+      lessons[id] = win
+    }
     const achievements = { ...((other.achievements as Record<string, number>) ?? {}), ...((base.achievements as Record<string, number>) ?? {}) }
+    // Old day-streak fields are not carried over: progress.ts no longer reads them.
+    const rest = { ...base }
+    delete rest.planStreak
     return JSON.stringify({
-      ...base,
+      ...rest,
       lessons,
       achievements,
       totalSec: Math.max(num(base.totalSec), num(other.totalSec)),
       plan: mergePlan(base.plan, other.plan),
-      planStreak: mergeStreak(base.planStreak, other.planStreak) ?? { days: 0, last: '' },
       heat: mergeHeat(base.heat, other.heat),
+      sessions: mergeSessions(base.sessions, other.sessions),
+      weekXp: unionSorted(base.weekXp, other.weekXp, 20),
+      runs: mergeRuns(base.runs, other.runs),
+      ...(base.seenWeekly === true || other.seenWeekly === true ? { seenWeekly: true } : {}),
     })
   } catch {
     return null

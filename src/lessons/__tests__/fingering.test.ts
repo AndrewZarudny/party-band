@@ -19,7 +19,7 @@ const shifts = (id: string) =>
 
 describe('chordFingering', () => {
   it('returns the table for every listed shape', () => {
-    expect(Object.keys(CHORD_FINGERS)).toHaveLength(11)
+    expect(Object.keys(CHORD_FINGERS)).toHaveLength(14)
     for (const [key, cf] of Object.entries(CHORD_FINGERS)) {
       const frets = key.split(',').map((x) => (x === 'x' ? -1 : Number(x)))
       expect(chordFingering(frets)).toEqual(cf)
@@ -34,6 +34,29 @@ describe('chordFingering', () => {
     expect(chordFingering([5, 7, 7, -1, -1, -1]).fingers).toEqual([1, 3, 4, null, null, null])
     expect(chordFingering([8, 10, 10, -1, -1, -1]).fingers).toEqual([1, 3, 4, null, null, null])
     expect(chordFingering([-1, 5, 7, 7, -1, -1]).fingers).toEqual([null, 1, 3, 4, null, null])
+  })
+
+  it('w3-07 boogie: fifths on the index at fret 2, sixths with the ring or pinky at fret 4', () => {
+    const chords = assignFingering(L('w3-07')).events.filter((e): e is Extract<typeof e, { kind: 'chord' }> => e.kind === 'chord')
+    const evs = buildChart(L('w3-07')).events.filter((e) => e.kind === 'chord')
+    expect(chords.length).toBe(evs.length)
+    let fifths = 0
+    let sixths = 0
+    evs.forEach((e, i) => {
+      if (e.kind !== 'chord') return
+      const s = e.frets.findIndex((f) => f > 0)
+      const f = chords[i].fingering.fingers[s]
+      if (e.frets[s] === 2) {
+        fifths++
+        expect(f).toBe(1)
+      } else {
+        sixths++
+        expect(e.frets[s]).toBe(4)
+        expect([3, 4]).toContain(f)
+      }
+    })
+    expect(fifths).toBeGreaterThan(0)
+    expect(sixths).toBeGreaterThan(0)
   })
 
   it('uses a barre when more than four strings are fretted', () => {

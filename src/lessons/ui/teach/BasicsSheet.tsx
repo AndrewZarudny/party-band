@@ -1,4 +1,4 @@
-// The Technique basics sheet: a modal carousel of the six cards, this lesson's two first.
+// The Technique basics sheet: a modal carousel of the seven cards, this lesson's two first.
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { BASICS_ORDER } from './basics'

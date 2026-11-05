@@ -84,10 +84,6 @@
   background: var(--muted);
   opacity: 0.55;
 }
-.prac-week-bar i.met {
-  background: var(--accent);
-  opacity: 1;
-}
 .prac-week-day {
   color: var(--muted);
   font-size: var(--fs-xs);
@@ -165,12 +161,6 @@
   stroke: var(--muted);
   stroke-width: 1;
 }
-.prac-goal {
-  stroke: var(--accent);
-  stroke-width: 1;
-  stroke-dasharray: 3 4;
-  opacity: 0.8;
-}
 .prac-axis {
   fill: var(--muted);
   font-size: 11px;
@@ -227,12 +217,6 @@
   width: 10px;
   height: 10px;
   border-radius: 2px;
-}
-.prac-sw-goal {
-  height: 0;
-  width: 14px;
-  border-radius: 0;
-  border-top: 1px dashed var(--accent);
 }
 .prac-how {
   margin: 18px 0 0;

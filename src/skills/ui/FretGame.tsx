@@ -5,6 +5,7 @@ import { Fretboard } from '../../components/Fretboard'
 import type { FretPos } from '../../music/theory'
 import { midiName, noteName, pc } from '../../music/theory'
 import { STRING_NAMES, findOrder, randomSpot, spotsOf, widenAfter } from '../fret'
+import { fretTimeRows } from '../data'
 import { finishRound, loadStats, setLevels } from '../store'
 import { useGuitar, useKeys, useRoundActivity, useTick } from '../hooks'
 import type { RoundSummary } from './Common'
@@ -40,6 +41,7 @@ export function FretGame({ mode, keyboard, onBack }: { mode: Mode; keyboard: boo
   const [tries, setTries] = useState(0)
   const [heard, setHeard] = useState<string | null>(null)
   const since = useRef(0)
+  const times = useRef<{ string: number; ms: number }[]>([]) // prompt to right answer, per spot
 
   useRoundActivity(running)
   useTick(running, 200)
@@ -64,6 +66,7 @@ export function FretGame({ mode, keyboard, onBack }: { mode: Mode; keyboard: boo
     setTries(0)
     setHeard(null)
     setDone(null)
+    times.current = []
     since.current = performance.now()
     setEndAt(performance.now() + (mode === 'find' ? FIND_SEC : NAME_SEC) * 1000)
     setRunning(true)
@@ -89,6 +92,7 @@ export function FretGame({ mode, keyboard, onBack }: { mode: Mode; keyboard: boo
 
   const hit = () => {
     if (!running || !target) return
+    times.current.push({ string: target.string, ms: performance.now() - since.current })
     if (mode === 'find') {
       setRight((n) => n + 1)
       setFound((f) => [...f, { pos: target, ok: true }])
@@ -135,8 +139,10 @@ export function FretGame({ mode, keyboard, onBack }: { mode: Mode; keyboard: boo
   useEffect(() => {
     if (!running || left > 0) return
     setRunning(false)
+    // Response time per string, for the progress screen (no XP).
+    for (const row of fretTimeRows(times.current)) finishRound('fretTime', row.ms, String(row.string))
     if (mode === 'find') {
-      const r = finishRound('find', right, Math.min(20, right))
+      const r = finishRound('find', right)
       setDone({
         headline: `${right} spots found`,
         lines: [['Notes finished', String(noteIdx)], ['Frets', `0–${fretMax}`]],
@@ -150,7 +156,7 @@ export function FretGame({ mode, keyboard, onBack }: { mode: Mode; keyboard: boo
         setFretMax(wider) // Again plays on the wider board
       }
       const acc = tries ? Math.round((100 * right) / tries) : 0
-      const r = finishRound('name', right, Math.min(20, right))
+      const r = finishRound('name', right)
       setDone({
         headline: `${right} of ${tries} right first time`,
         lines: [['Accuracy', `${acc}%`], ['Frets', `0–${fretMax}`]],

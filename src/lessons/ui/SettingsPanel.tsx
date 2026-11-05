@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Prefs, Progress } from '../types'
-import { exportProgress, importProgress, newProgress } from '../progress'
+import { dayKey, exportProgress, importProgress, newProgress } from '../progress'
+import { withSessionMin } from '../session'
 import { InputPicker } from './InputPicker'
 import { GUIDES_AUTO_MAX_WORLD } from '../fingering'
 
-const GOALS: Progress['dailyGoal'][] = [100, 200, 350]
+const LENGTHS: Progress['sessionMin'][] = [20, 30]
+const WEEK_GOALS = [2, 3, 4, 5]
 const ZOOMS: Prefs['zoom'][] = [0.75, 1, 1.25]
 const GUIDES: [Prefs['guides'], string][] = [
   ['auto', 'Auto'],
@@ -166,11 +168,23 @@ export function SettingsPanel({
       </div>
 
       <div className="ls-set-group">
-        <Row label="Daily goal">
-          <div className="ls-seg" role="radiogroup" aria-label="Daily goal">
-            {GOALS.map((g) => (
-              <button key={g} role="radio" aria-checked={progress.dailyGoal === g} className={progress.dailyGoal === g ? 'on' : ''} onClick={() => onProgress({ ...progress, dailyGoal: g })}>
-                {g} XP
+        <Row
+          label="Session length"
+          note={progress.plan && progress.plan.day === dayKey(new Date()) && progress.plan.min !== progress.sessionMin ? 'Applies from your next session.' : undefined}
+        >
+          <div className="ls-seg" role="radiogroup" aria-label="Session length">
+            {LENGTHS.map((m) => (
+              <button key={m} role="radio" aria-checked={progress.sessionMin === m} className={progress.sessionMin === m ? 'on' : ''} onClick={() => onProgress(withSessionMin(progress, m, new Date()))}>
+                {m} min
+              </button>
+            ))}
+          </div>
+        </Row>
+        <Row label="Week goal" note="Sessions a week. 3 is a good start.">
+          <div className="ls-seg" role="radiogroup" aria-label="Week goal">
+            {WEEK_GOALS.map((g) => (
+              <button key={g} role="radio" aria-checked={progress.weekGoal === g} className={progress.weekGoal === g ? 'on' : ''} onClick={() => onProgress({ ...progress, weekGoal: g })}>
+                {g}
               </button>
             ))}
           </div>
@@ -218,7 +232,7 @@ export function SettingsPanel({
             {note}
           </p>
         )}
-        <Row label="Reset progress" note="Stars, XP, streak and your dino start over">
+        <Row label="Reset progress" note="Stars, XP, sessions and your dino start over">
           {confirmReset ? (
             <>
               <button

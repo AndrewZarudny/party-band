@@ -1,10 +1,12 @@
 // Shared types for the Lessons tab. No runtime code.
 
+import type { SkillStart } from '../skills/data'
+
 export type WorldId = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8
 export type ExerciseType = 'sync' | 'notes' | 'chords' | 'rhythm' | 'improv'
 export type Timing = 'easy' | 'normal' | 'tight'
 export type Tech = 'hammer' | 'pull' | 'slide' | 'bend' | 'vibrato' | 'pm'
-export type FeelId = 'pop' | 'ballad' | 'blues' | 'funk' | 'reggae'
+export type FeelId = 'pop' | 'ballad' | 'blues' | 'funk' | 'reggae' | 'slowblues' | 'minorblues'
 export type BandPart = 'drums' | 'bass' | 'keys'
 
 /** The lesson's band. One chord per bar, looped. */
@@ -18,7 +20,7 @@ export interface BackingSpec {
 export type ScaleId = 'minorPent' | 'blues' | 'majorPent' | 'minor' | 'major' | 'dorian' | 'mixolydian'
 /** Names of built-in presets in audio/tone.ts PRESETS. */
 export type ToneHint = 'Clean' | 'Blues crunch' | 'Classic rock'
-/** Play speed as a share of the lesson tempo: 0.6–1.15 in 0.05 steps (below 1 = practice speed). */
+/** Play speed as a share of the lesson tempo: 0.6–1.15 on a 0.01 grid (below 1 = practice speed). */
 export type Speed = number
 export type Stars = 0 | 1 | 2 | 3
 
@@ -95,6 +97,8 @@ export interface Lesson {
   xp: number
   position?: number // home hand position (index-finger fret), e.g. 5 for A minor box 1; improv uses boxFret
   pickRule?: PickRule // default 'grid'
+  free?: boolean // jam library: open with its world, never blocks the next lesson, left out of world stars
+  dyad?: boolean // seq chord tokens are two-note shapes (boogie): judged by pitch like power chords, no chroma
 }
 
 export interface WorldDef {
@@ -287,6 +291,8 @@ export interface JudgeResult {
   pmOk?: boolean | null
   sustain?: number // 0–1
   credit: number // 0–1
+  chordConf?: number // 0–1: how sure the chord check is; under CONF_LOW the chord is neither right nor wrong
+  bendCents?: number // mean distance from the bend target while held, in cents
 }
 export interface JudgeSummary {
   results: JudgeResult[] // one per chart event, in event order
@@ -310,6 +316,7 @@ export interface ImprovReport {
   techniqueBonus: number // 0–20
   tooFew: boolean
   tips: string[]
+  jam?: JamStats
 }
 
 export interface LiveHud {
@@ -347,6 +354,14 @@ export interface LessonResult {
   coachTip: string
   hardestBar: number | null // 0-based
   bendsInTune: number
+  swing?: boolean // judged against the swung grid
+  shuffle?: boolean // a straight lesson played in shuffle mode
+  cleanShare?: number // 0–1 events good or better (not improv or sync)
+  bendCents?: number | null // mean of the bends' bendCents; null when no bend was graded
+  chordStats?: ChordStats
+  tab?: TabLevel // how much tab was shown (PlayScreen fills it)
+  quiet?: boolean // listen mode
+  peeked?: boolean // the player peeked at the full tab
   barAcc?: (number | null)[] // per bar: share of events played good or better; null = nothing to play there. Not saved.
   results?: JudgeResult[] // the judge's result per chart event, in event order. Not saved.
 }
@@ -369,13 +384,49 @@ export interface LessonRecord {
   last?: LastAttempt // the previous run, for "better than last time" lines
   flat?: number // runs in a row without a new best score
   speed?: number // next Auto speed (speed trainer)
-  topSpeed?: number // fastest passed speed
-  overdrive?: boolean // passed at 100% with a top score: Auto may go up to 115%
-  miss?: number // failed runs in a row since the last pass or slow-down
-  lastPass?: number // time of the last passed run (review schedule)
-  box?: number // review step 0–4: due REVIEW_DAYS[box] days after lastPass
+  topSpeed?: number // fastest earned speed (clean first run plus two more clean runs)
+  overdrive?: boolean // earned at 100% with a top score: Auto may go up to 115%
+  trial?: TempoTrial // the tempo being earned now
   loops?: number // finished loops with at least one clean pass (Loop the hard part, drills)
-  loopTop?: number // fastest clean loop pass, as a speed
+  loopTop?: number // fastest earned loop speed
+  loopDay?: string // dayKey of the last loop with a clean pass (a looped item isn't cold that day)
+  review?: ReviewState // review items only, from their first pass
+  hist?: HistEntry[] // one entry per session the item was played, oldest first, max HIST_MAX
+  firstS?: number // session number of the first play (block, then interleave)
+  shuffleBest?: number // best score in shuffle mode
+}
+
+export interface TempoTrial {
+  speed: Speed
+  first: boolean // the first run at this speed was clean
+  clean: number // clean runs at this speed, the first included
+}
+
+export interface ColdAttempt {
+  s: number // session number
+  d: string // dayKey
+  bpm: number
+  speed: Speed
+  clean: boolean
+  score: number
+  tab: TabLevel
+}
+
+export interface HistEntry {
+  s: number // session number
+  d: string // dayKey
+  best?: number // in-session best: highest BPM of a clean run that session
+  cold?: ColdAttempt
+}
+
+export interface ReviewState {
+  step: number // 0–3, index into SESSION_GAPS
+  due: number // session number the next cold test is due at
+  coldPasses: number // clean cold attempts at the cold target, in separate sessions, since the last failed one
+  lastColdS: number // session number of the last counted clean cold attempt at target (0 = none)
+  learned: boolean
+  learnedAt?: number // ms
+  coldSpeed?: Speed // speed of the next cold test (after a fail: the staircase down); unset = coldSpeedFor's default
 }
 
 export interface LastAttempt {
@@ -385,45 +436,103 @@ export interface LastAttempt {
   bestChain: number
 }
 
-export type PlanKind = 'warmup' | 'review' | 'new' | 'jam'
+// ---- Sessions (session.ts, review.ts) ---------------------------------------------
 
-export interface PlanStep {
-  kind: PlanKind
-  lessonId: string
-  min: number // rough minutes, for the label
+export type TabLevel = 'full' | 'faded' | 'hidden'
+export type PainLevel = 'none' | 'mild' | 'sharp'
+export type SessionMin = 20 | 30
+export type WeekShape = 'A' | 'B' | 'C' | 'D'
+export type StepKind = 'warmup' | 'listenback' | 'cold' | 'new' | 'mix' | 'changes' | 'ear' | 'jam'
+
+export interface SessionStep {
+  kind: StepKind
+  lessonId: string | null // null for skill steps
+  skill?: SkillStart // changes, ear, listenback (record), pocket games
+  items?: string[] // 'mix': lessons played in turn, one run each
+  played?: string[] // 'mix': items played so far in this step
+  consolidate?: boolean // 'new' in a C session: last session's new item again, blocked
+  min: number
   state: 'todo' | 'done' | 'skipped'
-  why: string // one short line: why this lesson today
-  from: { best: number; stars: Stars; speed: number; loops?: number } // the record when the set was made
-  drill?: string // a trouble-spot drill (heat cell key); lessonId is then the lesson the spot was last seen in
-  score?: number // best score in this step today
-  speed?: number // speed of that run
+  why: string
+  from: { best: number; stars: Stars; speed: number; loops?: number }
+  drill?: string // a trouble-spot drill (heat cell key)
+  score?: number
+  speed?: number
 }
 
-/** Today's practice set: made once per practice day (dayKey). */
-export interface DayPlan {
+/** Today's session: made once per practice day. */
+export interface SessionPlan {
+  v: 2
   day: string
-  steps: PlanStep[]
-  bonus: boolean // the set's XP bonus was given
-  away?: number // days since the last practice day, measured when the set was made (before today's plays)
+  min: SessionMin
+  shape: WeekShape
+  steps: SessionStep[]
+  away?: number // days since the last practice day, measured when the plan was made
+}
+
+export interface SessionDay {
+  day: string // practice dayKey
+  sec: number // practice-log seconds seen that day (the max of copies)
+  set: boolean // the session plan was finished
+  counted: boolean // a session: set, or sec >= SESSION_MIN_SEC
+  pocket: boolean // a pocket session was played
+  min?: SessionMin
+  shape?: WeekShape
+  pain?: PainLevel
+  goal?: number // the week goal when this day was counted: past weeks keep the goal they had
+}
+
+export interface JamStats {
+  strong: number | null // share 0–1 of notes on beats 1 and 3 that are chord tones; null under 4 such notes
+  restBeats: number | null // mean rest between phrases, in beats; null under 2 phrases
+  phrases: number
+  silentBars: number // playing bars with no note at all
+}
+
+export interface ChordStats {
+  ok: number // chords heard right
+  wrong: number // heard clearly, and not the chord
+  unsure: number // couldn't tell: never marked wrong
+  conf: number | null // mean confidence 0–1 of the checked chords
+}
+
+/** One finished run, for the progress screen. */
+export interface RunSample {
+  at: number
+  id: string // lesson id
+  bpm: number
+  swing: boolean
+  mean: number | null // ms, + = late
+  spread: number | null // ms
+  n: number // graded hits
+  tab: TabLevel
+  quiet: boolean
+  cold: boolean
+  clean: boolean
+  bend: number | null // cents
+  jam?: JamStats
+  chords?: ChordStats
 }
 
 export interface Progress {
   v: 1
   xp: number
   lessons: Record<string, LessonRecord>
-  streak: { days: number; last: string; eggs: number } // last = dayKey of last counted day
-  daily: { day: string; xp: number; passes: number } // passes = passed runs on `day`
-  dailyGoal: 100 | 200 | 350
   dinoName: string
   achievements: Record<string, number> // id -> timestamp
   cosmetics: Cosmetic[] // equipped
   stats: { bendsInTune: number }
   recentFacts: string[] // fact ids shown on the last result cards, oldest first (max 10)
   totalSec: number // judged playing time, all lessons
-  plan: DayPlan | null
-  planStreak: { days: number; last: string } // last = dayKey of the last finished set
+  plan: SessionPlan | null
   heat?: Heat // mistake heat map, rolling ~60 days (heat.ts)
   created: number
+  sessionMin: SessionMin // default 30
+  weekGoal: number // sessions a week, 2–5, default 3
+  sessions: { log: SessionDay[]; before: number } // before = counted sessions trimmed off the log
+  weekXp: string[] // week keys whose goal was met at the time (no XP: the name is kept for saved data), newest last, max 20
+  runs: RunSample[] // oldest first, max RUNS_MAX
+  seenWeekly?: boolean // the "weeks, not days" note was shown
 }
 
 export interface XpLine {
@@ -442,9 +551,19 @@ export interface ApplyOutcome {
   newAchievements: string[]
   unlocked: string[] // lesson ids that became playable
   worldUnlocked: WorldId | null
-  streakNote: string | null
-  factLines: FactLine[] // fun lines from facts/facts.json, chosen once per run
-  speed: { played: number; next: number; topBefore: number; topAfter: number } | null // null for the sync lesson
+  competence: string[] // what got better, in plain words ("Cold tempo on Boogie Shuffle in A is up 8 BPM.")
+  cold: ColdAttempt | null // this run was a cold-start test
+  review: ReviewState | null // the item's review after this run
+  factLines: FactLine[]
+  speed: {
+    played: number
+    next: number
+    topBefore: number
+    topAfter: number
+    earned: boolean
+    trial: TempoTrial | null // open trial after the run
+    clean: boolean
+  } | null // null for sync
 }
 
 export interface FactLine {
@@ -502,6 +621,7 @@ export interface LoopPass {
   speed: Speed
   acc: number // 0–1, events good or better
   clean: boolean // acc >= 0.9
+  slow?: boolean // a relaxed pass in a slow segment (never decides the tempo)
 }
 export interface LoopSummary {
   passes: LoopPass[]
@@ -511,6 +631,7 @@ export interface LoopSummary {
   results: JudgeResult[] // finished passes only; event ids of `chart`
   chart: Chart // the segment chart (every segment of one loop has the same chart)
   calibrated: boolean
+  earned: Speed // fastest tempo earned in this loop (clean first pass plus two more); 0 = none
 }
 
 // ---- Latency ------------------------------------------------------------------

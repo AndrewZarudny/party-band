@@ -31,7 +31,9 @@ export interface PickInput {
   firstBeatPass: boolean // first passed rhythm or sync lesson ever
   passedBefore: number // lessons passed before this run
   passedAfter: number
-  streak: { before: number; after: number; counted: boolean } // counted = this run counted today
+  sessions: { before: number; after: number; counted: boolean } // session numbers; counted = this run opened today's session
+  away: number | null // days since the last practice day, on the day's first run; else null
+  weeks: number // week-goal streak
   totalSecBefore: number
   totalSecAfter: number
   recent: string[] // fact ids shown lately, oldest first
@@ -51,15 +53,14 @@ export const factById = (id: string): Fact | undefined => BY_ID.get(id)
 /** Every fact id the rules below name (song tempos are matched by category). */
 const USED_IDS = [
   'tba-01', 'tba-03', 'tba-04', 'tba-05', 'tba-07', 'tba-08', 'tba-09', 'tba-10', 'tba-11', 'tba-12', 'tba-13', 'tba-15', 'tba-19',
-  'gl-01', 'gl-02', 'gl-04', 'gl-05', 'gl-06', 'gl-07', 'gl-08', 'gl-09', 'gl-11', 'gl-13', 'gl-14', 'gl-15', 'gl-16', 'gl-17', 'gl-18',
-  'ps-sleep-walker2002', 'ps-sleep-walker2003-overnight', 'ps-within-session-walker2003', 'ps-doubling-training', 'ps-nap-nishida2007',
-  'ps-micro-rest-bonstrup2019', 'ps-85-percent-rule', 'ps-external-focus-chua2021', 'ps-spaced-musicians-simmons2011',
-  'ps-violinist-hours-ericsson1993', 'ps-habit-lally2010', 'ps-learning-curve-heathcote2000',
+  'gl-01', 'gl-02', 'gl-05', 'gl-06', 'gl-07', 'gl-09', 'gl-11', 'gl-13', 'gl-14', 'gl-15', 'gl-16', 'gl-17', 'gl-18',
+  'ps-within-session-walker2003', 'ps-spaced-musicians-simmons2011',
+  'ps-habit-lally2010', 'ps-learning-curve-heathcote2000',
   'tn-heart-adult-rest', 'tn-heart-athlete-rest', 'tn-heart-target-zone', 'tn-walk-moderate', 'tn-run-elite-ultra', 'tn-march-quick-time',
   'tn-march-rifles', 'tn-cricket-dolbear', 'tn-hummingbird-heart', 'tn-hummingbird-wings', 'tn-elephant-heart', 'tn-mouse-heart',
   'tn-blue-whale-heart', 'tn-tapping-tempo-age',
   'dino-trex-growth-rate', 'dino-trex-teen-spurt', 'dino-sue-age', 'dino-sue-completeness', 'dino-trex-teeth', 'dino-trex-size-mass',
-  'dino-trex-speed', 'dino-trex-bite', 'dino-stego-brain', 'dino-incubation', 'dino-earliest-dinosaurs', 'dino-nyasasaurus',
+  'dino-trex-speed', 'dino-trex-bite', 'dino-stego-brain', 'dino-earliest-dinosaurs', 'dino-nyasasaurus',
 ]
 
 /** Dev check: ids unique, every named id exists, every fact has a source. Returns the problems found. */
@@ -273,23 +274,9 @@ function candidates(x: PickInput, rng: Rng): Cand[] {
     if (r.score <= sue + 2) add('perf', 78, 'dino-sue-completeness', [`${r.score}%, about as complete as SUE, the most complete T. rex ever found (about ${sue}%)!`])
     else add('perf', 78, 'dino-sue-completeness', [`${r.score}%, more complete than SUE, the most complete T. rex ever found (about ${sue}%)!`])
   }
-  const sweet = d('ps-85-percent-rule')
-  if (r.score >= num(sweet, 'scoreMin') && r.score <= num(sweet, 'scoreMax')) {
-    add('perf', 65, 'ps-85-percent-rule', [
-      "You're in the learning sweet spot: models of learning suggest about 85% correct is ideal.",
-      `${r.score}%: close to the ~85% that learning models call the sweet spot.`,
-    ])
-  } else if (r.score > 95 && x.lessonType !== 'sync') {
-    add('perf', 62, 'ps-85-percent-rule', ['Too easy? Learning models say about 85% right is the sweet spot. Try a notch more BPM.'])
-  } else if (r.score < 70) {
-    // Only a failed run gets "tough one"; sync lessons have a fixed tempo.
-    if (!r.passed && x.lessonType !== 'sync') {
-      add('perf', 60, 'ps-85-percent-rule', ['Tough one! Try a slower tempo. Learning models say about 85% right is the sweet spot.'])
-    } else if (!r.passed) {
-      add('perf', 60, 'ps-85-percent-rule', ['Tough one! Learning models say about 85% right is the sweet spot. Another go gets you closer.'])
-    }
-    add('perf', 60, 'dino-stego-brain', ['Stegosaurus had a walnut-sized brain and thrived for millions of years. Keep going!'])
-  }
+  // No "85% sweet spot" lines: that rule is weak evidence for guitar (research section 9); the speed trainer
+  // asks for clean runs instead.
+  if (r.score < 70) add('perf', 60, 'dino-stego-brain', ['Stegosaurus had a walnut-sized brain and thrived for millions of years. Keep going!'])
   if (prev && r.score > prev.score) {
     const g = num(d('ps-within-session-walker2003'), 'speedGainPct')
     add('perf', 64, 'ps-within-session-walker2003', [`Big early jumps are normal: in one study people got ${g}% faster within a single session.`])
@@ -404,7 +391,6 @@ function candidates(x: PickInput, rng: Rng): Cand[] {
   }
   if (x.lessonType === 'improv') {
     add('flav', 45, 'gl-18', ["Tommy Emmanuel never had formal music training and can't read music. He plays by ear, like you just did."])
-    add('flav', 35, 'ps-micro-rest-bonstrup2019', [`Those pauses count: in one study almost all early learning showed up during ${num(d('ps-micro-rest-bonstrup2019'), 'restSec')}-second rests.`])
   }
   if (x.boss && r.passed) {
     const sm = d('dino-trex-size-mass')
@@ -412,68 +398,38 @@ function candidates(x: PickInput, rng: Rng): Cand[] {
     add('flav', 48, 'dino-trex-bite', [`That was T. rex strength, a bite of up to ${fmt(num(d('dino-trex-bite'), 'newtonsMax'))} newtons!`])
     add('flav', 46, 'gl-17', ['Brian May built his own Red Special guitar at 16, from an old fireplace. Big wins start with small builds.'])
   }
-  const slips = r.counts.wrong + r.counts.miss
-  if (slips >= 3 && slips >= 0.25 * (graded + slips)) {
-    add('flav', 40, 'ps-external-focus-chua2021', ['Try listening for the sound you want instead of watching your fingers. Focusing on the result helps learning.'])
-  }
+  // Micro-rest, external-focus and sleep lines are gone: the research found those claims contested (section 9).
   if (r.passed && x.passedBefore === 0) {
     add('flav', 50, 'dino-earliest-dinosaurs', [`The first dinosaurs we know of showed up about ${num(d('dino-earliest-dinosaurs'), 'maYears')} million years ago. Today you started your chapter!`])
   }
   if (r.passed && x.passedAfter <= num(d('gl-13'), 'lessonsPassedMax')) add('flav', 42, 'gl-13', ["Jimi Hendrix started on a ukulele with one string. You've got six."])
-  if (x.hour >= 21 || x.hour < 4) {
-    add('flav', 38, 'ps-sleep-walker2002', [`Sleep on it: in one study people were about ${num(d('ps-sleep-walker2002'), 'speedGainPct')}% faster the morning after practising.`])
-    add('flav', 36, 'gl-15', ['Late-night practice? Wes Montgomery played with his thumb so he would not wake his kids.'])
-  } else if (x.hour >= 11 && x.hour < 15) {
-    add('flav', 30, 'ps-nap-nishida2007', [`Nap tip: in one study, people who napped after practising improved ${num(d('ps-nap-nishida2007'), 'napGainPct')}% at a later test.`])
-  }
+  if (x.hour >= 21 || x.hour < 4) add('flav', 36, 'gl-15', ['Late-night practice? Wes Montgomery played with his thumb so he would not wake his kids.'])
   if (x.age !== null && x.age >= 18) add('flav', 30, 'gl-15', [`Jazz legend Wes Montgomery didn't pick up the guitar until ${num(d('gl-15'), 'startAge')}.`])
   add('flav', 10, 'gl-14', ['Jimi Hendrix mostly played right-handed guitars flipped upside down and restrung.'])
-  add('flav', 12, 'ps-doubling-training', ['More isn\'t always more: in one study doubling practice in a day didn\'t boost the overnight gain.'])
   add('flav', 12, 'gl-07', ['Fender found time is a top reason beginners quit. You found time today.'])
 
-  // ---- flavour: milestones crossed in this run (they outrank other flavour) ----
-  const s = x.streak
+  // ---- flavour: milestones on the first run of a session (they outrank other flavour) ----
+  // Sessions, not days: practice 3–4 times a week is the plan, so day counts and sleep claims are left out.
+  const s = x.sessions
   if (s.counted) {
-    const days = s.after
-    const hit = (ids: number[]) => ids.includes(days)
-    if (s.before > 1 && days === 1) {
+    const n = s.after
+    if (x.away !== null && x.away >= 7) {
       add('flav', 55, 'gl-16', [`Eric Clapton put his first guitar down for ${num(d('gl-16'), 'breakYears')} years, then came back. Welcome back!`])
-      add('flav', 55, 'ps-habit-lally2010', ["Missing a day didn't spoil habit-building in a well-known study. Jump back in."])
+      add('flav', 55, 'ps-habit-lally2010', ["Missing a session or two didn't spoil habit-building in a well-known study. Jump back in."])
       add('flav', 54, 'dino-nyasasaurus', ['Nyasasaurus fossils waited in a museum for decades before anyone took a proper look. Good things come back.'])
     }
-    if (days === 2) add('flav', 55, 'gl-08', ["Daniel Levitin's tip (via Fender): 5 minutes a day, every day. You did it again today."])
-    if (days >= 2) {
-      add('flav', 52, 'ps-spaced-musicians-simmons2011', ["Spreading practice across days helped musicians' accuracy in one study."])
-      const o = d('ps-sleep-walker2003-overnight')
-      add('flav', 52, 'ps-sleep-walker2003-overnight', [`Day ${days}! In one study, a night's sleep after practice came with ${num(o, 'night1SpeedPct')}% faster finger sequences.`])
-    }
-    if (hit(arr(d('dino-trex-teen-spurt'), 'streakTriggers').map(Number))) {
+    if (n >= 2) add('flav', 52, 'ps-spaced-musicians-simmons2011', ["Spreading practice across days helped musicians' accuracy in one study."])
+    if (arr(d('dino-trex-teen-spurt'), 'streakTriggers').map(Number).includes(n)) {
       add('flav', 56, 'dino-trex-teen-spurt', [`T. rex's teenage growth spurt lasted about ${num(d('dino-trex-teen-spurt'), 'spurtYears')} years. This is your growth spurt.`])
     }
-    if (days === 7) {
-      add('flav', 56, 'dino-trex-growth-rate', [`A teen T. rex grew about ${r0(num(d('dino-trex-growth-rate'), 'kgPerDay'))} kg a day. Your streak is growing fast too.`])
+    if (n === 7) {
+      add('flav', 56, 'dino-trex-growth-rate', [`A teen T. rex grew about ${r0(num(d('dino-trex-growth-rate'), 'kgPerDay'))} kg a day. Seven sessions in, you're growing fast too.`])
       add('flav', 56, 'gl-06', [`Fender found over ${num(d('gl-06'), 'quitPct')}% of new players quit in their first year. You're practising like the ones who stick with it.`])
     }
-    const habit = d('ps-habit-lally2010')
-    if (days === num(habit, 'minDays')) add('flav', 56, 'ps-habit-lally2010', [`Some people in a habit study had a new habit locked in after just ${days} days.`])
-    if (days === num(habit, 'averageDays')) add('flav', 56, 'ps-habit-lally2010', [`Day ${days}, the average point where a daily habit became automatic in a well-known study!`])
-    if (days === 19) add('flav', 56, 'dino-sue-age', ['SUE the T. rex was full-grown at 19. You hit a 19-day streak!'])
-    if (days === 28) add('flav', 56, 'dino-sue-age', ['28 days! SUE the T. rex lived to about 28 years, the top end for a T. rex.'])
-    const egg = arr(d('dino-incubation'), 'streakTriggers').map(Number)
-    if (days === egg[0]) add('flav', 56, 'dino-incubation', ["You've practised as long as a Protoceratops egg took to hatch, about 3 months!"])
-    if (days === egg[1]) add('flav', 56, 'dino-incubation', ["You've practised as long as a Hypacrosaurus egg took to hatch, about 6 months!"])
+    if (n === 19) add('flav', 56, 'dino-sue-age', ['Session 19! SUE the T. rex was full-grown at 19.'])
+    if (n === 28) add('flav', 56, 'dino-sue-age', ['28 sessions! SUE the T. rex lived to about 28 years, the top end for a T. rex.'])
   }
-  const minBefore = x.totalSecBefore / 60
-  const minAfter = x.totalSecAfter / 60
-  const crossed = (marks: number[]) => marks.find((m) => minBefore < m && minAfter >= m)
-  const g4 = crossed(arr(d('gl-04'), 'milestonesMinutes').map(Number))
-  if (g4 !== undefined) {
-    const rec = num(d('gl-04'), 'recordMinutes')
-    add('flav', 56, 'gl-04', [`Your ${g4} minutes are ${r1((g4 / rec) * 100)}% of the Guinness-listed guitar marathon (${Math.floor(rec / 60)} hours non-stop).`])
-  }
-  const vio = d('ps-violinist-hours-ericsson1993')
-  const v = crossed(arr(vio, 'milestonesMinutes').map(Number))
-  if (v !== undefined) add('flav', 57, 'ps-violinist-hours-ericsson1993', [`${r0(v / 60)} hours logged. Top violinists in a famous study had about ${fmt(num(vio, 'bestHours'))} by age 18. Every hour counts.`])
+  // No minutes or hours milestones: how you practise predicts retention better than how much (research).
   if (r.passed && x.passedAfter > x.passedBefore && [5, 10, 25].includes(x.passedAfter)) {
     add('flav', 55, 'tba-03', [`${x.passedAfter} lessons passed. Research links more years of playing with steadier timing. Keep stacking lessons!`])
   }

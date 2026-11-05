@@ -3,7 +3,18 @@ import { dayKey } from '../practice/data'
 
 export const SKILLS_KEY = 'skills-stats'
 
-export type GameId = 'find' | 'name' | 'changes' | 'clock' | 'ear' | 'record'
+// fretTime, earFirst, drift and rate are measurements for the progress screen, not games of their own.
+export type GameId = 'find' | 'name' | 'changes' | 'clock' | 'ear' | 'record' | 'fretTime' | 'earFirst' | 'drift' | 'rate'
+
+/** Opens a skill game at once (from the session plan or a pocket session). */
+export type SkillStart =
+  | { game: 'changes'; pair?: string }
+  | { game: 'find' }
+  | { game: 'name' }
+  | { game: 'ear' }
+  | { game: 'clock' }
+  | { game: 'record'; band?: string }
+  | { game: 'mental' } // pocket: lick in your head (the lessons screen shows it, not SkillsHome)
 
 export interface SkillEntry {
   id: string
@@ -22,7 +33,7 @@ export interface SkillStats {
   xp: { day: string; got: number } // XP given to lessons today (capped)
 }
 
-const HISTORY_MAX = 300
+const HISTORY_MAX = 800 // heuristic: room for 12 weeks of rounds plus their per-string and per-cycle measurements
 export const FRET_STEPS = [5, 7, 9, 12]
 
 export function emptyStats(): SkillStats {
@@ -30,7 +41,7 @@ export function emptyStats(): SkillStats {
 }
 
 const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
-const GAMES: GameId[] = ['find', 'name', 'changes', 'clock', 'ear', 'record']
+const GAMES: GameId[] = ['find', 'name', 'changes', 'clock', 'ear', 'record', 'fretTime', 'earFirst', 'drift', 'rate']
 
 function entryOf(v: unknown): SkillEntry | null {
   if (!v || typeof v !== 'object') return null
@@ -63,8 +74,45 @@ export function parseStats(raw: string | null): SkillStats {
   return s
 }
 
-// Lower is better for drift; higher for everything else.
-export const lowerBetter = (game: GameId) => game === 'clock'
+// Lower is better for drift and response times; higher for everything else.
+export const lowerBetter = (game: GameId) => game === 'clock' || game === 'fretTime' || game === 'drift'
+
+export function median(xs: number[]): number | null {
+  if (!xs.length) return null
+  const s = [...xs].sort((a, b) => a - b)
+  const m = s.length >> 1
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
+}
+
+/** Median answer time per string (0 = low E), for strings with at least 2 right answers. */
+export function fretTimeRows(times: { string: number; ms: number }[]): { string: number; ms: number }[] {
+  const out: { string: number; ms: number }[] = []
+  for (let s = 0; s < 6; s++) {
+    const m = median(times.filter((t) => t.string === s).map((t) => t.ms))
+    if (m !== null && times.filter((t) => t.string === s).length >= 2) out.push({ string: s, ms: Math.round(m) })
+  }
+  return out
+}
+
+export const RETIRE_AT = 60 // JustinGuitar: retire a chord pair at 60 changes a minute
+
+/**
+ * XP for a finished round: only real gains (research change 10). The first round of a game or pair is the
+ * baseline and gives nothing. Amounts are heuristic.
+ */
+export function skillXp(s: SkillStats, game: GameId, score: number, detail?: string): number {
+  const old = s.best[bestKey(game, detail)]
+  if (game === 'changes') {
+    const retire = score >= RETIRE_AT && (old === undefined || old < RETIRE_AT) ? 30 : 0
+    const gain = old !== undefined && score > old ? Math.min(20, 2 * (score - old)) : 0
+    return gain + retire
+  }
+  if (old === undefined) return 0
+  if (game === 'find' || game === 'name') return score > old ? Math.min(10, score - old) : 0
+  if (game === 'ear') return score > old ? 10 : 0
+  if (game === 'clock') return score < old ? 10 : 0
+  return 0
+}
 
 export const bestKey = (game: GameId, detail?: string) => (detail ? `${game}:${detail}` : game)
 

@@ -48,6 +48,8 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
   const voice = useRef<LeadVoice | null>(null)
   const listenFrom = useRef(0)
   const timers = useRef<number[]>([])
+  const replayed = useRef(false) // this phrase was heard again: not a first attempt
+  const firstOk = useRef(0) // phrases echoed right at the first attempt this round
 
   const running = phase !== 'idle'
   useRoundActivity(running)
@@ -81,12 +83,14 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
 
   // Start the answer over after hearing the phrase again.
   const replay = () => {
+    replayed.current = true
     setPlayed([])
     void playPhrase(phrase)
   }
 
   const newPhrase = (length: number) => {
     const p = makePhrase(length)
+    replayed.current = false
     setPhrase(p)
     setPlayed([])
     setGrade(null)
@@ -99,17 +103,21 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
     setLongest(0)
     setStreak(0)
     setDone(null)
+    firstOk.current = 0
     newPhrase(len)
   }
 
   const finish = (finalLen: number, totalPasses: number, best: number) => {
     setPhase('idle')
     setLevels({ earLen: finalLen })
-    const r = finishRound('ear', best, Math.min(16, 2 * totalPasses))
+    const first = Math.round((100 * firstOk.current) / PHRASES)
+    finishRound('earFirst', first) // for the progress screen (no XP)
+    const r = finishRound('ear', best)
     setStats(r.stats)
     setDone({
       headline: `${totalPasses} of ${PHRASES} played back right`,
       lines: [
+        ['Right at the first try', `${first}%`],
         ['Longest right', best ? `${best} notes` : '–'],
         ['Next round starts at', `${finalLen} notes`],
       ],
@@ -126,6 +134,7 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
     )
     setGrade(g)
     setPhase('graded')
+    if (g.pass && !replayed.current) firstOk.current++
     const n = nextLength(len, g.pass ? Math.max(0, streak) + 1 : Math.min(0, streak) - 1)
     const c = count + 1
     const ps = passes + (g.pass ? 1 : 0)

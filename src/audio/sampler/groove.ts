@@ -53,8 +53,9 @@ function level(v: Float64Array, pattern: string, top: number) {
 const data = raw as unknown as Grooves
 const byFeel = new Map<Feel, Groove>()
 for (const [id, feel] of Object.entries(FEELS)) {
-  const g = normalise(data.feels?.[id] ?? data.feels?.pop)
-  const top = id === 'ballad' ? 0.72 : 0.9
+  // a feel with no groove data borrows the blues groove when it swings, else pop
+  const g = normalise(data.feels?.[id] ?? (feel.swing ? data.feels?.blues : undefined) ?? data.feels?.pop)
+  const top = id === 'ballad' || id === 'slowblues' ? 0.72 : 0.9
   level(g.kick, feel.drums.kick, top)
   level(g.snare, feel.drums.snare, top)
   level(g.hat, feel.drums.hat, top * 0.9)

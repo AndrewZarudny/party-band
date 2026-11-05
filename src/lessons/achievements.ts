@@ -1,6 +1,7 @@
 // Achievements, checked after every finished run.
 import type { AchievementDef, Lesson, LessonResult, Progress } from './types'
 import { LESSONS, WORLDS } from './data'
+import { dayKey } from './progress'
 
 export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'first-peep', name: 'First Peep', text: 'Pass your first lesson.' },
@@ -11,14 +12,16 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'chain-gang', name: 'Chain Gang', text: 'Hit 32 good notes in a row.' },
   { id: 'big-roar', name: 'Big Roar', text: 'Keep a roar going for 30 seconds in one run.' },
   { id: 'right-on-time', name: 'Right on Time', text: 'Nail 20 notes in a row.' },
-  { id: 'week-stomper', name: 'Week Stomper', text: 'Practise 7 days in a row.', cosmetic: 'bandana' },
-  { id: 'month-stomper', name: 'Month Stomper', text: 'Practise 30 days in a row.', cosmetic: 'pick-crown' },
+  { id: 'week-stomper', name: 'Week Stomper', text: 'Meet your week goal 2 weeks in a row.', cosmetic: 'bandana' },
+  { id: 'month-stomper', name: 'Month Stomper', text: 'Meet your week goal 4 weeks in a row.', cosmetic: 'pick-crown' },
   { id: 'power-up', name: 'Power Up', text: 'Pass the power chord lesson in World 4.' },
   { id: 'bendy', name: 'Bendy', text: 'Bend 25 notes in tune.' },
   { id: 'free-spirit', name: 'Free Spirit', text: 'Get 3 stars on a free-play lesson.' },
   { id: 'comeback', name: 'Comeback', text: 'Pass a lesson after 3 or more tries.' },
   { id: 'late-show', name: 'Late Show', text: 'Pass a lesson between 10 pm and 4 am.' },
   { id: 'titan', name: 'Titan', text: 'Pass the final boss.', cosmetic: 'star-guitar' },
+  { id: 'cold-start', name: 'Cold Start', text: 'Pass a cold-start test.' },
+  { id: 'locked-in', name: 'Locked In', text: 'Learn your first item: clean from cold in two sessions.' },
 ]
 
 const passed = (p: Progress, id: string) => p.lessons[id]?.passedAt !== undefined
@@ -30,8 +33,14 @@ function bossPassed(p: Progress) {
   })
 }
 
-/** Ids earned by this run that `prev` did not have yet. `next` is the progress after the run. */
-export function checkAchievements(prev: Progress, next: Progress, lesson: Lesson, r: LessonResult, now: Date): string[] {
+/** A clean cold-start test was logged by this run (a new cold entry dated today). */
+function cleanColdNow(prev: Progress, next: Progress, id: string, today: string): boolean {
+  const had = new Set((prev.lessons[id]?.hist ?? []).filter((e) => e.cold).map((e) => e.s))
+  return (next.lessons[id]?.hist ?? []).some((e) => e.cold?.clean && e.cold.d === today && !had.has(e.s))
+}
+
+/** Ids earned by this run that `prev` did not have yet. `next` is the progress after the run; `weeks` = week streak. */
+export function checkAchievements(prev: Progress, next: Progress, lesson: Lesson, r: LessonResult, now: Date, weeks: number): string[] {
   const hour = now.getHours()
   const improvIds = new Set(LESSONS.filter((l) => l.type === 'improv').map((l) => l.id))
   const records = Object.keys(next.lessons).map((id) => ({ id, rec: next.lessons[id] }))
@@ -45,14 +54,16 @@ export function checkAchievements(prev: Progress, next: Progress, lesson: Lesson
     'chain-gang': r.bestChain >= 32,
     'big-roar': r.roarMs >= 30000,
     'right-on-time': r.perfectRun >= 20,
-    'week-stomper': next.streak.days >= 7,
-    'month-stomper': next.streak.days >= 30,
+    'week-stomper': weeks >= 2,
+    'month-stomper': weeks >= 4,
     'power-up': passed(next, 'w4-04'),
     bendy: next.stats.bendsInTune >= 25,
     'free-spirit': records.some((x) => improvIds.has(x.id) && x.rec.stars === 3),
     comeback: r.passed && prevRec?.passedAt === undefined && (prevRec?.fails ?? 0) >= 3,
     'late-show': r.passed && (hour >= 22 || hour < 4),
     titan: passed(next, 'w8-05'),
+    'cold-start': cleanColdNow(prev, next, lesson.id, dayKey(now)),
+    'locked-in': records.some((x) => x.rec.review?.learned === true),
   }
   return ACHIEVEMENTS.filter((a) => met[a.id] && prev.achievements[a.id] === undefined).map((a) => a.id)
 }

@@ -1,21 +1,24 @@
-// Loop the hard part: a few bars (or a generated drill) over and over, a little faster after each clean pass.
-// No React. A loop is a chain of LessonRun segments, one per speed; passes inside a segment run back to back.
+// Loop the hard part: a few bars (or a generated drill) over and over.
+// No React. A loop runs segments: fast passes at the work tempo, two slow relaxed passes, a short rest, again.
+// A tempo is earned by a clean first pass plus two more clean passes, then the work tempo goes up one step.
 import type { Autoplay, Chart, ChartEvent, JudgeResult, Lesson, LessonResult, LoopPass, LoopSpec, LoopSummary, Progress, Speed, Verdict } from './types'
 import { buildChart } from './charts'
+import { dayKey } from './progress'
 import { LessonRun } from './run'
 import { goodOrBetter } from './scoring'
-import { FULL_SPEED, pct, snapSpeed } from './speed'
+import { EARN_PASSES, FULL_SPEED, bpmAt, snapSpeed, tempoStep } from './speed'
 
-export const LOOP_REPS = 8 // passes per segment
+export const FAST_PASSES = 4 // heuristic: passes per fast segment
+export const SLOW_PASSES = 2 // heuristic: relaxed passes per slow segment
+export const SLOW_STEPS = 3 // heuristic: a slow pass is 3 tempo steps (about 9 BPM) under the work tempo
+export const REST_SEC = 25 // research: 20–30 s rest between blocks
+export const LOOP_REPS = FAST_PASSES // passes in the loop chart
 export const CLEAN_ACC = 0.9
-export const LOOP_STEP = 0.05 // speed step after a clean pass
 export const LOOP_START_SHARE = 0.7 // a bars loop starts at 70% of the run's speed
 export const MAX_LOOP_BARS = 4
 export const LOOP_MIN_SPEED = 0.5 // loops may go under the lesson floor (MIN_SPEED): the player just struggled there
 const FAR_UNDER = 0.8 // a run under this speed aims the loop at a nearer target than full speed
-const EASE_AFTER = 3 // passes in a row under EASE_ACC ease the speed off one step
-const EASE_ACC = 0.6
-const CHANGE_MS = 900 // the "Faster" banner between segments
+const CHANGE_MS = 1200 // the banner between segments
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
@@ -104,13 +107,14 @@ export function loopTitle(from: number, to: number): string {
 }
 
 /**
- * A bars loop from a result card: starts at 70% of the run's speed (at least a step under it), ends at the
- * lesson's tempo. A run far under full speed aims a few steps above it instead.
+ * A bars loop from a result card: starts at 70% of the run's speed (at least two tempo steps under it), ends
+ * at the lesson's tempo. A run far under full speed aims a few steps above it instead.
  */
 export function loopSpecFor(lesson: Lesson, r: LessonResult, from: number, to: number): LoopSpec {
   const range = withCalls(buildChart(lesson), from, to)
-  const start = clamp(snapSpeed(Math.min(r.speed * LOOP_START_SHARE, r.speed - 2 * LOOP_STEP)), LOOP_MIN_SPEED, FULL_SPEED)
-  const target = r.speed >= FAR_UNDER ? FULL_SPEED : clamp(snapSpeed(Math.max(r.speed + 2 * LOOP_STEP, start + 6 * LOOP_STEP)), start, FULL_SPEED)
+  const step = tempoStep(lesson)
+  const start = clamp(snapSpeed(Math.min(r.speed * LOOP_START_SHARE, r.speed - 2 * step)), LOOP_MIN_SPEED, FULL_SPEED)
+  const target = r.speed >= FAR_UNDER ? FULL_SPEED : clamp(snapSpeed(Math.max(r.speed + 2 * step, start + 6 * step)), start, FULL_SPEED)
   return {
     kind: 'bars',
     lesson,
@@ -123,28 +127,56 @@ export function loopSpecFor(lesson: Lesson, r: LessonResult, from: number, to: n
   }
 }
 
-/** A loop with a clean pass counts once on the lesson's record. Nothing else changes. */
-export function recordLoop(p: Progress, lessonId: string, s: LoopSummary): Progress {
+/** A loop with a clean pass counts once on the lesson's record, and the lesson isn't cold today any more. */
+export function recordLoop(p: Progress, lessonId: string, s: LoopSummary, now: Date): Progress {
   if (s.clean === 0 || !p.lessons[lessonId]) return p
   const next = JSON.parse(JSON.stringify(p)) as Progress
   const rec = next.lessons[lessonId]
   rec.loops = (rec.loops ?? 0) + 1
-  rec.loopTop = Math.max(rec.loopTop ?? 0, s.topSpeed)
+  rec.loopTop = Math.max(rec.loopTop ?? 0, s.earned)
+  rec.loopDay = dayKey(now)
   return next
+}
+
+/**
+ * The fast segment's decision after its passes so far (true = clean), in order.
+ * First pass not clean: one step slower. A clean first pass plus two more: earned, one step faster
+ * ('done' at the target). FAST_PASSES without that: the same tempo again. null: keep playing.
+ */
+export function decideFast(passes: boolean[], w: Speed, target: Speed, step: Speed): { next: Speed | 'done' | null; earned: boolean } {
+  if (!passes.length) return { next: null, earned: false }
+  if (!passes[0]) return { next: Math.max(LOOP_MIN_SPEED, snapSpeed(w - step)), earned: false }
+  if (passes.filter(Boolean).length >= EARN_PASSES) {
+    if (w >= target - 1e-6) return { next: 'done', earned: true }
+    return { next: Math.min(target, snapSpeed(w + step)), earned: true }
+  }
+  if (passes.length >= FAST_PASSES) return { next: w, earned: false }
+  return { next: null, earned: false }
+}
+
+/** The relaxed tempo of a slow segment. */
+export function slowSpeed(w: Speed, step: Speed): Speed {
+  return Math.max(LOOP_MIN_SPEED, snapSpeed(w - SLOW_STEPS * step))
 }
 
 // ---- Session ----------------------------------------------------------------
 
+export type LoopSeg = 'fast' | 'slow'
+
 export interface LoopView {
-  phase: 'idle' | 'countin' | 'playing' | 'change' | 'done' | 'paused' | 'error'
+  phase: 'idle' | 'countin' | 'playing' | 'change' | 'rest' | 'done' | 'paused' | 'error'
+  seg: LoopSeg // the segment playing (between segments: the one coming up)
   speed: Speed // current segment
-  next: Speed | null // decided speed for the next segment, shown in the banner
+  work: Speed // the fast work tempo
+  next: Speed | null // decided work tempo, shown in the banner
   passes: LoopPass[]
-  clean: number
+  clean: number // clean fast passes
+  earned: Speed // fastest tempo earned in this loop; 0 = none
   live: { good: number; judged: number; total: number } // the pass being played now
   last: Verdict | null // last verdict, for the pop
   vKey: number
   note: string | null // banner line
+  restLeft: number // seconds of the rest (phase 'rest')
 }
 
 export interface LoopOpts {
@@ -157,8 +189,9 @@ export interface LoopOpts {
 
 export class LoopSession {
   readonly spec: LoopSpec
-  readonly chart: Chart
+  readonly chart: Chart // fast segments; every pass of every segment uses these event ids
   readonly lesson: Lesson
+  readonly step: Speed
   run: LessonRun | null
   view: LoopView
   onChange: ((v: LoopView) => void) | null
@@ -166,43 +199,54 @@ export class LoopSession {
   onJudge: ((r: JudgeResult, run: LessonRun) => void) | null
 
   private opts: LoopOpts
+  private slowChart: Chart
+  private slowLesson: Lesson
   private passBeats: number
   private perPass: number
   private results: JudgeResult[]
   private calibrated: boolean
-  private bad: number
+  private reached: boolean
   private seg: number // segment token: callbacks of an old run are ignored
   private timer: number
   private pausing: boolean
   private stopped: boolean
-  private resumeAt: Speed | 'done' | null // what a pass in this segment already decided; kept over a pause
+  private resumeAt: Speed | 'done' | null // what a fast pass in this segment already decided; kept over a pause
   private flush: (() => void) | null // closes the segment's decided passes
 
   constructor(spec: LoopSpec, o: LoopOpts) {
     this.spec = spec
     this.opts = o
-    this.chart = sliceChart(buildChart(spec.lesson), spec.fromBar, spec.toBar, LOOP_REPS)
-    this.lesson = loopLesson(spec.lesson, spec.fromBar, spec.toBar, LOOP_REPS)
+    const full = buildChart(spec.lesson)
+    this.chart = sliceChart(full, spec.fromBar, spec.toBar, FAST_PASSES)
+    this.lesson = loopLesson(spec.lesson, spec.fromBar, spec.toBar, FAST_PASSES)
+    // the slow chart is the fast one's first passes: same event ids
+    this.slowChart = sliceChart(full, spec.fromBar, spec.toBar, SLOW_PASSES)
+    this.slowLesson = loopLesson(spec.lesson, spec.fromBar, spec.toBar, SLOW_PASSES)
+    this.step = tempoStep(spec.lesson)
     this.passBeats = 4 * (spec.toBar - spec.fromBar + 1)
     this.perPass = this.chart.events.filter((e) => e.beat < this.passBeats).length
     this.run = null
     this.view = {
       phase: 'idle',
+      seg: 'fast',
       speed: spec.startSpeed,
+      work: spec.startSpeed,
       next: null,
       passes: [],
       clean: 0,
+      earned: 0,
       live: { good: 0, judged: 0, total: this.perPass },
       last: null,
       vKey: 0,
       note: null,
+      restLeft: 0,
     }
     this.onChange = null
     this.onRun = null
     this.onJudge = null
     this.results = []
     this.calibrated = false
-    this.bad = 0
+    this.reached = false
     this.seg = 0
     this.timer = 0
     this.pausing = false
@@ -211,8 +255,33 @@ export class LoopSession {
     this.flush = null
   }
 
-  /** A new segment at `speed` (one-bar count-in). */
+  /** BPM of a speed, for the banners. */
+  bpm(s: Speed): number {
+    return bpmAt(this.spec.lesson, s)
+  }
+
+  /** A fast segment at `speed` (default: the work tempo), after a one-bar count-in. */
   start(speed?: Speed) {
+    if (speed !== undefined) this.emit({ work: speed })
+    this.play('fast', this.view.work)
+  }
+
+  /** Ends the rest now ("Go now"); the next fast segment starts. */
+  skipRest() {
+    if (this.stopped || this.view.phase !== 'rest') return
+    this.play('fast', this.view.work)
+  }
+
+  private rest() {
+    window.clearTimeout(this.timer)
+    this.emit({ phase: 'rest', seg: 'fast', restLeft: REST_SEC, next: null, note: `Rest ${REST_SEC} s. Shake out your hands.` })
+    const seg = this.seg
+    this.timer = window.setTimeout(() => {
+      if (seg === this.seg) this.skipRest()
+    }, REST_SEC * 1000)
+  }
+
+  private play(kind: LoopSeg, sp: Speed) {
     if (this.stopped) return
     window.clearTimeout(this.timer)
     this.timer = 0
@@ -220,11 +289,11 @@ export class LoopSession {
     this.seg++
     if (old) old.stop()
     const seg = this.seg
-    const sp = speed ?? this.view.speed
-    if (this.view.phase === 'done') this.bad = 0
+    const fast = kind === 'fast'
+    const chart = fast ? this.chart : this.slowChart
     const run = new LessonRun({
-      lesson: this.lesson,
-      chart: this.chart,
+      lesson: fast ? this.lesson : this.slowLesson,
+      chart,
       speed: sp,
       easyTiming: this.opts.easyTiming,
       backingOn: this.opts.backingOn,
@@ -237,8 +306,11 @@ export class LoopSession {
     this.resumeAt = null
     const n = this.perPass
     const eps = 1e-9
+    const target = this.spec.targetSpeed
+    const step = this.step
     const live = new Map<number, { good: number; judged: number }>() // the meter: verdicts as they come in
     const seen = new Set<number>() // results reported to the loop (a held match isn't final yet)
+    const outcomes: boolean[] = [] // fast passes decided so far, in order (true = clean)
     let pending: Speed | 'done' | null = null
     let top = 0 // newest pass with a verdict
     let nextDecide = 0 // passes are decided, then closed, in order
@@ -273,28 +345,34 @@ export class LoopSession {
       this.emit({ note, next: typeof p === 'number' ? p : null })
     }
 
-    /** Settles the next speed as soon as pass k's outcome is certain. False while it could still go either way. */
+    /** Fast segments: settles pass k as soon as its outcome is certain. False while it could still go either way. */
     const decide = (k: number, final: boolean): boolean => {
-      if (pending !== null) return true
+      if (!fast || pending !== null) return true
       const { good, bad } = count(k, final)
-      const target = this.spec.targetSpeed
-      if (good >= CLEAN_ACC * n - eps) {
-        this.bad = 0
-        if (sp >= target - 1e-6) setPending(k, 'done', `Clean at ${pct(target)}. Locked in.`)
-        else {
-          const nx = Math.min(target, snapSpeed(sp + LOOP_STEP))
-          setPending(k, nx, `Clean! Next: ${pct(nx)}`)
-        }
-        return true
+      let clean: boolean
+      if (good >= CLEAN_ACC * n - eps) clean = true
+      else if (n - bad < CLEAN_ACC * n - eps) clean = false
+      else return false
+      outcomes.push(clean)
+      const d = decideFast(outcomes, sp, target, step)
+      const got = outcomes.filter(Boolean).length
+      const bpm = this.bpm(sp)
+      if (d.earned) {
+        this.reached = this.reached || d.next === 'done'
+        this.emit({ earned: Math.max(this.view.earned, sp) })
       }
-      if (n - bad >= CLEAN_ACC * n - eps) return false // could still be clean
-      const sloppy = n - bad < EASE_ACC * n - eps
-      if (!sloppy && good < EASE_ACC * n - eps) return false
-      this.bad = sloppy ? this.bad + 1 : 0
-      if (this.bad >= EASE_AFTER && sp > LOOP_MIN_SPEED + 1e-6) {
-        this.bad = 0
-        const nx = Math.max(LOOP_MIN_SPEED, snapSpeed(sp - LOOP_STEP))
-        setPending(k, nx, `Easing off to ${pct(nx)}`)
+      if (d.next === 'done') setPending(k, 'done', `Clean at ${bpm} BPM. Locked in.`)
+      else if (d.next !== null) {
+        const nx = d.next
+        const note = d.earned
+          ? `Clean three times at ${bpm} BPM. Next: ${this.bpm(nx)} BPM.`
+          : !outcomes[0]
+            ? 'First pass not clean. One step slower.'
+            : `${got} of ${EARN_PASSES} clean at ${bpm} BPM. Same tempo after a rest.`
+        setPending(k, nx, note)
+      } else {
+        const left = EARN_PASSES - got
+        this.emit({ note: clean ? `Clean. ${left} more clean at ${bpm} BPM earns it.` : `${got} of ${EARN_PASSES} clean at ${bpm} BPM. Keep going.` })
       }
       return true
     }
@@ -310,10 +388,10 @@ export class LoopSession {
         const r = run.result(id)
         if (r) this.results.push(r)
       }
+      const pass: LoopPass = fast ? { speed: sp, acc, clean } : { speed: sp, acc, clean, slow: true }
       this.emit({
-        passes: [...v.passes, { speed: sp, acc, clean }],
-        clean: v.clean + (clean ? 1 : 0),
-        note: pending === null ? `${Math.round(acc * 100)}% clean. 90% moves it up.` : v.note,
+        passes: [...v.passes, pass],
+        clean: v.clean + (fast && clean ? 1 : 0),
         live: liveOf(Math.max(top, k + 1)),
       })
       return true
@@ -331,7 +409,7 @@ export class LoopSession {
 
     run.onJudge = (r) => {
       if (seg !== this.seg || seen.has(r.eventId)) return
-      const ev = this.chart.events[r.eventId]
+      const ev = chart.events[r.eventId]
       if (!ev || ev.beat >= run.lastBeat) return
       seen.add(r.eventId)
       const k = Math.floor(ev.beat / this.passBeats)
@@ -357,15 +435,32 @@ export class LoopSession {
         if (this.pausing) this.emit({ phase: 'paused' })
       } else if (s === 'ended') {
         advance(true) // every result is final now
-        if (pending === 'done') this.emit({ phase: 'done', next: null })
-        else if (typeof pending === 'number') {
-          const nx = pending
-          this.emit({ phase: 'change', next: nx })
-          this.timer = window.setTimeout(() => this.start(nx), CHANGE_MS)
-        } else this.start(sp)
+        if (!fast) {
+          this.rest()
+          return
+        }
+        if (pending === 'done') {
+          this.emit({ phase: 'done', next: null })
+          return
+        }
+        // the work tempo for the next fast segment; first two slow, relaxed passes
+        const nx = typeof pending === 'number' ? pending : sp
+        const slow = slowSpeed(sp, step)
+        this.emit({ phase: 'change', seg: 'slow', work: nx, next: nx, note: `Now ${SLOW_PASSES} slow, relaxed passes at ${this.bpm(slow)} BPM.` })
+        this.timer = window.setTimeout(() => {
+          if (seg === this.seg) this.play('slow', slow)
+        }, CHANGE_MS)
       }
     }
-    this.emit({ phase: 'idle', speed: sp, next: null, live: { good: 0, judged: 0, total: this.perPass } })
+    this.emit({
+      phase: 'idle',
+      seg: kind,
+      speed: sp,
+      next: null,
+      live: { good: 0, judged: 0, total: this.perPass },
+      work: fast ? sp : this.view.work,
+      note: fast ? `${this.bpm(sp)} BPM: clean on the first pass, then two more.` : 'Slow and relaxed: these passes are just for feel.',
+    })
     this.onRun?.(run)
     run.start().catch((err: unknown) => {
       console.error('Loop segment failed to start', err)
@@ -376,7 +471,7 @@ export class LoopSession {
     })
   }
 
-  /** After a pause or an error: the speed a clean pass already earned (or the done card), else the same speed. */
+  /** After a pause or an error: the tempo a fast pass already decided (or the done card), else the work tempo. */
   resume() {
     if (this.stopped) return
     const p = this.resumeAt
@@ -384,10 +479,10 @@ export class LoopSession {
       window.clearTimeout(this.timer)
       this.timer = 0
       this.emit({ phase: 'done', next: null })
-    } else this.start(p ?? this.view.speed)
+    } else this.start(p ?? this.view.work)
   }
 
-  /** Stops the segment; the unfinished pass is dropped. Resume with resume(). */
+  /** Stops the segment (or the rest); the unfinished pass is dropped. Resume with resume(). */
   pause() {
     if (this.stopped) return
     window.clearTimeout(this.timer)
@@ -396,7 +491,7 @@ export class LoopSession {
     const p = this.view.phase
     if (p === 'paused' || p === 'done' || p === 'error') return
     if (!run || run.state === 'ended' || run.state === 'stopped') {
-      // between segments (the "Faster" banner): nothing is playing
+      // between segments (the banner or the rest): nothing is playing
       this.seg++
       this.emit({ phase: 'paused' })
       return
@@ -422,13 +517,13 @@ export class LoopSession {
   summary(): LoopSummary | null {
     const passes = this.view.passes
     if (!passes.length) return null
-    const target = this.spec.targetSpeed
-    const clean = passes.filter((x) => x.clean)
+    const clean = passes.filter((x) => x.clean && !x.slow)
     return {
       passes: [...passes],
       clean: clean.length,
       topSpeed: clean.reduce((m, x) => Math.max(m, x.speed), 0),
-      reached: clean.some((x) => x.speed >= target - 1e-6),
+      reached: this.reached,
+      earned: this.view.earned,
       results: [...this.results],
       chart: this.chart,
       calibrated: this.calibrated,

@@ -1,0 +1,202 @@
+/* Your progress and the 12-week plan. Theme tokens only; no motion. */
+.lessons .mt-screen {
+  display: grid;
+  gap: 14px;
+}
+.lessons .mt-section {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 12px 14px;
+  min-width: 0;
+}
+.lessons .mt-h {
+  margin: 0 0 4px;
+  font-size: 1.02rem;
+}
+.lessons .mt-why,
+.lessons .mt-rule,
+.lessons .mt-line-text,
+.lessons .mt-empty {
+  margin: 0 0 8px;
+}
+.lessons .mt-rule {
+  font-size: 0.86rem;
+  color: var(--muted);
+  border-left: 3px solid var(--line);
+  padding-left: 8px;
+}
+.lessons .mt-sub {
+  margin: 0 0 4px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.lessons .mt-small {
+  font-size: 0.85rem;
+}
+.lessons .mt-two {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+/* Rows: title, chart, status */
+.lessons .mt-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.lessons .mt-row {
+  display: grid;
+  grid-template-columns: minmax(0, 9rem) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.lessons .mt-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.lessons .mt-row-title {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.lessons .mt-status {
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-align: right;
+}
+@media (max-width: 520px) {
+  .lessons .mt-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .lessons .mt-row > .mt-chart {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .lessons .mt-status {
+    text-align: left;
+  }
+}
+
+/* Charts */
+.lessons .mt-chart {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  overflow: visible;
+}
+.lessons .mt-axis {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.lessons .mt-target {
+  stroke: var(--target);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+.lessons .mt-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+.lessons .mt-band {
+  fill: rgb(var(--accent-rgb) / 0.18);
+  stroke: none;
+}
+.lessons .mt-dot {
+  fill: var(--accent);
+  stroke: var(--accent);
+  stroke-width: 1.4;
+}
+.lessons .mt-dot.hollow {
+  fill: var(--panel);
+}
+.lessons .mt-bar {
+  fill: var(--muted);
+}
+.lessons .mt-bar.met {
+  fill: var(--accent);
+}
+.lessons .mt-bar.soft {
+  fill: var(--ls-wire);
+}
+.lessons .mt-now .mt-bar {
+  stroke: var(--text);
+  stroke-width: 1;
+}
+.lessons .mt-flag {
+  fill: var(--root);
+}
+
+/* Chips */
+.lessons .mt-chip {
+  display: inline-block;
+  font-size: 0.78rem;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.lessons .mt-chip.good {
+  border-color: var(--target);
+  color: var(--target-text);
+}
+.lessons .mt-chip.mid {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.lessons .mt-chip.now {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+/* 12-week plan */
+.lessons .mt-weeks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.lessons .mt-week {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 10px 14px;
+}
+.lessons .mt-week.now {
+  border-color: var(--accent);
+  background: var(--panel-2);
+}
+.lessons .mt-week p {
+  margin: 6px 0;
+}
+.lessons .mt-week-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lessons .mt-links {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+.lessons .mt-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  font-size: 0.9rem;
+}

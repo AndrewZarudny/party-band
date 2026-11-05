@@ -1,0 +1,225 @@
+/* Sessions: week dots, weekly note, pain check-in, Cold start, pocket and mental cards. Theme tokens only. */
+
+.lessons .sc-week {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+}
+.lessons .sc-dots {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lessons .sc-dot {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+.lessons .sc-dot-mark {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  background: transparent;
+}
+.lessons .sc-dot.done .sc-dot-mark {
+  border-color: var(--target);
+  background: var(--target);
+}
+.lessons .sc-dot.pocket .sc-dot-mark {
+  border-color: var(--target);
+}
+.lessons .sc-dot.today .sc-dot-name {
+  color: var(--text);
+  font-weight: 700;
+}
+.lessons .sc-dot-name {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+.lessons .sc-week-text {
+  margin: 0;
+  font-size: var(--fs-ui);
+  color: var(--muted);
+}
+.lessons .sc-week-text b {
+  color: var(--text);
+}
+.lessons .sc-week-streak {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-size: var(--fs-ui);
+  font-weight: 600;
+  color: var(--accent);
+}
+.lessons .sc-week-streak .ls-foot {
+  width: 18px;
+  height: 18px;
+  fill: var(--accent);
+}
+/* Inside the setlist card the week line uses the card's ink. */
+.lessons .ls-set .sc-week {
+  flex-basis: 100%;
+  margin-top: 4px;
+}
+.lessons .ls-set .sc-dot-mark {
+  border-color: var(--ls-set-rule);
+}
+.lessons .ls-set .sc-dot.done .sc-dot-mark {
+  border-color: var(--ls-set-ink);
+  background: var(--ls-set-ink);
+}
+.lessons .ls-set .sc-dot.pocket .sc-dot-mark {
+  border-color: var(--ls-set-ink);
+}
+.lessons .ls-set .sc-dot-name,
+.lessons .ls-set .sc-week-text {
+  color: var(--ls-set-muted);
+}
+.lessons .ls-set .sc-dot.today .sc-dot-name,
+.lessons .ls-set .sc-week-text b {
+  color: var(--ls-set-ink);
+}
+
+.lessons .sc-note,
+.lessons .sc-pain,
+.lessons .sc-quiet-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--panel);
+  border-radius: 4px;
+  font-size: var(--fs-ui);
+}
+.lessons .sc-note p,
+.lessons .sc-pain p,
+.lessons .sc-quiet-note p {
+  flex: 1 1 220px;
+  margin: 0;
+}
+.lessons .ls-set .sc-pain {
+  background: transparent;
+  border-left-color: var(--ls-set-tape);
+  color: var(--ls-set-ink);
+}
+.lessons .sc-pain.sharp {
+  border-left-color: var(--oxblood);
+}
+.lessons .sc-pain-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.lessons .sc-pain-acts .ls-btn,
+.lessons .sc-note .ls-btn,
+.lessons .sc-acts .ls-btn {
+  min-height: 44px;
+}
+.lessons .sc-pain-note {
+  flex-basis: 100%;
+  margin: 6px 0 0;
+  font-size: var(--fs-ui);
+  color: var(--ls-set-ink);
+}
+
+.lessons .sc-card {
+  display: grid;
+  gap: 10px;
+  max-width: 560px;
+  margin: 18px auto;
+  padding: 18px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+}
+.lessons .sc-card h2,
+.lessons .sc-card h3,
+.lessons .sc-card p {
+  margin: 0;
+}
+.lessons .sc-facts {
+  font-weight: 700;
+}
+.lessons .sc-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.lessons .sc-pocket {
+  margin: 8px 0;
+  max-width: none;
+}
+.lessons .sc-pocket-link {
+  margin: 4px 0 8px;
+  font-size: var(--fs-ui);
+}
+
+.lessons .sc-tab {
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+}
+.lessons .sc-tab-line {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.lessons .sc-tab-bg {
+  fill: var(--panel);
+}
+.lessons .sc-tab-fret {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.lessons .sc-mental-tab {
+  margin: 0;
+}
+
+.lessons .sc-timer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.lessons .sc-timer svg {
+  width: 44px;
+  height: 44px;
+}
+.lessons .sc-timer circle {
+  fill: none;
+  stroke-width: 5;
+}
+.lessons .sc-timer-track {
+  stroke: var(--panel-2);
+}
+.lessons .sc-timer-fill {
+  stroke: var(--target);
+  stroke-linecap: round;
+  transition: stroke-dasharray 900ms linear;
+}
+.lessons .sc-timer svg.still .sc-timer-fill {
+  transition: none;
+}
+
+@media (max-width: 520px) {
+  .lessons .sc-card {
+    margin: 12px 0;
+    padding: 16px 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lessons .sc-timer-fill {
+    transition: none;
+  }
+}

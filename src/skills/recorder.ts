@@ -6,6 +6,7 @@ import { parseChord } from '../music/theory'
 import { FEELS, keysVoicing } from '../music/parts'
 import type { KeysVoicing } from '../music/parts'
 import { onMicInput } from '../lessons/source'
+import { TWELVE_A7 } from '../lessons/data'
 import { inputOffsetSec } from './hooks'
 
 export const MAX_SEC = 180
@@ -26,6 +27,7 @@ export const BACKINGS: Backing[] = [
   { id: 'am', label: 'Am G F G · 90 BPM', chords: ['Am', 'G', 'F', 'G'], bpm: 90, feel: 'pop' },
   { id: 'ea', label: 'E A · blues shuffle, 80 BPM', chords: ['E', 'E', 'A', 'A'], bpm: 80, feel: 'blues' },
   { id: 'gcd', label: 'G C D C · 100 BPM', chords: ['G', 'C', 'D', 'C'], bpm: 100, feel: 'pop' },
+  { id: 'a12', label: '12-bar shuffle in A · 75 BPM', chords: TWELVE_A7, bpm: 75, feel: 'blues' },
 ]
 
 const MIMES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']

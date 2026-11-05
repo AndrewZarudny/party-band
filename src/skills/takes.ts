@@ -10,6 +10,22 @@ export interface Take {
   sec: number
   band: string | null // the backing used, or null for guitar only
   note: string
+  rating?: number // 1–5: how it sounded on listen-back
+}
+
+const DAY_SHIFT_MS = 4 * 3600 * 1000 // a practice day starts at 4 am, as in the lessons
+
+/** Start of today's practice day, in ms. */
+export function dayStartMs(now: Date): number {
+  const d = new Date(now.getTime() - DAY_SHIFT_MS)
+  d.setHours(0, 0, 0, 0)
+  return d.getTime() + DAY_SHIFT_MS
+}
+
+/** A take from before today, newer than sinceMs, with no rating yet. */
+export function findUnrated(takes: Pick<Take, 'at' | 'rating'>[], sinceMs: number, now: Date): boolean {
+  const start = dayStartMs(now)
+  return takes.some((t) => t.at < start && t.at > sinceMs && t.rating === undefined)
 }
 
 function open(): Promise<IDBDatabase> {
@@ -65,6 +81,22 @@ export async function saveNote(id: string, note: string): Promise<void> {
       if (t) s.put({ ...t, note })
     }
   })
+}
+
+export async function rateTake(id: string, rating: number): Promise<void> {
+  const r = Math.max(1, Math.min(5, Math.round(rating)))
+  await tx('readwrite', (s) => {
+    const req = s.get(id)
+    req.onsuccess = () => {
+      const t = req.result as Take | undefined
+      if (t) s.put({ ...t, rating: r })
+    }
+  })
+}
+
+/** Is there a take older than today's start, newer than sinceMs, without a rating? */
+export async function hasUnratedTake(sinceMs: number): Promise<boolean> {
+  return findUnrated(await listTakes(), sinceMs, new Date())
 }
 
 export async function deleteTake(id: string): Promise<void> {
