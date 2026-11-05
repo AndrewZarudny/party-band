@@ -30,13 +30,12 @@ export function TunerMode({ onConnect }: { onConnect: () => void }) {
   // Smooth the needle so it doesn't jitter.
   const [cents, setCents] = useState(0)
   const smooth = useRef(0)
-  const [ampWasOn] = useState(engine.ampOn)
 
-  // Tune silently: the amp sound would only get in the way.
+  // Tune silently: the amp sound would only get in the way. Leaving goes back to the player's Hear amp choice.
   useEffect(() => {
     engine.setAmpOn(false)
-    return () => engine.setAmpOn(ampWasOn)
-  }, [ampWasOn])
+    return () => engine.setAmpOn(engine.hearAmp)
+  }, [])
 
   // Nearest open string, judged against the exact detected frequency.
   const target = pitch ? tuning.reduce((a, b) => (Math.abs(b - freqToMidiFloat(pitch.freq)) < Math.abs(a - freqToMidiFloat(pitch.freq)) ? b : a)) : null

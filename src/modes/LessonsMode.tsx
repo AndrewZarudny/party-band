@@ -141,15 +141,14 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
   // Leaving Lessons (or picking the cable) goes back to the guitar cable; the amp returns only once that worked.
   useEffect(() => {
     if (prefs.input !== 'mic') return
-    const was = engine.ampOn
     engine.setAmpOn(false)
     return () => {
       if (!engine.running || !onMicInput()) {
-        engine.setAmpOn(was)
+        engine.setAmpOn(engine.hearAmp)
         return
       }
       connectSource('cable', null)
-        .then(() => engine.setAmpOn(was))
+        .then(() => engine.setAmpOn(engine.hearAmp))
         .catch(() => {
           /* no interface: stay on the mic with the amp off rather than feed back */
         })

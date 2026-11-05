@@ -84,7 +84,7 @@ export function ToneBuilder({ t3kResult, onT3kDone }: { t3kResult: SelectResult 
       <div className="row spread">
         <h3>Tone</h3>
         <label className="toggle-inline">
-          <input type="checkbox" checked={e.ampOn} onChange={(ev) => engine.setAmpOn(ev.target.checked)} /> Hear amp
+          <input type="checkbox" checked={e.hearAmp} onChange={(ev) => engine.setHearAmp(ev.target.checked)} /> Hear amp
         </label>
       </div>
 

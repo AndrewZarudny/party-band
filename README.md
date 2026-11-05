@@ -14,7 +14,9 @@ It opens at http://localhost:5173. Use **Chrome**: it supports picking the outpu
 ## Setup with the Scarlett Solo
 
 1. Plug the guitar into **Input 2** (the jack on the right) and press **INST**.
-2. Turn **Direct Monitor off**. Otherwise you hear the dry guitar on top of the amp sim.
+2. Pick how you hear your guitar:
+   - **Through the app's amp** (its tones and effects): turn **Direct Monitor off**, otherwise you hear the dry guitar on top of the amp sim.
+   - **With no delay** (best on Windows, where browser audio lags): headphones in the Scarlett, **Direct Monitor on**, and untick **🎸 → Tone → Hear amp**. The app remembers that choice on this computer. You hear your guitar straight from the Scarlett; the band, the click, scoring and lessons work as usual. Run **Tap In** again after switching.
 3. In the app, click **Connect guitar**. It finds the Scarlett on its own, reads input 2, and sends sound out of the Scarlett's headphone and monitor outputs.
 4. Turn up the Scarlett's gain knob until its halo flashes green when you strum hard, but never red.
 5. If notes aren't picked up, open **🎸 → Input** and play. You'll see a meter for each input, the note the app hears, and a message saying what's wrong (no signal, wrong input, too quiet).

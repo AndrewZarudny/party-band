@@ -3,6 +3,7 @@ import type { Tone } from './tone'
 import { AMP_MODELS, modelOf, presetByName } from './tone'
 import { createOctaveDown } from './octave'
 import { freqToMidiFloat } from '../music/theory'
+import { loadHearAmp, saveHearAmp } from './hearAmp'
 import type { NamModelInfo, NamNode } from 'neural-amp-modeler-wasm/engine'
 
 /** What a NAM capture models: a pedal goes before the amp sim, an amp replaces it. */
@@ -159,7 +160,10 @@ export class GuitarEngine {
   info = { label: '', channels: 0, sampleRate: 0 }
   tone: Tone = presetByName('Clean')
   inputGainDb = 0
-  ampOn = true
+  /** The player's saved "Hear amp" choice. */
+  hearAmp = loadHearAmp()
+  /** What the amp output does right now: the saved choice, or a temporary mute (Tuner, mic input). */
+  ampOn = this.hearAmp
 
   readonly pitch = new Emitter<PitchFrame | null>()
   readonly notes = new Emitter<number>()
@@ -426,10 +430,18 @@ export class GuitarEngine {
     this.state.emit()
   }
 
+  /** A temporary mute or unmute that isn't saved; restore with setAmpOn(engine.hearAmp). */
   setAmpOn(on: boolean) {
     this.ampOn = on
     if (this.out && this.ctx) this.out.gain.setTargetAtTime(on ? 1 : 0, this.ctx.currentTime, 0.02)
     this.state.emit()
+  }
+
+  /** The "Hear amp" switch: saved for this browser and applied now. */
+  setHearAmp(on: boolean) {
+    this.hearAmp = on
+    saveHearAmp(on)
+    this.setAmpOn(on)
   }
 
   setTone(t: Tone) {
@@ -727,6 +739,8 @@ export class GuitarEngine {
     this.cabBypass = ctx.createGain()
     this.master = ctx.createGain()
     this.out = ctx.createGain()
+    // Start as the player left it: silent when they hear the guitar through their own hardware.
+    this.out.gain.value = this.ampOn ? 1 : 0
     this.wet = ctx.createGain()
 
     this.input.connect(this.gateGain)
