@@ -1,7 +1,7 @@
 // The tab runway: string lanes (high e on top), notes as fret-number pills scrolling right to left into the pick line.
 // Pure canvas drawing. The caller scales the context for devicePixelRatio and passes sizes in CSS pixels.
 
-import type { Chart, ChartEvent, ChordEv, JudgeResult, LiveHud, NoteEv } from './types'
+import type { Chart, ChartEvent, ChartFingering, ChordEv, ChordFingering, Finger, JudgeResult, LiveHud, NoteEv, PickDir, Shift } from './types'
 import { STANDARD_TUNING, noteName } from '../music/theory'
 import type { PillXf, RunwayFx } from './fx/runwayFx'
 
@@ -24,6 +24,8 @@ export interface RunwayColors {
   rootText: string
   targetText: string
   playedText: string
+  /** fretting-finger fills, by finger number (index 0 unused) */
+  finger: [string, string, string, string, string]
   font?: string
 }
 
@@ -55,12 +57,17 @@ const FALLBACK: RunwayColors = {
   rootText: '#dc7464',
   targetText: '#a6c77f',
   playedText: '#c88ec8',
+  finger: ['#5fbca5', '#5fbca5', '#86a8e8', '#d0a85c', '#c88ec8'],
 }
 
 export function readColors(el: Element): RunwayColors {
   const cs = getComputedStyle(el)
   const v = (name: string, fb: string) => cs.getPropertyValue(name).trim() || fb
+  // the finger tokens alias the music hues; fall back to those when they aren't defined
+  const next = v('--next', FALLBACK.next)
+  const f1 = v('--finger-1', next)
   return {
+    finger: [f1, f1, v('--finger-2', v('--scale', FALLBACK.scale)), v('--finger-3', v('--chord', FALLBACK.chord)), v('--finger-4', v('--played', FALLBACK.played))],
     bg: v('--bg', FALLBACK.bg),
     line: v('--line', FALLBACK.line),
     text: v('--text', FALLBACK.text),
@@ -252,8 +259,21 @@ function laneForMidi(midi: number) {
  * Draws one frame. `beat` is the visual beat (negative during the count-in); `zoom` scales the spacing.
  * `countIn = false` hides the big count-in number (the intro's still preview).
  * `fx` adds the live effects (hit bursts, string shake, beat pulse, Roar); the caller ticks it first.
+ * `guides` adds finger badges, pick strokes and hand-move tags (looked up by event id).
  */
-export function drawRunway(g: CanvasRenderingContext2D, w: number, h: number, view: RunwayView, beat: number, c: RunwayColors, zoom: number, reduced = false, countIn = true, fx?: RunwayFx): void {
+export function drawRunway(
+  g: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  view: RunwayView,
+  beat: number,
+  c: RunwayColors,
+  zoom: number,
+  reduced = false,
+  countIn = true,
+  fx?: RunwayFx,
+  guides?: ChartFingering | null,
+): void {
   FONT = c.font || 'system-ui, sans-serif'
   still = reduced
   const { chart } = view
@@ -381,7 +401,14 @@ export function drawRunway(g: CanvasRenderingContext2D, w: number, h: number, vi
       if (ev.beat + ev.dur < bFrom) continue
       const cx = X(ev.beat)
       if (enterPill(g, fx, ev.id, cx, (laneY(5) + laneY(0)) / 2, 0.3)) {
-        drawChord(g, ev, cx, laneY, rhythmY, pillH, view.result(ev.id), ev.id === pendId, showName, beat, spb, c)
+        const r = view.result(ev.id)
+        drawChord(g, ev, cx, laneY, rhythmY, pillH, r, ev.id === pendId, showName, beat, spb, c)
+        const ef = guides ? guides.events[ev.id] : undefined
+        if (ef && ef.kind === 'chord') {
+          const a = (r ? 0.45 : 1) * fade
+          if (showName) chordBadges(g, ef.fingering, ev.frets, cx, laneY, a, c)
+          if (!ev.dir) pickGlyph(g, cx, rhythmY, ef.pick, a, c)
+        }
         leavePill(g)
       }
       continue
@@ -395,6 +422,13 @@ export function drawRunway(g: CanvasRenderingContext2D, w: number, h: number, vi
       // a note with a sustain tail stays visible while it rings; a short one thins to a ghost
       if (enterPill(g, fx, ev.id, x, y, xEnd - x > 24 ? 0.7 : 0.25)) {
         drawNote(g, ev, x, xEnd, y, pillH, r, ev.id === pendId, beat, spb, c)
+        const ef = guides ? guides.events[ev.id] : undefined
+        if (ef && ef.kind === 'note') {
+          const a = (r ? 0.45 : 1) * fade
+          // an open string's pill already reads 0
+          if (!ev.hidden && pillH >= 14 && ev.fret > 0 && ef.finger !== 0) fingerBadge(g, x + (ev.fret >= 10 ? 15 : 12) - 1, y + pillH / 2 - 2, 6, ef.finger, a, c)
+          if (ef.pick) pickGlyph(g, x, rhythmY, ef.pick, a, c)
+        }
         leavePill(g)
       }
     } else if (ev.kind === 'mute') {
@@ -403,6 +437,19 @@ export function drawRunway(g: CanvasRenderingContext2D, w: number, h: number, vi
         leavePill(g)
       }
     } else drawRest(g, x, X(ev.beat + ev.dur), rhythmY, pillH, r, c)
+  }
+
+  // Hand moves: a tag in the top band, over the chord names, tied to the note it is for
+  if (guides) {
+    for (const ev of chart.events) {
+      if (ev.beat > bTo + 1) break
+      if (ev.beat < bFrom - 1 || (ev.kind !== 'note' && ev.kind !== 'chord')) continue
+      const ef = guides.events[ev.id]
+      if (!ef || (ef.kind !== 'note' && ef.kind !== 'chord') || !ef.shift || ef.shift.kind !== 'shift') continue
+      const x = X(ev.beat)
+      const pillTop = ev.kind === 'note' ? laneY(ev.string) - pillH / 2 : laneY(5) - pillH / 2 + 1
+      shiftTag(g, x, x - Math.min(ppb * 0.5, 22), pillTop, ef.shift, view.result(ev.id) ? 0.45 : 1, c)
+    }
   }
 
   // Improv: what you played, as dots on the nearest string lane
@@ -476,6 +523,108 @@ function drawPill(g: CanvasRenderingContext2D, x: number, y: number, ph: number,
   g.font = `700 ${Math.round(ph * 0.62)}px ${FONT}`
   g.fillText(label, x, y + 0.5)
   return pw
+}
+
+// ---- Guides: fingers, pick strokes, hand moves ----
+
+/** A fretting-finger badge: a disc in the finger's colour with its number; an open string is a hollow 0. */
+function fingerBadge(g: CanvasRenderingContext2D, x: number, y: number, r: number, f: Finger, alpha: number, c: RunwayColors) {
+  if (f === 'T') return
+  g.globalAlpha = alpha
+  g.beginPath()
+  g.arc(x, y, r, 0, Math.PI * 2)
+  if (f === 0) {
+    g.fillStyle = c.bg
+    g.fill()
+    g.lineWidth = 1.2
+    g.strokeStyle = c.muted
+    g.stroke()
+    g.fillStyle = c.muted
+  } else {
+    g.fillStyle = c.finger[f]
+    g.fill()
+    g.fillStyle = c.ink
+  }
+  g.font = `700 ${r >= 6 ? 9 : 8}px ${FONT}`
+  g.fillText(String(f), x, y + 0.5)
+  g.globalAlpha = 1
+}
+
+/** The pick stroke on the rhythm lane: filled point-down for a downstroke, an outline point-up for an upstroke. */
+function pickGlyph(g: CanvasRenderingContext2D, x: number, y: number, dir: PickDir, alpha: number, c: RunwayColors) {
+  const s = 4.2
+  const mid = 0.675 * s // the pick() shape spans 1.35 s above its tip
+  g.globalAlpha = alpha * 0.8
+  if (dir === 'D') {
+    pick(g, x, y + mid, s)
+    g.fillStyle = c.text
+    g.fill()
+  } else {
+    g.save()
+    g.translate(x, y)
+    g.rotate(Math.PI)
+    pick(g, 0, mid, s)
+    g.restore()
+    g.globalAlpha = alpha
+    g.lineWidth = 1.3
+    g.strokeStyle = c.text
+    g.stroke()
+  }
+  g.globalAlpha = 1
+}
+
+/** Finger numbers beside a chord bracket, with a bar joining a barre's strings. */
+function chordBadges(g: CanvasRenderingContext2D, cf: ChordFingering, frets: number[], x: number, laneY: (s: number) => number, alpha: number, c: RunwayColors) {
+  const bx = x + 10 + 6
+  if (cf.barre) {
+    g.globalAlpha = alpha
+    g.fillStyle = c.finger[1]
+    const y0 = laneY(cf.barre.to)
+    g.fillRect(bx - 1, y0, 2, laneY(cf.barre.from) - y0)
+  }
+  for (let s = 0; s < 6; s++) {
+    const f = cf.fingers[s]
+    if (frets[s] === undefined || frets[s] <= 0 || f === null || f === undefined) continue
+    fingerBadge(g, bx, laneY(s), 5, f, alpha, c)
+  }
+  g.globalAlpha = 1
+}
+
+/** "The hand moves": a chip with a chevron and the new fret, and a dashed line down to the note. */
+function shiftTag(g: CanvasRenderingContext2D, noteX: number, cx: number, pillTop: number, sh: Shift, alpha: number, c: RunwayColors) {
+  const y = TOP - 9
+  if (pillTop > y + 7) {
+    g.globalAlpha = alpha * 0.5
+    g.strokeStyle = c.accent
+    g.lineWidth = 1
+    g.setLineDash([2, 2])
+    g.beginPath()
+    g.moveTo(cx, y + 7)
+    g.lineTo(noteX, pillTop)
+    g.stroke()
+    g.setLineDash([])
+  }
+  g.globalAlpha = alpha
+  rr(g, cx - 17, y - 7, 34, 14, 7)
+  g.fillStyle = c.bg
+  g.fill()
+  g.strokeStyle = c.accent
+  g.lineWidth = 1
+  g.stroke()
+  // chevron: up toward higher frets
+  const up = sh.to > sh.from
+  const vx = cx - 8
+  g.strokeStyle = c.text
+  g.lineWidth = 1.5
+  g.beginPath()
+  g.moveTo(vx - 3.5, y + (up ? 2 : -2))
+  g.lineTo(vx, y + (up ? -2 : 2))
+  g.lineTo(vx + 3.5, y + (up ? 2 : -2))
+  g.stroke()
+  g.fillStyle = c.text
+  g.font = `700 10px ${FONT}`
+  g.fillText(String(sh.to), cx + 5, y + 0.5)
+  g.globalAlpha = 1
 }
 
 function ring(g: CanvasRenderingContext2D, x: number, y: number, base: number, ev: { beat: number }, r: JudgeResult, beat: number, spb: number, color: string) {

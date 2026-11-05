@@ -47,6 +47,7 @@ function noteDraft(it: Extract<SeqItem, { k: 'note' }>, offset: number, hidden?:
   if (it.tech) ev.tech = it.tech
   if (it.bend !== undefined) ev.bendTo = midi + it.bend
   if (hidden) ev.hidden = true
+  if (it.finger !== undefined) ev.finger = it.finger
   return ev
 }
 
@@ -62,7 +63,11 @@ function seqEvents(lesson: Lesson): Draft[] {
 }
 
 function callNote(it: Extract<SeqItem, { k: 'note' }>, offset: number): CallNote {
-  return { beat: it.beat + offset, dur: it.len, midi: STANDARD_TUNING[it.s] + it.f, string: it.s, fret: it.f }
+  const c: CallNote = { beat: it.beat + offset, dur: it.len, midi: STANDARD_TUNING[it.s] + it.f, string: it.s, fret: it.f }
+  if (it.finger !== undefined) c.finger = it.finger
+  if (it.tech) c.tech = it.tech
+  if (it.bend !== undefined) c.bendTo = c.midi + it.bend
+  return c
 }
 
 function strumEvents(lesson: Lesson, chordBars: ChordBar[]): Draft[] {

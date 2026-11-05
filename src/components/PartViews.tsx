@@ -2,9 +2,13 @@
 import type { ChordShape } from '../music/parts'
 import { COUNTS } from '../music/parts'
 import { noteName, pc } from '../music/theory'
+import type { Finger } from '../lessons/types'
 
-/** Classic chord box: strings vertical, frets horizontal. */
-export function ChordDiagram({ shape, name, size = 1 }: { shape: ChordShape; name: string; size?: number }) {
+// Finger numbers on chord dots: dark lettering on the coloured dot, set inline so every screen gets it.
+const FINGER_TEXT = { style: { fill: 'var(--ink)', fontWeight: 700, fontSize: 11 } }
+
+/** Classic chord box: strings vertical, frets horizontal. With `fingers`, each dot shows its fretting finger (1 index … 4 pinky). */
+export function ChordDiagram({ shape, name, size = 1, fingers }: { shape: ChordShape; name: string; size?: number; fingers?: (Finger | null)[] }) {
   const played = shape.frets.filter((f) => f > 0)
   const maxF = Math.max(0, ...played)
   const minF = played.length ? Math.min(...played) : 1
@@ -46,6 +50,11 @@ export function ChordDiagram({ shape, name, size = 1 }: { shape: ChordShape; nam
           className="cd-dot"
         />
       )}
+      {fingers && barreFret > 0 && barreStrings.length >= 3 && (
+        <text x={left + gapX * barreStrings[0]} y={top + gapY * (barreFret - start) + gapY / 2 + 4} textAnchor="middle" className="cd-finger" {...FINGER_TEXT}>
+          1
+        </text>
+      )}
       {shape.frets.map((f, s) => {
         const x = left + gapX * s
         if (f < 0)
@@ -55,7 +64,20 @@ export function ChordDiagram({ shape, name, size = 1 }: { shape: ChordShape; nam
             </text>
           )
         if (f === 0) return <circle key={s} cx={x} cy={top - 10} r={4} className="cd-open" />
-        return <circle key={s} cx={x} cy={top + gapY * (f - start) + gapY / 2} r={6.5} className="cd-dot" />
+        const cy = top + gapY * (f - start) + gapY / 2
+        const k = fingers?.[s]
+        const inBarre = f === barreFret && barreStrings.length >= 3
+        if (!fingers) return <circle key={s} cx={x} cy={cy} r={6.5} className="cd-dot" />
+        return (
+          <g key={s}>
+            <circle cx={x} cy={cy} r={6.5} className="cd-dot" />
+            {typeof k === 'number' && k > 0 && !inBarre && (
+              <text x={x} y={cy + 4} textAnchor="middle" className="cd-finger" {...FINGER_TEXT}>
+                {k}
+              </text>
+            )}
+          </g>
+        )
       })}
     </svg>
   )

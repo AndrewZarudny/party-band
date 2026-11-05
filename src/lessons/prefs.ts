@@ -17,9 +17,12 @@ export const DEFAULT_PREFS: Prefs = {
   lastLesson: null,
   seenRoar: false,
   age: null,
+  guides: 'auto',
+  seenBasics: false,
 }
 
 const ZOOMS: Prefs['zoom'][] = [0.75, 1, 1.25]
+const GUIDES: Prefs['guides'][] = ['auto', 'on', 'off']
 
 const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d)
 
@@ -50,6 +53,8 @@ function normalize(raw: unknown): Prefs {
     lastLesson: typeof o.lastLesson === 'string' ? o.lastLesson : null,
     seenRoar: bool(o.seenRoar, d.seenRoar),
     age: typeof o.age === 'number' && isFinite(o.age) && o.age >= 3 && o.age <= 120 ? Math.round(o.age) : null,
+    guides: GUIDES.find((g) => g === o.guides) ?? d.guides,
+    seenBasics: bool(o.seenBasics, d.seenBasics),
   }
 }
 

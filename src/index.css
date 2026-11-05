@@ -56,6 +56,11 @@
   --fret: #8f877b;
   --string: #b8ad9a;
   --bone: #d6cbb5;
+  /* Fretting fingers (1 index … 4 pinky): aliases of the music hues, so they follow every theme */
+  --finger-1: var(--next);
+  --finger-2: var(--scale);
+  --finger-3: var(--chord);
+  --finger-4: var(--played);
 
   /* Type: a Palatino-family serif for the nameplate, headings and big read-outs;
      the system sans for controls; local fonts only. */
@@ -123,6 +128,8 @@
     --fret: #c9bfae;
     --string: #e3d8c4;
     --bone: #efe6d4;
+    /* a touch lighter than --next, so dark finger numbers on it pass AA (about 5:1) */
+    --finger-1: #2aa386;
     color-scheme: light;
   }
 }
@@ -167,6 +174,7 @@
   --fret: #c9bfae;
   --string: #e3d8c4;
   --bone: #efe6d4;
+  --finger-1: #2aa386;
   color-scheme: light;
 }
 /* Dark picked by hand: the :root values above win, and the light media block skips it. */
@@ -629,6 +637,115 @@ input[type='range'] {
 .mk-played text {
   fill: var(--ink);
 }
+/* Played, while finger guides are on: a small bone dot with a dark edge, unlike any finger disc */
+.mk-heard circle {
+  fill: var(--bone);
+  stroke: var(--wood);
+  stroke-width: 1.5;
+}
+/* Finger guides: 1 index, 2 middle, 3 ring, 4 pinky. The number always shows, so colour is never the only cue. */
+.mk-f1 {
+  --mk-f: var(--finger-1);
+}
+.mk-f2 {
+  --mk-f: var(--finger-2);
+}
+.mk-f3 {
+  --mk-f: var(--finger-3);
+}
+.mk-f4 {
+  --mk-f: var(--finger-4);
+}
+.mk-next.mk-f1 circle,
+.mk-next.mk-f2 circle,
+.mk-next.mk-f3 circle,
+.mk-next.mk-f4 circle,
+.mk-upcoming.mk-f1 circle,
+.mk-upcoming.mk-f2 circle,
+.mk-upcoming.mk-f3 circle,
+.mk-upcoming.mk-f4 circle {
+  fill: var(--mk-f);
+  stroke: none;
+}
+/* The next one gets a bone halo: the wood stays dark in both themes */
+.mk-next.mk-f1 circle,
+.mk-next.mk-f2 circle,
+.mk-next.mk-f3 circle,
+.mk-next.mk-f4 circle {
+  stroke: var(--bone);
+  stroke-width: 2.5;
+  stroke-dasharray: none;
+}
+.mk-next.mk-f1 text,
+.mk-next.mk-f2 text,
+.mk-next.mk-f3 text,
+.mk-next.mk-f4 text,
+.mk-upcoming.mk-f1 text,
+.mk-upcoming.mk-f2 text,
+.mk-upcoming.mk-f3 text,
+.mk-upcoming.mk-f4 text {
+  fill: var(--ink);
+}
+/* An open string: a hollow ring with a 0 */
+.mk-open circle {
+  fill: rgb(var(--bg-rgb) / 0.55);
+  stroke: color-mix(in srgb, var(--muted) 45%, var(--bone));
+  stroke-width: 2;
+  stroke-dasharray: none;
+}
+.mk-next.mk-open circle {
+  stroke: var(--next);
+  stroke-width: 2.5;
+}
+.mk-open text {
+  fill: var(--bone);
+}
+/* The other fingers, resting over their frets */
+.mk-ghost circle {
+  fill: none;
+  stroke: var(--mk-f, var(--muted));
+  stroke-width: 1.2;
+  stroke-dasharray: 3 2.5;
+}
+.mk-ghost text {
+  font-size: 12px;
+  fill: color-mix(in srgb, var(--muted) 35%, var(--bone));
+}
+/* A new next note lands: a short settle, not a loop */
+.mk-next {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: mk-land 120ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes mk-land {
+  from {
+    transform: scale(1.12);
+  }
+}
+.fb-arrow path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.fb-arrow text {
+  font-size: 14px;
+  font-weight: 700;
+  fill: var(--accent);
+  paint-order: stroke;
+  stroke: var(--panel);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+}
+.fb-arrow {
+  animation: fb-arrow-in 150ms ease-out;
+}
+@keyframes fb-arrow-in {
+  from {
+    opacity: 0;
+  }
+}
 @keyframes pulse {
   50% {
     transform: scale(1.25);
@@ -638,6 +755,8 @@ input[type='range'] {
 /* Looping pulses become a steady mark; the thick ring / solid fill still says "this one". */
 @media (prefers-reduced-motion: reduce) {
   .mk-target circle,
+  .mk-next,
+  .fb-arrow,
   .p-solo.coming.soon {
     animation: none;
   }

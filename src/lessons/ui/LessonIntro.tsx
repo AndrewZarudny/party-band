@@ -5,13 +5,11 @@ import { applyTone } from '../../audio/presets'
 import { presetByName } from '../../audio/tone'
 import { Fretboard } from '../../components/Fretboard'
 import type { Marker } from '../../components/Fretboard'
-import { ChordDiagram } from '../../components/PartViews'
 import { boxNotes } from '../../music/phrase'
 import { noteName, pc } from '../../music/theory'
 import type { Lesson, Prefs, Progress, Speed } from '../types'
-import { LessonRun } from '../run'
-import { drawRunway, prefersStill, readColors } from '../runwayDraw'
-import { onThemeChange } from '../../theme'
+import { buildChart } from '../charts'
+import { fingeringFor } from '../fingering'
 import { scalePcsOf } from '../improv'
 import { KEYBOARD_DEVICE, deviceKey, loadLatency, micWarning } from '../calibration'
 import { clicksMuted } from '../clock'
@@ -21,71 +19,33 @@ import { MANUAL_SPEEDS, autoSpeed, pct, pickFor, speedCap, speedLimits } from '.
 import { Dino } from './Dino'
 import { InputPicker } from './InputPicker'
 import { StarGlyph, StarPips } from './LessonMap'
+import { LessonOverview } from './teach/LessonOverview'
+import { TeachPanel } from './teach/TeachPanel'
+import { useWatch } from './teach/useWatch'
+import type { WatchSpeed } from './teach/useWatch'
 
-function NotesPreview({ run, zoom }: { run: LessonRun; zoom: number }) {
-  const ref = useRef<HTMLCanvasElement>(null)
-  useEffect(() => {
-    const cv = ref.current
-    if (!cv) return
-    const draw = () => {
-      const w = cv.clientWidth
-      const h = cv.clientHeight
-      const dpr = window.devicePixelRatio || 1
-      cv.width = Math.round(w * dpr)
-      cv.height = Math.round(h * dpr)
-      const g = cv.getContext('2d')
-      if (!g || !w) return
-      g.setTransform(dpr, 0, 0, dpr, 0, 0)
-      drawRunway(g, w, h, run, -1, readColors(cv), zoom, prefersStill(), false)
-    }
-    draw()
-    const ro = new ResizeObserver(draw)
-    ro.observe(cv)
-    const offTheme = onThemeChange(draw) // draw() re-reads the colour tokens
-    return () => {
-      ro.disconnect()
-      offTheme()
-    }
-  }, [run, zoom])
-  return <canvas ref={ref} className="ls-preview-canvas" aria-label="The first bars of this lesson" />
-}
-
-function Preview({ lesson, run, zoom }: { lesson: Lesson; run: LessonRun | null; zoom: number }) {
-  if (lesson.type === 'improv' && lesson.improv) {
-    const spec = lesson.improv
-    const markers: Marker[] = boxNotes(scalePcsOf(spec), [], spec.boxFret).map((p) => ({
-      string: p.string,
-      fret: p.fret,
-      kind: pc(p.midi) === spec.key ? 'root' : 'box',
-    }))
-    return (
-      <div className="ls-preview board">
-        <Fretboard markers={markers} maxFret={Math.min(22, spec.boxFret + 8)} highlightFrom={spec.boxFret} highlightTo={spec.boxFret + 3} />
-        <p className="ls-caption">The red dots are {noteName(spec.key)}, home. Every dot fits.</p>
-      </div>
-    )
-  }
-  if (!run) return null
-  if (lesson.type === 'chords' || lesson.type === 'rhythm') {
-    const shapes = new Map<string, number[]>()
-    for (const ev of run.chart.events) if (ev.kind === 'chord' && !shapes.has(ev.symbol)) shapes.set(ev.symbol, ev.frets)
-    if (!shapes.size) return null
-    return (
-      <div className="ls-preview chords">
-        {[...shapes].map(([name, frets]) => (
-          <div key={name} className="ls-chord">
-            <ChordDiagram shape={{ frets }} name={name} size={1} />
-          </div>
-        ))}
-      </div>
-    )
-  }
+/** Improv lessons: the box on the fretboard, home notes marked. */
+function BoxPreview({ lesson }: { lesson: Lesson }) {
+  if (lesson.type !== 'improv' || !lesson.improv) return null
+  const spec = lesson.improv
+  const markers: Marker[] = boxNotes(scalePcsOf(spec), [], spec.boxFret).map((p) => ({
+    string: p.string,
+    fret: p.fret,
+    kind: pc(p.midi) === spec.key ? 'root' : 'box',
+  }))
   return (
-    <div className="ls-preview tab">
-      <NotesPreview run={run} zoom={zoom} />
+    <div className="ls-preview board">
+      <Fretboard markers={markers} maxFret={Math.min(22, spec.boxFret + 8)} highlightFrom={spec.boxFret} highlightTo={spec.boxFret + 3} />
+      <p className="ls-caption">The red dots are {noteName(spec.key)}, home. Every dot fits.</p>
     </div>
   )
 }
+
+const WATCH_SPEEDS: { v: WatchSpeed; label: string }[] = [
+  { v: 0.5, label: '50%' },
+  { v: 0.75, label: '75%' },
+  { v: 1, label: '100%' },
+]
 
 function Seg<T extends string | number>({ value, options, onPick, label }: { value: T; options: { v: T; label: string }[]; onPick: (v: T) => void; label: string }) {
   return (
@@ -154,29 +114,46 @@ export function LessonIntro({
     ...MANUAL_SPEEDS.filter((s) => s <= speedCap(rec)).map((s) => ({ v: s, label: pct(s) })),
   ]
 
-  // The constructor is pure: safe to build one just for the preview.
-  const preview = useMemo(() => {
+  // The whole chart and its fingering: the demos, the overview and Watch all use these.
+  const chart = useMemo(() => {
     try {
-      return new LessonRun({ lesson, speed, easyTiming: prefs.easyTiming, backingOn: prefs.backingOn, keyboard: prefs.keyboard })
+      return lesson.type === 'sync' ? null : buildChart(lesson)
     } catch {
       return null
     }
-  }, [lesson, speed, prefs.easyTiming, prefs.backingOn, prefs.keyboard])
+  }, [lesson])
+  const fingering = useMemo(() => {
+    try {
+      return chart ? fingeringFor(lesson, chart) : null
+    } catch {
+      return null
+    }
+  }, [lesson, chart])
+  const watch = useWatch(lesson, chart, prefs)
+  const { from: watchFrom, beatNow: watchBeat, bpm: watchBpm, stop: stopWatch } = watch
+  const follow = useMemo(() => (watchFrom !== null ? { beatNow: watchBeat, bpm: watchBpm } : null), [watchFrom, watchBeat, watchBpm])
+  const leave = (go: () => void) => () => {
+    stopWatch()
+    go()
+  }
 
   useEffect(() => {
     startRef.current?.focus()
   }, [])
 
-  // Esc goes back.
+  // Esc goes back (a dialog on top handles its own Esc).
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       const t = ev.target as HTMLElement | null
-      if (t && t.closest('input, select, textarea')) return
-      if (ev.key === 'Escape') onBack()
+      if (t && t.closest('input, select, textarea, [role="dialog"]')) return
+      if (ev.key === 'Escape') {
+        stopWatch()
+        onBack()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onBack])
+  }, [onBack, stopWatch])
 
   const keyboardMode = prefs.keyboard || !e.running
   const calibrated = !!loadLatency(keyboardMode ? KEYBOARD_DEVICE : deviceKey())
@@ -190,7 +167,7 @@ export function LessonIntro({
 
   return (
     <div className="ls-intro">
-      <button className="ls-back" onClick={onBack} aria-label="Back to the map">
+      <button className="ls-back" onClick={leave(onBack)} aria-label="Back to the map">
         <svg viewBox="0 0 16 16" aria-hidden>
           <path d="M10 3 5 8l5 5" />
         </svg>
@@ -217,7 +194,41 @@ export function LessonIntro({
         </div>
       </header>
 
-      <Preview lesson={lesson} run={preview} zoom={prefs.zoom} />
+      <BoxPreview lesson={lesson} />
+
+      {chart && fingering && <TeachPanel lesson={lesson} chart={chart} fingering={fingering} prefs={prefs} onPrefs={onPrefs} follow={follow} />}
+
+      {chart && fingering && (
+        <section className="tc-ov-box" aria-labelledby="tc-ov-title">
+          <div className="tc-ov-top">
+            <h3 id="tc-ov-title" className="tc-ov-title">
+              The whole lesson
+            </h3>
+            <div className="tc-ov-ctl">
+              <button className={`ls-btn small ${watchFrom !== null ? 'on' : ''}`} onClick={() => (watchFrom !== null ? stopWatch() : watch.start(0))}>
+                <svg className="tc-glyph" viewBox="0 0 12 12" aria-hidden>
+                  {watchFrom !== null ? <rect x={2} y={2} width={8} height={8} rx={1.5} /> : <path d="M3 1.8 10.2 6 3 10.2Z" />}
+                </svg>
+                {watchFrom !== null ? 'Stop' : 'Watch'}
+              </button>
+              <Seg label="Watch speed" value={watch.speed} options={WATCH_SPEEDS} onPick={watch.setSpeed} />
+              <button className="ls-link tc-ov-runway" onClick={leave(onListen)}>
+                or watch it on the runway
+              </button>
+            </div>
+          </div>
+          <p className="tc-ov-hint">Tap a bar to watch from there.</p>
+          <LessonOverview
+            lesson={lesson}
+            chart={chart}
+            fingering={fingering}
+            beatNow={watchBeat}
+            countIn={watch.countIn}
+            parkBar={watchFrom}
+            onBar={watch.start}
+          />
+        </section>
+      )}
 
       {lesson.tips.length > 1 && (
         <ul className="ls-tips">
@@ -291,7 +302,7 @@ export function LessonIntro({
             </p>
           )}
           {e.running ? (
-            <button ref={startRef} className="ls-btn primary big" onClick={onStart}>
+            <button ref={startRef} className="ls-btn primary big" onClick={leave(onStart)}>
               Start
             </button>
           ) : (
@@ -299,16 +310,11 @@ export function LessonIntro({
               <button ref={startRef} className="ls-btn primary big" onClick={connect}>
                 {prefs.input === 'mic' ? 'Connect microphone' : 'Connect guitar'}
               </button>
-              <button className="ls-btn" onClick={onStart}>
+              <button className="ls-btn" onClick={leave(onStart)}>
                 Try with the keyboard
               </button>
             </div>
           )}
-          <div className="ls-start-row">
-            <button className="ls-btn" onClick={onListen}>
-              Listen first
-            </button>
-          </div>
         </div>
       </div>
     </div>

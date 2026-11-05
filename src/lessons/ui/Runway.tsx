@@ -1,18 +1,21 @@
 import { useEffect, useRef } from 'react'
 import type { LessonRun } from '../run'
+import type { ChartFingering } from '../types'
 import { drawRunway, onStillChange, prefersStill, readColors } from '../runwayDraw'
 import { RunwayFx } from '../fx/runwayFx'
 import { onThemeChange } from '../../theme'
 
 /** The tab runway canvas. One rAF per run; zoom and nudge are read through refs, so it never re-renders per frame. */
-export function Runway({ run, zoom, nudgeMs }: { run: LessonRun; zoom: number; nudgeMs: number }) {
+export function Runway({ run, zoom, nudgeMs, guides = null }: { run: LessonRun; zoom: number; nudgeMs: number; guides?: ChartFingering | null }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const zoomRef = useRef(zoom)
   const nudgeRef = useRef(nudgeMs)
+  const guidesRef = useRef(guides)
   useEffect(() => {
     zoomRef.current = zoom
     nudgeRef.current = nudgeMs
-  }, [zoom, nudgeMs])
+    guidesRef.current = guides
+  }, [zoom, nudgeMs, guides])
 
   useEffect(() => {
     const cv = canvasRef.current
@@ -63,7 +66,7 @@ export function Runway({ run, zoom, nudgeMs }: { run: LessonRun; zoom: number; n
         if (Number.isFinite(b)) last = b
       }
       g.setTransform(dpr, 0, 0, dpr, 0, 0)
-      drawRunway(g, w, h, run, last, colors, zoomRef.current, still, true, fx)
+      drawRunway(g, w, h, run, last, colors, zoomRef.current, still, true, fx, guidesRef.current)
       raf = requestAnimationFrame(frame)
     }
     raf = requestAnimationFrame(frame)

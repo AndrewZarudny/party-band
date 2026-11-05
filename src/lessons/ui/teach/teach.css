@@ -1,0 +1,951 @@
+/* Teaching panel on the lesson intro: hand demos, picking pendulum, basics cards, whole-lesson overview.
+   Finger colours come from --finger-1..4 (index.css) with fallbacks; numbers are always printed, so colour is never the only cue. */
+
+.tc-f1,
+.tc-f2,
+.tc-f3,
+.tc-f4 {
+  stroke: color-mix(in srgb, var(--ink) 35%, transparent);
+  stroke-width: 0.75;
+}
+.tc-f1 {
+  fill: var(--finger-1, var(--next));
+}
+.tc-f2 {
+  fill: var(--finger-2, var(--scale));
+}
+.tc-f3 {
+  fill: var(--finger-3, var(--chord));
+}
+.tc-f4 {
+  fill: var(--finger-4, var(--played));
+}
+.tc-fs1 {
+  --tc-fc: var(--finger-1, var(--next));
+}
+.tc-fs2 {
+  --tc-fc: var(--finger-2, var(--scale));
+}
+.tc-fs3 {
+  --tc-fc: var(--finger-3, var(--chord));
+}
+.tc-fs4 {
+  --tc-fc: var(--finger-4, var(--played));
+}
+
+/* ---- Panel ------------------------------------------------------------------- */
+
+.tc-panel {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+}
+.tc-demos {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.tc-demos.side {
+  grid-template-columns: minmax(0, 1fr) minmax(112px, 168px);
+  align-items: stretch;
+}
+.tc-hand,
+.tc-pick {
+  margin: 0;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.tc-hand {
+  padding: 8px 8px 6px;
+}
+.tc-hand-svg,
+.tc-pick-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.tc-pick {
+  display: grid;
+  align-items: center;
+  padding: 6px 8px;
+}
+.tc-now {
+  min-height: 1.4em;
+  margin: 2px 4px 0;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  line-height: 1.4;
+}
+.tc-demo-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+.tc-demo-note {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/* Sound switch: the same track as the intro's switches, smaller. */
+.tc-sound {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  padding: 4px 0;
+  cursor: pointer;
+}
+.tc-sound-track {
+  position: relative;
+  width: 30px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  transition: background-color 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.tc-sound-track > span {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.tc-sound.on .tc-sound-track {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.tc-sound.on .tc-sound-track > span {
+  transform: translateX(12px);
+  background: var(--on-accent);
+}
+
+/* ---- Hand demo (SVG) --------------------------------------------------------- */
+
+.tc-band {
+  fill: color-mix(in srgb, var(--accent) 7%, transparent);
+  stroke: color-mix(in srgb, var(--accent) 22%, transparent);
+  stroke-width: 1;
+}
+.tc-bandlabel {
+  fill: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.tc-nut {
+  fill: color-mix(in srgb, var(--text) 60%, transparent);
+}
+.tc-wire {
+  fill: var(--line);
+}
+.tc-inlay {
+  fill: var(--panel-2);
+}
+.tc-fretnum {
+  fill: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.tc-string {
+  fill: none;
+  stroke: var(--muted);
+}
+.tc-string.tc-lit {
+  stroke: var(--next);
+  stroke-width: 1.5;
+}
+.tc-strname {
+  fill: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+.tc-tip-shadow {
+  fill: color-mix(in srgb, var(--text) 12%, transparent);
+}
+.tc-tip-num {
+  fill: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+  pointer-events: none;
+}
+.tc-ring {
+  fill: none;
+  stroke: var(--tc-fc, var(--next));
+}
+.tc-barre {
+  fill: var(--finger-1, var(--next));
+}
+.tc-open circle {
+  fill: var(--bg);
+  stroke: var(--muted);
+  stroke-width: 1.4;
+}
+.tc-open text {
+  fill: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+.tc-hp,
+.tc-bendlabel {
+  fill: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+}
+.tc-bendlabel {
+  font-style: normal;
+  font-weight: 600;
+  fill: var(--text);
+}
+.tc-slide line {
+  stroke: var(--muted);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 3;
+}
+.tc-slide text {
+  fill: var(--muted);
+  font-size: 10px;
+  font-style: italic;
+}
+.tc-chip rect {
+  fill: var(--bg);
+  stroke: var(--accent);
+}
+.tc-chip path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tc-chip text {
+  fill: var(--text);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.tc-mutehand rect {
+  fill: color-mix(in srgb, var(--panel-2) 85%, transparent);
+  stroke: var(--line);
+}
+.tc-mutehand text {
+  fill: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* ---- Pick demo (SVG) --------------------------------------------------------- */
+
+.tc-pick-string {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.2;
+}
+.tc-pick-string.tc-lit {
+  stroke: var(--next);
+  stroke-width: 1.6;
+}
+.tc-pick-str {
+  fill: var(--muted);
+  font-size: 9px;
+  font-weight: 600;
+}
+.tc-pickglyph {
+  fill: var(--accent);
+  stroke: color-mix(in srgb, var(--ink) 30%, transparent);
+  stroke-width: 0.75;
+}
+.tc-pick-word {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.tc-pick-chev {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tc-xchip rect {
+  fill: var(--panel-2);
+  stroke: var(--line);
+}
+.tc-xchip text {
+  fill: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+}
+.tc-pm rect {
+  fill: var(--panel-2);
+  stroke: var(--line);
+}
+.tc-pm text {
+  fill: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+.tc-slot-now {
+  fill: var(--panel-2);
+}
+.tc-slot-count {
+  fill: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.tc-slot path,
+.tc-slot text:not(.tc-slot-count),
+.tc-slot circle {
+  display: none;
+}
+.tc-slot[data-k='D'] .tc-slot-d,
+.tc-slot[data-k='U'] .tc-slot-u,
+.tc-slot[data-k='x'] .tc-slot-x,
+.tc-slot[data-k='air'] .tc-slot-air,
+.tc-slot[data-k='leg'] .tc-slot-leg {
+  display: inline;
+}
+.tc-slot-d {
+  fill: var(--text);
+  stroke: var(--text);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+.tc-slot-u {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+.tc-slot-x,
+.tc-slot-leg {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.tc-slot-air {
+  fill: var(--muted);
+}
+
+/* ---- Filmstrip (reduced motion) ------------------------------------------------ */
+
+.tc-film {
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 2px 2px 8px;
+  list-style: none;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+}
+.tc-fm {
+  flex: 0 0 132px;
+  scroll-snap-align: start;
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.tc-fm.now {
+  border-color: var(--accent);
+}
+.tc-fm-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.tc-fm-cap {
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+  color: var(--text);
+}
+.tc-fm-string {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+.tc-fm-string.on {
+  stroke: var(--next);
+  stroke-width: 1.5;
+}
+.tc-fm-strname,
+.tc-fm-fret {
+  fill: var(--muted);
+  font-size: 8px;
+  font-weight: 600;
+}
+.tc-fm-num {
+  fill: var(--ink);
+  font-size: 9px;
+  font-weight: 700;
+}
+.tc-fm-open circle {
+  fill: var(--bg);
+  stroke: var(--muted);
+  stroke-width: 1.2;
+}
+.tc-fm-open text {
+  fill: var(--muted);
+  font-size: 8px;
+  font-weight: 700;
+}
+.tc-fm-flat {
+  fill: var(--panel-2);
+  stroke: var(--line);
+}
+.tc-fm-pick {
+  stroke: var(--accent);
+  stroke-width: 1.2;
+}
+.tc-fm-pick.down {
+  fill: var(--accent);
+}
+.tc-fm-pick.up {
+  fill: none;
+}
+.tc-fm-word {
+  fill: var(--text);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* ---- Hand tips and basics chips ------------------------------------------------ */
+
+.tc-hands {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+}
+.tc-hands > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+}
+.tc-hands dt {
+  color: var(--muted);
+}
+.tc-hands dt::after {
+  content: ':';
+}
+.tc-hands dd {
+  margin: 0;
+  flex: 1 1 16ch;
+}
+.tc-basics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: var(--fs-sm);
+}
+.tc-basics-lead {
+  color: var(--muted);
+}
+.tc-chip-btn {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 4px 11px;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.tc-chip-btn:hover {
+  border-color: var(--muted);
+}
+.tc-basics-all {
+  font-size: var(--fs-sm);
+}
+
+/* ---- Basics sheet --------------------------------------------------------------- */
+
+.tc-sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+}
+.tc-sheet {
+  width: min(440px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 12px 40px color-mix(in srgb, var(--bg) 60%, transparent);
+  animation: tc-sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes tc-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+.tc-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.tc-sheet-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h2);
+}
+.tc-track {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.tc-cardslot {
+  flex: 0 0 100%;
+  scroll-snap-align: start;
+  min-width: 0;
+}
+.tc-card {
+  display: grid;
+  gap: 6px;
+  padding: 2px 2px 4px;
+}
+.tc-card-art {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  padding: 6px;
+}
+.tc-art {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 220px;
+}
+.tc-card-mark {
+  margin: 2px 0 0;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--next-text);
+}
+.tc-card-title {
+  margin: 0;
+  font-size: var(--fs-h3);
+}
+.tc-card-copy {
+  margin: 0;
+  font-size: var(--fs-ui);
+  line-height: 1.5;
+  max-width: 48ch;
+}
+.tc-sheet-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tc-dots {
+  display: flex;
+  gap: 2px;
+}
+.tc-dots button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.tc-dots button::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line);
+}
+.tc-dots button.on::after {
+  background: var(--accent);
+}
+
+/* Card art */
+.tc-art-string {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.3;
+}
+.tc-art-wave {
+  fill: none;
+  stroke: var(--next);
+  stroke-width: 1.5;
+}
+.tc-art-buzz {
+  fill: none;
+  stroke: var(--root);
+  stroke-width: 1.3;
+}
+.tc-art-wire {
+  fill: var(--line);
+}
+.tc-art-pick {
+  fill: var(--accent);
+}
+.tc-art-thumb,
+.tc-art-arm,
+.tc-art-hand,
+.tc-art-edge {
+  fill: var(--panel-2);
+  stroke: var(--line);
+  stroke-width: 1.2;
+}
+.tc-art-hand {
+  stroke: var(--muted);
+}
+/* the pick shows faintly through the thumb */
+.tc-art-thumb {
+  fill-opacity: 0.8;
+}
+.tc-art-finger {
+  fill: none;
+  stroke: var(--panel-2);
+  stroke-width: 13;
+  stroke-linecap: round;
+}
+.tc-art-joint {
+  fill: var(--muted);
+}
+.tc-art-bracket,
+.tc-art-arrow {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tc-art-label {
+  fill: var(--muted);
+  font-size: 10px;
+}
+.tc-art-label.strong {
+  fill: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+}
+.tc-art-label.good {
+  fill: var(--target-text);
+}
+.tc-art-ring {
+  fill: none;
+  stroke: var(--target);
+  stroke-width: 1.4;
+}
+.tc-art-neck {
+  fill: var(--panel-2);
+  stroke: var(--line);
+  stroke-width: 1.2;
+}
+.tc-art-dot {
+  fill: var(--muted);
+}
+.tc-art-dot.free {
+  fill: var(--target);
+}
+.tc-art-clear {
+  fill: none;
+  stroke: var(--target);
+  stroke-width: 1.2;
+  stroke-dasharray: 2 2;
+}
+.tc-art-bridge {
+  fill: var(--line);
+}
+
+/* ---- Whole-lesson overview -------------------------------------------------------- */
+
+.tc-ov-box {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+.tc-ov-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+}
+.tc-ov-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-h3);
+}
+.tc-ov-ctl {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+.tc-ov-runway {
+  font-size: var(--fs-sm);
+}
+.tc-ov-hint {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+.tc-glyph {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
+}
+.tc-ov {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+.tc-ov-shapes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.tc-ov-shape {
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.tc-ov-scroll {
+  max-height: min(46vh, 420px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.tc-ov-svg {
+  display: block;
+}
+.tc-ov-bar {
+  cursor: pointer;
+  outline: none;
+}
+.tc-ov-hit {
+  fill: transparent;
+}
+.tc-ov-bar:hover .tc-ov-hit {
+  fill: color-mix(in srgb, var(--panel-2) 70%, transparent);
+}
+.tc-ov-bar:focus-visible .tc-ov-hit {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.tc-ov-tint {
+  fill: var(--panel-2);
+}
+.tc-ov-num {
+  fill: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.tc-ov-sym {
+  fill: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+.tc-ov-chip rect {
+  fill: var(--panel-2);
+  stroke: var(--line);
+}
+.tc-ov-chip.you rect {
+  stroke: var(--next);
+}
+.tc-ov-chip text {
+  fill: var(--text);
+  font-size: 9.5px;
+  font-weight: 600;
+}
+.tc-ov-shift rect {
+  fill: var(--bg);
+  stroke: var(--accent);
+}
+.tc-ov-shift path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tc-ov-shift text {
+  fill: var(--text);
+  font-size: 9.5px;
+  font-weight: 700;
+}
+.tc-ov-line {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.tc-ov-lane {
+  stroke: var(--line);
+  stroke-dasharray: 2 4;
+}
+.tc-ov-barline {
+  stroke: var(--muted);
+  stroke-width: 1;
+  opacity: 0.6;
+}
+.tc-ov-ko {
+  fill: var(--panel);
+}
+.tc-ov-bar:hover .tc-ov-ko {
+  fill: color-mix(in srgb, var(--panel-2) 70%, var(--panel));
+}
+/* the bar being watched sits on the tint */
+.tc-ov-bar.now .tc-ov-ko {
+  fill: var(--panel-2);
+}
+.tc-ov-fret {
+  fill: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.tc-ov-call {
+  opacity: 0.45;
+}
+.tc-ov-call .tc-ov-fret {
+  fill: var(--muted);
+}
+.tc-ov-solo {
+  fill: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+}
+.tc-ov-tech path,
+.tc-ov-vib {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+}
+.tc-ov-tech text {
+  fill: var(--muted);
+  font-size: 9px;
+  font-style: italic;
+}
+.tc-ov-pm {
+  fill: var(--muted);
+  font-size: 8.5px;
+  font-weight: 700;
+}
+.tc-ov-sup {
+  fill: var(--tc-fc, var(--text));
+  font-size: 8px;
+  font-weight: 700;
+}
+.tc-ov-fnum {
+  fill: var(--ink);
+  font-size: 9px;
+  font-weight: 700;
+}
+.tc-ov-open circle {
+  fill: var(--panel);
+  stroke: var(--muted);
+  stroke-width: 1.2;
+}
+.tc-ov-open text {
+  fill: var(--muted);
+  font-size: 8px;
+  font-weight: 700;
+}
+.tc-ov-pick {
+  stroke: var(--text);
+  stroke-width: 1.1;
+  stroke-linejoin: round;
+}
+.tc-ov-pick.down {
+  fill: var(--text);
+}
+.tc-ov-pick.up {
+  fill: none;
+}
+.tc-ov-strum {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tc-ov-strum.pm {
+  stroke: var(--muted);
+}
+.tc-ov-x {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.tc-ov-rest {
+  fill: color-mix(in srgb, var(--muted) 18%, transparent);
+  stroke: color-mix(in srgb, var(--muted) 40%, transparent);
+  stroke-dasharray: 2 2;
+}
+.tc-ov-count {
+  fill: var(--muted);
+  font-size: 9px;
+}
+.tc-ov-head line {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.tc-ov-head circle {
+  fill: var(--accent);
+}
+.tc-ov-count-chip rect {
+  fill: var(--accent);
+}
+.tc-ov-count-chip text {
+  fill: var(--on-accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tc-sheet {
+    animation: none;
+  }
+  .tc-sound-track,
+  .tc-sound-track > span {
+    transition: none;
+  }
+}

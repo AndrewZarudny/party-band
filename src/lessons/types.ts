@@ -93,6 +93,8 @@ export interface Lesson {
   stars: [number, number, number]
   starExtra?: StarExtra // needed for the 3rd star
   xp: number
+  position?: number // home hand position (index-finger fret), e.g. 5 for A minor box 1; improv uses boxFret
+  pickRule?: PickRule // default 'grid'
 }
 
 export interface WorldDef {
@@ -105,7 +107,7 @@ export interface WorldDef {
 // ---- seq() output -------------------------------------------------------------
 
 export type SeqItem =
-  | { k: 'note'; beat: number; len: number; s: number; f: number; tech?: Tech; bend?: number }
+  | { k: 'note'; beat: number; len: number; s: number; f: number; tech?: Tech; bend?: number; finger?: Finger }
   | { k: 'rest'; beat: number; len: number }
   | { k: 'mute'; beat: number; len: number }
   | { k: 'chord'; beat: number; len: number; symbol: string }
@@ -125,6 +127,7 @@ export interface NoteEv extends EvBase {
   tech?: Tech
   bendTo?: number // midi
   hidden?: boolean // ear-only: drawn without its fret number
+  finger?: Finger // authoring hint (seq '@k')
 }
 export interface ChordEv extends EvBase {
   kind: 'chord'
@@ -149,6 +152,9 @@ export interface CallNote {
   midi: number
   string: number
   fret: number
+  finger?: Finger // authoring hint (seq '@k')
+  tech?: Tech // so the guide shows a hammered call note as not picked
+  bendTo?: number
 }
 
 export interface Chart {
@@ -161,6 +167,77 @@ export interface Chart {
   chordTimeline: { beat: number; symbol: string }[] // one entry per bar; '' = no chord
   improvBars?: { bar: number; role: 'call' | 'answer' | 'echo'; callIdx: number }[]
   minGapBeats: number // smallest start-to-start gap between judged events (Infinity if < 2 events)
+}
+
+// ---- Fingering (fingering.ts) ---------------------------------------------------
+
+/** Fretting-hand finger: 0 open string, 1 index, 2 middle, 3 ring, 4 pinky, 'T' thumb (never in these lessons). */
+export type Finger = 0 | 1 | 2 | 3 | 4 | 'T'
+export type PickDir = 'D' | 'U'
+/** 'grid' = down on beats and 8ths (16ths when needed), up in between; 'down' = downstrokes only. */
+export type PickRule = 'grid' | 'down'
+/** The hand moves to a new position (the index finger's fret) for this note or chord. */
+export interface Shift {
+  from: number
+  to: number
+  kind: 'shift' | 'slide'
+}
+export interface Barre {
+  fret: number
+  from: number // string, 0 = low E, inclusive
+  to: number
+}
+export interface ChordFingering {
+  fingers: (Finger | null)[] // per string, low E first; null = not played, 0 = open
+  barre?: Barre
+}
+export interface NoteFingering {
+  finger: Finger
+  pos: number | null // index-finger fret of the hand position; null while only open strings have sounded
+  pick: PickDir | null // null = not picked (hammer, pull or slide target)
+  legato: boolean
+  palmMute: boolean
+  shift?: Shift
+}
+export interface ChordEvFingering {
+  fingering: ChordFingering
+  pos: number | null // null for shapes with open strings
+  pick: PickDir
+  palmMute: boolean
+  shift?: Shift
+}
+export type EventFingering =
+  | ({ kind: 'note' } & NoteFingering)
+  | ({ kind: 'chord' } & ChordEvFingering)
+  | { kind: 'mute'; pick: PickDir }
+  | { kind: 'rest' }
+export interface ChartFingering {
+  events: EventFingering[] // index = chart event id
+  calls: NoteFingering[] // parallel to chart.calls
+  startPos: number | null // the first fretted position
+  grid: 0.5 | 0.25
+  pickRule: PickRule
+}
+export interface FingerTip {
+  finger: 1 | 2 | 3 | 4
+  string: number
+  fret: number
+  down: boolean // pressing the string
+  active: boolean // this finger plays the current note
+}
+/** Where the fretting hand is at one moment: for the animated demos. */
+export interface HandFrame {
+  pos: number | null
+  string: number // the string the hovering fingers follow
+  tips: FingerTip[] // always 4, fingers 1..4 in order
+  barre: Barre | null
+  eventId: number | null // current chart event (null before the first, or while a call sounds)
+  callIdx: number | null // current chart.calls index, when a call is the current item
+  sinceBeat: number // beats since the current item started; Infinity when none
+  nextId: number | null // next chart event to play
+  pick: PickDir | null
+  palmMute: boolean
+  shift: Shift | null // the current item's shift
 }
 
 // ---- Live input ---------------------------------------------------------------
@@ -474,6 +551,8 @@ export interface Prefs {
   lastLesson: string | null
   seenRoar: boolean // the Roar explainer has been shown once
   age: number | null // optional, only for fun timing comparisons
+  guides: 'auto' | 'on' | 'off' // finger and pick guides in play; auto = by world
+  seenBasics: boolean // the Technique basics sheet has opened once
 }
 
 export type RunState = 'idle' | 'countin' | 'playing' | 'ended' | 'stopped'

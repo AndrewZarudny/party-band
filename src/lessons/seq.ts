@@ -1,8 +1,8 @@
 // Parses the compact lesson note strings ("3.5 h3.7 3.7^2*2 r [G5]") into timed items.
-import type { SeqItem, Tech } from './types'
+import type { Finger, SeqItem, Tech } from './types'
 
-// [h|p|/] string.fret [^bend] [~] [P] [*len]
-const NOTE_RE = /^([hp/]?)(\d)\.(\d{1,2})(?:\^(\d+))?(~?)(P?)(?:\*(\d*\.?\d+))?$/
+// [h|p|/] string.fret [^bend] [~] [P] [@finger] [*len]
+const NOTE_RE = /^([hp/]?)(\d)\.(\d{1,2})(?:\^(\d+))?(~?)(P?)(?:@([0-4T]))?(?:\*(\d*\.?\d+))?$/
 // '-', 'r', 'x' or '[SYM]', each with an optional *len
 const OTHER_RE = /^(-|r|x|\[([^\]]+)\])(?:\*(\d*\.?\d+))?$/
 
@@ -32,7 +32,7 @@ export function seq(src: string, step: number): SeqItem[] {
     if (m) {
       const s = Number(m[2])
       if (s > 5) throw bad(tok)
-      const len = lenOf(m[7], tok) * step
+      const len = lenOf(m[8], tok) * step
       const item: Extract<SeqItem, { k: 'note' }> = { k: 'note', beat, len, s, f: Number(m[3]) }
       let tech: Tech | undefined = PREFIX_TECH[m[1]]
       if (m[4] !== undefined) {
@@ -41,6 +41,7 @@ export function seq(src: string, step: number): SeqItem[] {
       } else if (!tech && m[5]) tech = 'vibrato'
       else if (!tech && m[6]) tech = 'pm'
       if (tech) item.tech = tech
+      if (m[7] !== undefined) item.finger = (m[7] === 'T' ? 'T' : Number(m[7])) as Finger
       out.push(item)
       beat += len
       continue
@@ -62,7 +63,7 @@ export function seqBeats(src: string, step: number): number {
   for (const tok of tokens(src)) {
     const m = NOTE_RE.exec(tok)
     if (m) {
-      total += lenOf(m[7], tok) * step
+      total += lenOf(m[8], tok) * step
       continue
     }
     const o = OTHER_RE.exec(tok)

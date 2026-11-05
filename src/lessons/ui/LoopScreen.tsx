@@ -12,6 +12,7 @@ import type { Marker } from '../../components/Fretboard'
 import { ChordDiagram } from '../../components/PartViews'
 import { Dino } from './Dino'
 import { Runway } from './Runway'
+import { fingeringFor, guidesOn } from '../fingering'
 import { fxBusFor } from '../fx/bus'
 import { holdReload, practice } from '../../account/activity'
 import './play.css'
@@ -174,6 +175,9 @@ export function LoopScreen({
 
   const lesson = spec.lesson
   const chart = session?.chart ?? null
+  // finger hints travel on the sliced notes, so the loop's own chart gets the same fingers
+  const fingering = useMemo(() => (run ? fingeringFor(run.lesson, run.chart) : null), [run])
+  const guides = guidesOn(prefs, lesson) ? fingering : null
   const helper = useMemo(() => {
     if (!chart) return null
     if (lesson.type === 'chords' || lesson.type === 'rhythm') {
@@ -254,7 +258,7 @@ export function LoopScreen({
       </div>
 
       <div className="lp-stage">
-        {run && <Runway key={segKey} run={run} zoom={prefs.zoom} nudgeMs={prefs.visualNudgeMs} />}
+        {run && <Runway key={segKey} run={run} zoom={prefs.zoom} nudgeMs={prefs.visualNudgeMs} guides={guides} />}
         {v?.last && (
           <span key={v.vKey} className={`lp-verdict v-${v.last}`}>
             {VERDICT_LABEL[v.last]}

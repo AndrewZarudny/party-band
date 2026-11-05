@@ -1,11 +1,15 @@
 import { STANDARD_TUNING, noteName } from '../music/theory'
+import type { Finger } from '../lessons/types'
 
 export interface Marker {
   string: number // 0 = low E
   fret: number
-  kind: 'scale' | 'box' | 'chord' | 'root' | 'next' | 'target' | 'upcoming' | 'played'
+  // 'heard': what you just played, while finger guides are on (a small bone dot, so it never looks like a finger)
+  kind: 'scale' | 'box' | 'chord' | 'root' | 'next' | 'target' | 'upcoming' | 'played' | 'heard' | 'ghost'
   label?: string
   opacity?: number
+  finger?: Finger // fretting finger: the dot shows its number instead of the note name
+  id?: string // stable React key, so a new next note remounts and replays its land
 }
 
 interface Props {
@@ -15,6 +19,7 @@ interface Props {
   highlightTo?: number
   flats?: boolean
   tuning?: number[] // low → high; defaults to standard
+  arrow?: { from: number; to: number; label: string } // the hand moves along the neck
 }
 
 const W = 1100
@@ -24,7 +29,7 @@ const TOP = 26
 const STRING_GAP = 30
 const INLAYS = [3, 5, 7, 9, 15, 17, 19, 21]
 
-export function Fretboard({ markers, maxFret = 22, highlightFrom, highlightTo, flats, tuning = STANDARD_TUNING }: Props) {
+export function Fretboard({ markers, maxFret = 22, highlightFrom, highlightTo, flats, tuning = STANDARD_TUNING, arrow }: Props) {
   // Blend of real fret spacing and linear spacing so high frets stay readable.
   const fretX = (f: number) => {
     const real = (1 - Math.pow(2, -f / 12)) / (1 - Math.pow(2, -maxFret / 12))
@@ -36,7 +41,7 @@ export function Fretboard({ markers, maxFret = 22, highlightFrom, highlightTo, f
   const bottom = stringY(0)
 
   return (
-    <svg className="fretboard" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Fretboard">
+    <svg className="fretboard" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={arrow ? `Fretboard. ${arrow.label}` : 'Fretboard'}>
       {highlightFrom !== undefined && highlightTo !== undefined && (
         <rect
           className="fb-window"
@@ -74,21 +79,39 @@ export function Fretboard({ markers, maxFret = 22, highlightFrom, highlightTo, f
         </text>
       ))}
       {markers.map((m, i) => (
-        <MarkerDot key={i} m={m} x={noteX(m.fret)} y={stringY(m.string)} flats={flats} open={tuning[m.string]} />
+        <MarkerDot key={m.id ?? i} m={m} x={noteX(m.fret)} y={stringY(m.string)} flats={flats} open={tuning[m.string]} />
       ))}
+      {arrow && arrow.from !== arrow.to && <MoveArrow key={`${arrow.from}-${arrow.to}`} x1={noteX(arrow.from)} x2={noteX(arrow.to)} label={arrow.label} />}
     </svg>
   )
 }
 
-function MarkerDot({ m, x, y, flats, open }: { m: Marker; x: number; y: number; flats?: boolean; open: number }) {
-  const label = m.label ?? noteName(open + m.fret, flats)
-  const r = m.kind === 'scale' ? 8 : m.kind === 'next' || m.kind === 'target' ? 15 : 12
-  const showText = m.kind !== 'next' && m.kind !== 'target' && m.kind !== 'played'
+/** Above the high e string: an arrow from the hand's fret to the new one, labelled in the middle. */
+function MoveArrow({ x1, x2, label }: { x1: number; x2: number; label: string }) {
+  const y = TOP - 16
+  const dir = x2 > x1 ? 1 : -1
   return (
-    <g className={`mk mk-${m.kind}`} opacity={m.opacity ?? 1}>
+    <g className="fb-arrow">
+      <path d={`M${x1} ${y}H${x2 - dir * 2}`} />
+      <path className="fb-arrow-head" d={`M${x2 - dir * 9} ${y - 5}L${x2} ${y}L${x2 - dir * 9} ${y + 5}`} />
+      <text x={(x1 + x2) / 2} y={y + 5} textAnchor="middle">
+        {label}
+      </text>
+    </g>
+  )
+}
+
+function MarkerDot({ m, x, y, flats, open }: { m: Marker; x: number; y: number; flats?: boolean; open: number }) {
+  const fingered = m.finger !== undefined
+  const label = fingered ? String(m.finger) : (m.label ?? noteName(open + m.fret, flats))
+  const r = m.kind === 'heard' ? 6 : m.kind === 'ghost' ? 10 : m.kind === 'scale' ? 8 : m.kind === 'next' || m.kind === 'target' ? 15 : 12
+  const showText = fingered || (m.kind !== 'next' && m.kind !== 'target' && m.kind !== 'played' && m.kind !== 'heard')
+  const fClass = !fingered ? '' : m.finger === 0 ? ' mk-open' : ` mk-f${m.finger}`
+  return (
+    <g className={`mk mk-${m.kind}${fClass}`} opacity={m.opacity ?? 1}>
       <circle cx={x} cy={y} r={r} />
       {showText && (
-        <text x={x} y={y + (m.kind === 'scale' ? 4 : 5)} textAnchor="middle">
+        <text x={x} y={y + (m.kind === 'scale' ? 4 : m.kind === 'ghost' ? 4.5 : 5)} textAnchor="middle">
           {label}
         </text>
       )}

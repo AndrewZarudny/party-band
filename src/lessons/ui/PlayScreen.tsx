@@ -15,6 +15,8 @@ import { Runway } from './Runway'
 import { FretFx } from './FretFx'
 import { fxBusFor } from '../fx/bus'
 import { prefersStill } from '../runwayDraw'
+import { FINGER_NAME, fingeringFor, guidesOn } from '../fingering'
+import { guideMarkers, nextAtBeat } from '../guides'
 import { holdReload, practice } from '../../account/activity'
 import './play.css'
 
@@ -67,6 +69,17 @@ function PauseIcon() {
     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
       <rect x="3.5" y="2.5" width="3" height="11" rx="1" fill="currentColor" />
       <rect x="9.5" y="2.5" width="3" height="11" rx="1" fill="currentColor" />
+    </svg>
+  )
+}
+
+/** A fingertip over a string, for the guides toggle. */
+function FingerIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+      <path d="M1.5 12.5h13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" fill="none" />
+      <path d="M6 2.5v6.2a2 2 0 0 0 4 0V2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+      <circle cx="8" cy="11" r="1.4" fill="currentColor" />
     </svg>
   )
 }
@@ -264,6 +277,11 @@ export function PlayScreen({
       const t = e.target as HTMLElement | null
       if (t && t.closest('input, select, textarea')) return
       if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') pause()
+      else if ((e.key === 'g' || e.key === 'G') && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // G flips the finger guides and remembers the choice
+        const { prefs: pr, lesson: ls, onPrefs: set } = live.current
+        set({ ...pr, guides: guidesOn(pr, ls) ? 'off' : 'on' })
+      }
     }
     const onVis = () => {
       if (document.visibilityState === 'hidden') pause()
@@ -292,10 +310,19 @@ export function PlayScreen({
     let lastPoll = 0
     let lastChord = ''
     let lastCount = -1
+    let lastNext: ChartEvent | null | undefined
     const tick = (now: number) => {
       if (run.state === 'countin' || run.state === 'playing') {
         const b = run.visualBeat(live.current.prefs.visualNudgeMs)
         if (progressRef.current) progressRef.current.style.transform = `scaleX(${Math.max(0, Math.min(1, b / total))})`
+        // listen mode has no judge to move "next" along: follow the clock (one render per note)
+        if (live.current.listen && Number.isFinite(b)) {
+          const n = nextAtBeat(run.chart, b)
+          if (n !== lastNext) {
+            lastNext = n
+            setHud((h) => ({ ...h, next: n }))
+          }
+        }
         const bend = run.hud.bend
         if (bendRef.current && bendFillRef.current) {
           bendRef.current.hidden = bend === null
@@ -332,6 +359,13 @@ export function PlayScreen({
   const chart = run?.chart
   const bars = chart?.bars ?? lesson.bars
 
+  // Finger and pick guides: worked out once per run, shown by the pref (Auto = early worlds)
+  const fingering = useMemo(() => (run ? fingeringFor(run.lesson, run.chart) : null), [run])
+  const guidesShown = guidesOn(prefs, lesson)
+  const guides = guidesShown ? fingering : null
+  const canGuide = lesson.type !== 'improv' && lesson.type !== 'sync'
+  const toggleGuides = () => onPrefs({ ...prefs, guides: guidesShown ? 'off' : 'on' })
+
   // What sits under the runway: a fretboard, chord boxes or improv chips.
   const helper = useMemo(() => {
     if (!chart) return null
@@ -356,13 +390,28 @@ export function PlayScreen({
     const top = notes.reduce((m, e) => Math.max(m, e.fret), 0)
     const next = hud.next && hud.next.kind === 'note' ? hud.next : null
     const markers: Marker[] = []
+    let played: Marker | null = null
     if (hud.lastMidi !== null) {
       const at = nearestPosition(hud.lastMidi, next ? next.fret : 5, undefined, Math.max(12, top + 3))
-      if (at && !(next && at.string === next.string && at.fret === next.fret)) markers.push({ string: at.string, fret: at.fret, kind: 'played' })
+      if (at && !(next && at.string === next.string && at.fret === next.fret)) played = { string: at.string, fret: at.fret, kind: 'played' }
     }
+    if (guides) {
+      // the next note with its finger, faint notes after it, resting fingers, the hand's window; "played" stays on top
+      const gv = guideMarkers(chart, guides, hud.next ? hud.next.id : null)
+      // finger colours reuse the played hue, so here it is a small bone dot instead
+      if (played) gv.markers.push({ ...played, kind: 'heard' })
+      return { kind: 'notes' as const, markers: gv.markers, maxFret: Math.max(12, top + 3), from: gv.window?.from, to: gv.window?.to, arrow: gv.arrow ?? undefined }
+    }
+    if (played) markers.push(played)
     if (next && !next.hidden) markers.push({ string: next.string, fret: next.fret, kind: 'next' })
-    return { kind: 'notes' as const, markers, maxFret: Math.max(12, top + 3) }
-  }, [chart, lesson, hud.next, hud.lastMidi, improv.chord])
+    return { kind: 'notes' as const, markers, maxFret: Math.max(12, top + 3), from: undefined, to: undefined, arrow: undefined }
+  }, [chart, lesson, hud.next, hud.lastMidi, improv.chord, guides])
+
+  /** Finger numbers for a chord box, when the guides are on. */
+  const chordFingers = (ev: ChordEv) => {
+    const ef = guides?.events[ev.id]
+    return ef && ef.kind === 'chord' ? ef.fingering.fingers : undefined
+  }
 
   const playing = runState === 'countin' || runState === 'playing'
   const baseMood: DinoMood = runState === 'countin' ? 'focus' : hud.roar ? 'hyped' : 'idle'
@@ -406,8 +455,8 @@ export function PlayScreen({
       </header>
 
       <div className="lp-stage">
-        {run && <Runway run={run} zoom={prefs.zoom} nudgeMs={prefs.visualNudgeMs} />}
-        {listen && playing && <span className="lp-listen-tag">Listen first: just watch and listen.</span>}
+        {run && <Runway run={run} zoom={prefs.zoom} nudgeMs={prefs.visualNudgeMs} guides={guides} />}
+        {listen && playing && <span className="lp-listen-tag">{guides ? 'Just watch: the numbers show which finger.' : 'Just watch and listen.'}</span>}
         {hud.verdict && (
           <span key={hud.vKey} className={`lp-verdict v-${hud.verdict}`}>
             {VERDICT_LABEL[hud.verdict]}
@@ -517,13 +566,13 @@ export function PlayScreen({
         <div className="lp-chords">
           {helper.cur && (
             <figure className="lp-chord now">
-              <ChordDiagram shape={{ frets: helper.cur.frets }} name={helper.cur.symbol} size={1} />
+              <ChordDiagram shape={{ frets: helper.cur.frets }} name={helper.cur.symbol} size={1} fingers={chordFingers(helper.cur)} />
               <figcaption>Now</figcaption>
             </figure>
           )}
           {helper.after && (
             <figure className="lp-chord">
-              <ChordDiagram shape={{ frets: helper.after.frets }} name={helper.after.symbol} size={1} />
+              <ChordDiagram shape={{ frets: helper.after.frets }} name={helper.after.symbol} size={1} fingers={chordFingers(helper.after)} />
               <figcaption>Next</figcaption>
             </figure>
           )}
@@ -532,8 +581,34 @@ export function PlayScreen({
 
       {prefs.showFretboard && helper && helper.kind !== 'chords' && (
         <div className="lp-fretboard">
-          <Fretboard markers={helper.markers} maxFret={helper.maxFret} highlightFrom={helper.kind === 'improv' ? helper.from : undefined} highlightTo={helper.kind === 'improv' ? helper.to : undefined} />
+          <Fretboard
+            markers={helper.markers}
+            maxFret={helper.maxFret}
+            highlightFrom={helper.from}
+            highlightTo={helper.to}
+            arrow={helper.kind === 'notes' ? helper.arrow : undefined}
+          />
           {helper.kind === 'notes' && run && !listen && <FretFx run={run} next={hud.next} maxFret={helper.maxFret} nudgeMs={prefs.visualNudgeMs} />}
+        </div>
+      )}
+
+      {canGuide && (
+        <div className="lp-guides">
+          <button type="button" className={`lp-guides-chip${guidesShown ? ' on' : ''}`} aria-pressed={guidesShown} onClick={toggleGuides} title="Finger guides (G)">
+            <FingerIcon />
+            Finger guides
+            <kbd aria-hidden="true">G</kbd>
+          </button>
+          {guidesShown && (
+            <span className="lp-guides-key" aria-hidden="true">
+              {([1, 2, 3, 4] as const).map((f) => (
+                <span key={f} className={`lp-gk lp-gk-${f}`}>
+                  <b>{f}</b>
+                  {FINGER_NAME[f]}
+                </span>
+              ))}
+            </span>
+          )}
         </div>
       )}
 
@@ -550,6 +625,12 @@ export function PlayScreen({
       {keyboardMode && !listen && (
         <p className="lp-keys">
           <kbd>Space</kbd> = play the note · <kbd>1</kbd>–<kbd>6</kbd> = string (1 = high e) · <kbd>X</kbd> = wrong note · <kbd>M</kbd> = mute · <kbd>Esc</kbd> = pause
+          {canGuide && (
+            <>
+              {' '}
+              · <kbd>G</kbd> = finger guides
+            </>
+          )}
         </p>
       )}
     </div>

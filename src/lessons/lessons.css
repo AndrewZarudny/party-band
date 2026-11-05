@@ -803,20 +803,6 @@
   background: var(--panel);
   overflow: hidden;
 }
-.lessons .ls-preview.tab {
-  height: 190px;
-}
-.lessons .ls-preview-canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-.lessons .ls-preview.chords {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  padding: 14px 16px;
-}
 .lessons .ls-preview.board {
   padding: 10px 12px 12px;
 }
@@ -958,13 +944,6 @@
 .lessons .ls-connect {
   display: grid;
   gap: 8px;
-}
-.lessons .ls-start-row {
-  display: flex;
-  gap: 8px;
-}
-.lessons .ls-start-row .ls-btn:first-child {
-  flex: 1;
 }
 
 /* ---- Sync ------------------------------------------------------------------------- */
