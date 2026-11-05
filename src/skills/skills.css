@@ -343,6 +343,10 @@
 .lessons .sk-slots li.got {
   border-color: var(--text);
 }
+.lessons .sk-slots li.hint {
+  border-style: dashed;
+  color: var(--muted, var(--text));
+}
 .lessons .sk-slots li.ok {
   border-color: var(--played);
   box-shadow: inset 0 -3px 0 var(--played);

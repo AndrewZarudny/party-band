@@ -15,7 +15,7 @@ import type { RoundSummary } from './Common'
 import { GameHead, RoundDone, TrendChart } from './Common'
 
 const PHRASES = 8
-const NOTE_GAP = 0.6 // seconds between phrase notes
+const NOTE_GAP = 0.8 // seconds between phrase notes
 const SETTLE_MS = 350 // after the phrase, before listening (the last note rings in a mic)
 const ANSWER_MS = 8000 // waiting this long after the last note played ends the answer
 
@@ -73,7 +73,7 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
     const ctx = await engine.ensureContext()
     voice.current ??= new LeadVoice(ctx)
     const t0 = ctx.currentTime + 0.1
-    p.forEach((n, i) => voice.current?.note(t0 + i * NOTE_GAP, n.midi, NOTE_GAP * 0.8))
+    p.forEach((n, i) => voice.current?.note(t0 + i * NOTE_GAP, n.midi, NOTE_GAP * 0.9))
     const ms = (0.1 + p.length * NOTE_GAP) * 1000
     setPhase('listen')
     listenFrom.current = performance.now() + ms + SETTLE_MS
@@ -170,7 +170,11 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
   const markers: Marker[] = []
   if (phase === 'graded' && grade)
     phrase.forEach((p, i) => markers.push({ ...p, kind: grade.marks[i] === 'ok' ? 'box' : 'upcoming', label: String(i + 1) }))
-  else if (running) pool.forEach((p) => markers.push({ ...p, kind: 'scale' }))
+  else if (running) {
+    pool.forEach((p) => markers.push({ ...p, kind: 'scale' }))
+    // The first note is given: the ear's job is the steps from it, as when you pick up a lick by ear from a known note.
+    if (phrase[0]) markers.push({ ...phrase[0], kind: 'box', label: '1' })
+  }
 
   return (
     <section className="sk-game" aria-labelledby="sk-game-h">
@@ -210,10 +214,11 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
               {phrase.map((_, i) => {
                 const m = grade?.marks[i]
                 const got = played[i] !== undefined ? noteName(played[i]) : null
-                const label = `Note ${i + 1}: ${got ?? 'not played'}${m ? `, ${MARK_TEXT[m]}` : ''}`
+                const hint = i === 0 && !got ? midiName(phrase[0].midi) : null
+                const label = `Note ${i + 1}: ${got ?? (hint ? `starts on ${hint}` : 'not played')}${m ? `, ${MARK_TEXT[m]}` : ''}`
                 return (
-                  <li key={i} className={m ?? (i < played.length ? 'got' : '')} aria-label={label}>
-                    <span aria-hidden>{got ?? '·'}</span>
+                  <li key={i} className={m ?? (i < played.length ? 'got' : hint ? 'hint' : '')} aria-label={label}>
+                    <span aria-hidden>{got ?? hint ?? '·'}</span>
                     {m && <SlotMark m={m} />}
                   </li>
                 )
@@ -249,6 +254,7 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
             )}
           </div>
           <p className="ls-caption">
+            The first note is shown (1 on the board); find the rest by ear, starting from it.{' '}
             {keyboard ? 'No guitar: click the notes in order.' : 'Pick each note clearly; the exact octave counts.'} Stuck? Show me gives the answer.
           </p>
         </>
