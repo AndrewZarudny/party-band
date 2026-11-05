@@ -7,7 +7,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
-const ROOT = path.resolve('.cache')
+// ACCOUNTS_DIR: tests point this at a temp folder.
+const ROOT = path.resolve(process.env.ACCOUNTS_DIR || '.cache')
 const FILE = path.join(ROOT, 'accounts.json')
 const DATA_DIR = path.join(ROOT, 'accounts')
 const TOKEN_DAYS = 180
@@ -17,6 +18,10 @@ const MAX_USERS = 50 // signup is open to the Wi-Fi
 const LOCAL_EXTRA_USERS = 5 // this computer can still make an account when the Wi-Fi filled the list
 const SIGNUP_WINDOW_MS = 60 * 60 * 1000
 const SIGNUP_LIMIT = 3 // new accounts per Wi-Fi address and hour (none for this computer)
+// Under WSL2 NAT (scripts/windows/wifi-access.ps1) every phone arrives from the WSL gateway address,
+// so that one address stands for the whole band and gets wider limits.
+const SHARED_SIGNUP_LIMIT = 15
+const SHARED_FAIL_LIMIT = 40
 const MB = 1024 * 1024
 const MAX_CONTENT = 100 * MB // one file
 const MAX_USER_CONTENT = 1024 * MB // all files of one user
@@ -164,14 +169,31 @@ const scrypt = (pw: string, salt: string) =>
 
 const fails = new Map<string, number[]>() // name or address → recent failed login times
 
-function tooMany(key: string) {
+function tooMany(key: string, limit = FAIL_LIMIT) {
   const now = Date.now()
   const list = (fails.get(key) ?? []).filter((t) => now - t < FAIL_WINDOW_MS)
   fails.set(key, list)
-  return list.length >= FAIL_LIMIT
+  return list.length >= limit
 }
 const noteFail = (key: string) => fails.set(key, [...(fails.get(key) ?? []), Date.now()])
 const signups = new Map<string, number[]>() // Wi-Fi address → recent signup times
+
+/** The WSL default gateway (e.g. 172.26.128.1) when running in WSL, else ''. Never X-Forwarded-For: anyone can fake it. */
+function wslGateway(): string {
+  try {
+    if (!/microsoft/i.test(fs.readFileSync('/proc/version', 'utf8'))) return ''
+    for (const line of fs.readFileSync('/proc/net/route', 'utf8').split('\n').slice(1)) {
+      const f = line.trim().split(/\s+/)
+      if (f[1] !== '00000000' || !/^[0-9A-Fa-f]{8}$/.test(f[2] ?? '')) continue
+      // Little-endian hex: 01801AAC → 172.26.128.1
+      return [6, 4, 2, 0].map((i) => parseInt(f[2].slice(i, i + 2), 16)).join('.')
+    }
+  } catch {
+    /* not Linux */
+  }
+  return ''
+}
+const SHARED_ADDR = wslGateway() // WSL gets a new gateway only after a restart, which restarts this server too
 
 function issueToken(userId: string): string {
   const token = crypto.randomBytes(32).toString('hex')
@@ -729,6 +751,7 @@ export async function handleAccounts(req: IncomingMessage, res: ServerResponse):
   const route = q < 0 ? rest : rest.slice(0, q)
   const query = q < 0 ? '' : rest.slice(q + 1)
   const addr = (req.socket.remoteAddress ?? '').replace(/^::ffff:/, '')
+  const shared = SHARED_ADDR !== '' && addr === SHARED_ADDR
 
   // The old Lessons-only save; an old tab still open gets this once, then reloads into the new client.
   if (route === 'data') return refuse(req, res, 410, { error: 'gone' })
@@ -764,7 +787,7 @@ export async function handleAccounts(req: IncomingMessage, res: ServerResponse):
         const now = Date.now()
         const recent = (signups.get(addr) ?? []).filter((t) => now - t < SIGNUP_WINDOW_MS)
         signups.set(addr, recent)
-        if (recent.length >= SIGNUP_LIMIT) return json(res, 429, { error: 'wait' })
+        if (recent.length >= (shared ? SHARED_SIGNUP_LIMIT : SIGNUP_LIMIT)) return json(res, 429, { error: 'wait' })
       }
       if (existing) return json(res, 409, { error: 'taken' })
       const users = Object.keys(store.users).length
@@ -776,7 +799,7 @@ export async function handleAccounts(req: IncomingMessage, res: ServerResponse):
       return json(res, 200, { token: issueToken(u.id), id: u.id, name: u.name, rev: 0 })
     }
 
-    if (tooMany(key) || tooMany(addr)) return json(res, 429, { error: 'wait' })
+    if (tooMany(key) || tooMany(addr, shared ? SHARED_FAIL_LIMIT : FAIL_LIMIT)) return json(res, 429, { error: 'wait' })
     // Same work whether or not the name exists, so timing doesn't reveal accounts.
     const salt = existing?.salt ?? 'no-such-player'
     const got2 = await scrypt(pw, salt)

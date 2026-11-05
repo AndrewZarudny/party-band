@@ -468,6 +468,15 @@
 .lessons .ls-continue .ls-muted {
   font-size: var(--fs-body);
 }
+/* While Today's set is open, Continue is one quiet line under it. */
+.lessons .ls-continue-also {
+  margin: 10px 2px 4px;
+  font-size: var(--fs-ui);
+  color: var(--muted);
+}
+.lessons .ls-continue-also .ls-link {
+  font-weight: 600;
+}
 
 /* ---- Home: worlds as tab lines ------------------------------------------------- */
 
@@ -1926,6 +1935,28 @@
   margin-top: 6px;
   font-size: var(--fs-ui);
   color: var(--ls-set-muted);
+}
+/* Catch-up after a long break: a pencilled note on the setlist. */
+.lessons .ls-set-catchup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--ls-set-tape);
+  font-size: var(--fs-ui);
+  color: var(--ls-set-muted);
+}
+.lessons .ls-set-catchup p {
+  flex: 1 1 220px;
+  margin: 0;
+}
+.lessons .ls-set-catchup b {
+  color: var(--ls-set-ink);
+}
+.lessons .ls-set-catchup .ls-btn {
+  min-height: 44px;
 }
 .lessons .ls-set-list {
   list-style: none;

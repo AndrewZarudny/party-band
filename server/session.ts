@@ -45,7 +45,6 @@ function restore(): Session | null {
 
 let session: Session | null = restore()
 
-/** Requests from this Mac itself (the host). Everything else is a participant on the Wi-Fi. */
 /** This Mac's own addresses (loopback and its network interfaces). */
 function ownAddresses() {
   const out = new Set(['127.0.0.1', '::1'])
@@ -53,14 +52,32 @@ function ownAddresses() {
   return out
 }
 
-/** The request comes from this Mac itself (by localhost or by its own Wi-Fi address). */
+/**
+ * The request comes from this Mac itself (by localhost or by its own Wi-Fi address).
+ * Decided by the socket address only, never the Host header, which any device can fake.
+ * Windows + WSL2 (NAT): localhost on Windows arrives as 127.0.0.1 (WSL's localhost forwarding), so
+ * it's the host. Phones forwarded by scripts/windows/wifi-access.ps1 arrive from the WSL gateway
+ * (the Windows vEthernet address, e.g. 172.26.128.1), which is not one of WSL's own addresses, so
+ * they stay guests. So does the Windows PC when it opens its own Wi-Fi address: use localhost there.
+ */
 export function isLocal(req: IncomingMessage) {
   const a = (req.socket.remoteAddress ?? '').replace(/^::ffff:/, '')
   return ownAddresses().has(a)
 }
 
+/** This PC's Wi-Fi addresses saved by scripts/windows/wifi-access.ps1 (inside WSL the server only sees its own). */
+function forwardedHosts(port: number): string[] {
+  try {
+    const d = JSON.parse(fs.readFileSync(path.resolve('.cache', 'lan-hosts.json'), 'utf8')) as { port?: unknown; hosts?: unknown }
+    if (d.port !== port || !Array.isArray(d.hosts)) return []
+    return d.hosts.filter((h): h is string => typeof h === 'string' && /^\d{1,3}(\.\d{1,3}){3}$/.test(h))
+  } catch {
+    return []
+  }
+}
+
 function lanUrls(port: number, id: string) {
-  const urls: string[] = []
+  const urls: string[] = forwardedHosts(port).map((h) => `http://${h}:${port}/join/${id}`)
   for (const list of Object.values(os.networkInterfaces()))
     for (const i of list ?? []) if (i.family === 'IPv4' && !i.internal) urls.push(`http://${i.address}:${port}/join/${id}`)
   return urls

@@ -14,6 +14,7 @@ export const KIND_LABEL: Record<PlanKind, string> = { warmup: 'Warm-up', review:
 const SYNC_ID = 'w1-01'
 const TASTE_ID = 'w2-05' // First Jam: the World 1 taste of playing over a band
 const MINUTES: Record<PlanKind, number> = { warmup: 2, review: 2, new: 5, jam: 4 }
+export const REVIEWS_PER_DAY = 2
 
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T
 
@@ -129,7 +130,7 @@ export function makePlan(p: Progress, now: Date): DayPlan {
   const drill = drillPick(p, now)
   const warm = drill ? undefined : pick('warmup')[0]
   const { due } = reviewLists(p, today)
-  const reviews = pick('review', due.filter((id) => !used.has(id)).length >= 2 ? 2 : 1)
+  const reviews = pick('review', due.filter((id) => !used.has(id)).length >= REVIEWS_PER_DAY ? REVIEWS_PER_DAY : 1)
   const jam = pick('jam')[0]
 
   const steps: PlanStep[] = []
@@ -138,7 +139,9 @@ export function makePlan(p: Progress, now: Date): DayPlan {
   for (const id of reviews) steps.push(makeStep(p, 'review', id, reviews.length === 1 ? 2 * MINUTES.review : MINUTES.review, today))
   if (newId) steps.push(makeStep(p, 'new', newId, MINUTES.new, today))
   if (jam) steps.push(makeStep(p, 'jam', jam, MINUTES.jam, today))
-  return { day: today, steps, bonus: false }
+  // Measured now, before any of today's plays overwrite the older times.
+  const away = breakDays(p, today)
+  return away === null ? { day: today, steps, bonus: false } : { day: today, steps, bonus: false, away }
 }
 
 /** Progress with today's set, or null when the stored set is already today's (no save needed). */
@@ -227,8 +230,9 @@ export function swapOptions(p: Progress, i: number): string[] {
   return candidates(p, step.kind, plan.day).filter((id) => id !== step.lessonId && !others.has(id))
 }
 
-/** Step i with the next option of its kind, cycling; why and from are refreshed. */
+/** Step i with the next option of its kind, cycling; why and from are refreshed. i = ADD_REVIEW adds a catch-up review. */
 export function swapStep(p: Progress, i: number, now: Date): Progress {
+  if (i === ADD_REVIEW) return addReview(p, now)
   const plan = p.plan
   const step = plan?.steps[i]
   if (!plan || !step) return p
@@ -240,6 +244,67 @@ export function swapStep(p: Progress, i: number, now: Date): Progress {
   const next = clone(p)
   const steps = (next.plan as DayPlan).steps
   steps[i] = makeStep(next, step.kind, id, step.min, dayKey(now))
+  return next
+}
+
+// ---- catch-up after a long break ----
+
+const CATCHUP_DAYS = 7 // a break this long or longer shows the catch-up note
+export const REVIEW_CAP = 4 // review steps in one day's set, extra ones included
+/** Pass as the step index to the swap handler: adds one more due review instead of swapping. */
+export const ADD_REVIEW = -1
+
+/** Days since the last practice day before today; null when there was none.
+ *  Lessons played today lost their older time, so this reads the others (never shorter than the real break). */
+function breakDays(p: Progress, today: string): number | null {
+  let last = ''
+  for (const rec of Object.values(p.lessons)) {
+    if (!rec.lastPlayed) continue
+    const d = dayKey(new Date(rec.lastPlayed))
+    if (d !== today && d > last) last = d
+  }
+  return last ? daysBetween(last, today) : null
+}
+
+export interface CatchUp {
+  waiting: number // lessons due for review, today's included
+  canAdd: boolean // one more review fits today
+}
+
+/** The catch-up note: after a break of a week or more, while more reviews wait than today's set takes. */
+export function catchUp(p: Progress, now: Date): CatchUp | null {
+  const plan = p.plan
+  const today = dayKey(now)
+  if (!plan || plan.day !== today || setupOnly(plan)) return null
+  // The break as it was when the set was made; older sets without it show no note.
+  const gap = plan.away
+  if (gap === undefined || gap < CATCHUP_DAYS) return null
+  const due = reviewLists(p, today).due
+  const reviews = plan.steps.filter((s) => s.kind === 'review' && !s.drill)
+  // Reviews passed today are no longer due: count them back in so the number doesn't jump mid-set.
+  const doneToday = reviews.filter((s) => s.state === 'done' && !due.includes(s.lessonId)).length
+  const waiting = due.length + doneToday
+  if (waiting <= reviews.length) return null
+  const inSet = new Set(plan.steps.map((s) => s.lessonId))
+  return { waiting, canAdd: reviews.length < REVIEW_CAP && due.some((id) => !inSet.has(id)) }
+}
+
+/** One more due review (the weakest, most overdue one not in the set yet), after the last review step. */
+export function addReview(p: Progress, now: Date): Progress {
+  const c = catchUp(p, now)
+  const plan = p.plan
+  if (!c || !c.canAdd || !plan) return p
+  const today = dayKey(now)
+  const inSet = new Set(plan.steps.map((s) => s.lessonId))
+  const id = reviewLists(p, today).due.find((x) => !inSet.has(x))
+  if (!id) return p
+  const next = clone(p)
+  const steps = (next.plan as DayPlan).steps
+  let at = -1
+  steps.forEach((s, i) => {
+    if (s.kind === 'review' || s.kind === 'warmup') at = i
+  })
+  steps.splice(at + 1, 0, makeStep(next, 'review', id, MINUTES.review, today))
   return next
 }
 

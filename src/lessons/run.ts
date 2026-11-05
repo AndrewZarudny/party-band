@@ -112,10 +112,15 @@ export class LessonRun {
     this.useEngine = useEngine
 
     // The run's one offset: every input time and the judge clock are corrected by it.
+    // calibrated = a saved calibration was used on real input; fake input (autoplay, listen) never counts,
+    // so fun lines and heat never read early/late from it. The judge still gets tight windows for it.
     let offMs = 0
     let pitchLagMs = 35
-    if (autoplay || listen) this.calibrated = true
-    else if (keyboardMode) {
+    const exact = !!autoplay || listen // injected times are exact: no offset
+    this.calibrated = false
+    if (exact) {
+      offMs = 0
+    } else if (keyboardMode) {
       const cal = loadLatency(KEYBOARD_DEVICE)
       offMs = cal?.offsetMs ?? defaultKeyOffsetMs()
       this.calibrated = !!cal
@@ -181,7 +186,7 @@ export class LessonRun {
         this.judge = new Judge(this.chart, {
           start: this.clock.start,
           secPerBeat: spb,
-          windows: windowsFor(lesson.timing, o.easyTiming, this.calibrated),
+          windows: windowsFor(lesson.timing, o.easyTiming, exact || this.calibrated),
           octaveOk: !!lesson.octaveOk,
           restGate: () => input.peakMedian(),
           listenBars: this.chart.listenBars,
@@ -319,6 +324,7 @@ export class LessonRun {
   }
 
   private handleOnset(on: InputOnset) {
+    if (on.source === 'auto') this.calibrated = false // a DEV inject into a real run: its timing is fake too
     this.judge?.onset(on)
     if (this.spotter) {
       this.spotter.onset(on, this.beatAt(on.t))

@@ -147,6 +147,41 @@ Each phone shows: big **Now → Next** chord, beat bar and count-in, who's soloi
 
 **Privacy:** other devices on the network can only join and watch the session. The AI features (your API key), the Downloads import, the TONE3000 relay, starting/ending sessions, and files like `.env.local` are refused to anything but this Mac.
 
+## Use it from phones on your Wi-Fi
+
+On a Mac (or Linux) nothing extra is needed: phones open `http://<computer's Wi-Fi address>:5173`. On **Windows with WSL2** the dev server sits behind WSL's private virtual network, so phones and laptops can't reach it (live sessions and signing in from another device fail) until Windows forwards the port:
+
+1. Start the app in WSL as usual (`npm run dev`).
+2. Open **PowerShell as Administrator** (right-click > Run as administrator) and run, from the repo folder (e.g. `\\wsl.localhost\ubuntu-20.04\home\<you>\code\party-band`):
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\scripts\windows\wifi-access.ps1
+   ```
+   It finds WSL's current address, forwards port 5173 on this PC's Wi-Fi/Ethernet address to it (`netsh interface portproxy`), adds a Windows Firewall rule for TCP 5173 on **Private** networks only, and prints the address to open, e.g. `http://192.168.10.171:5173`. Add `-Distro ubuntu-20.04` if the app doesn't run in your default WSL distro.
+3. On the phone (same Wi-Fi), open that address. Live sessions work too: the script saves this address (in `.cache/lan-hosts.json`), so the session's link and QR code point to it. Restart a running live session after running the script.
+4. On the PC itself keep using `http://localhost:5173`: that's how the app knows you're the host. The PC opening its own Wi-Fi address is treated like any other guest.
+
+Notes:
+- **Run it again after every reboot** (or `wsl --shutdown`): WSL gets a new address each time and the old forwarding then points nowhere. Also run it again if the PC's Wi-Fi address changes.
+- If the script says your Wi-Fi is a **Public** network, the firewall still blocks phones. For your home Wi-Fi, set it to Private: Settings > Network & internet > Wi-Fi > your network > Network profile type > **Private**.
+- To undo everything: `powershell -ExecutionPolicy Bypass -File .\scripts\windows\wifi-access.ps1 -Remove`.
+- Guests stay guests: forwarded devices reach WSL from the Windows gateway address, never from `127.0.0.1`, so they get only live sessions and accounts; AI, Downloads and the TONE3000 relay remain this-computer-only.
+- All forwarded devices share that one gateway address, so the server can't tell phones apart. Account limits for it are counted for everyone together: 15 new accounts per hour and 40 wrong passwords per 10 minutes (8 per player name still applies) before sign-in pauses for a while. With mirrored networking (below) each phone keeps its own address and gets the normal per-device limits (3 new accounts per hour, 8 wrong passwords per 10 minutes).
+
+**Alternative, no rerun after reboot: WSL mirrored networking** (Windows 11 22H2+). WSL then shares Windows' own network addresses, so phones reach the dev server directly:
+1. Create or edit `%UserProfile%\.wslconfig`:
+   ```ini
+   [wsl2]
+   networkingMode=mirrored
+   ```
+2. In an Administrator PowerShell, allow the port (Private networks only), and let Hyper-V's WSL firewall accept inbound connections:
+   ```powershell
+   New-NetFirewallRule -DisplayName 'Fretwise dev server (TCP 5173)' -Direction Inbound -Protocol TCP -LocalPort 5173 -Action Allow -Profile Private
+   Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow
+   ```
+3. Run `wsl --shutdown`, then start WSL and the app again. Don't use `wifi-access.ps1` in this mode (remove its forwarding first with `-Remove`).
+
+This changes networking for all your WSL distros (Docker Desktop and VPNs can behave differently), which is why the script uses port forwarding instead.
+
 ## Play a song in your tuning
 
 The **Tuning** menu in Song mode shows the song's tuning (e.g. Drop D♭). Choose **Convert to…** to play it in another tuning:

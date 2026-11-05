@@ -206,9 +206,12 @@ export function LessonMap({
   const current = nextLesson(progress)
   const currentLesson = current ? lessonById(current) : undefined
   const earned = Object.keys(progress.achievements).length
-  // Today's set leads the home screen; Continue returns once the set is done (or there is none).
+  // Today's set leads the home screen and Continue is one quiet line under it.
+  // Once the set is done (or there is none), Continue is the main card again, above the set.
   const showSet = !!plan && plan.steps.length > 0
   const setDone = showSet && planDone(plan)
+  // The set already plays the current lesson next: no second link to it.
+  const inSetTodo = !!plan && plan.steps.some((s) => s.lessonId === current && !s.drill && s.state === 'todo')
 
   return (
     <div className="ls-home">
@@ -255,18 +258,27 @@ export function LessonMap({
         </div>
       )}
 
-      {showSet && <TodayCard progress={progress} plan={plan} onOpen={onOpen} onDrill={onDrill} onSwap={onPlanSwap} onSkip={onPlanSkip} onToday={onToday} />}
-
       {currentLesson && (!showSet || setDone) && (
         <div className="ls-continue">
           <div>
             <p className="ls-continue-label">Continue: {currentLesson.title}</p>
             <p className="ls-muted">{currentLesson.goal}</p>
           </div>
-          <button className="ls-btn primary" onClick={() => onOpen(currentLesson.id)} autoFocus={!showSet || setDone}>
+          <button className="ls-btn primary" onClick={() => onOpen(currentLesson.id)} autoFocus>
             Play
           </button>
         </div>
+      )}
+
+      {showSet && <TodayCard progress={progress} plan={plan} onOpen={onOpen} onDrill={onDrill} onSwap={onPlanSwap} onSkip={onPlanSkip} onToday={onToday} />}
+
+      {currentLesson && showSet && !setDone && !inSetTodo && (
+        <p className="ls-continue-also">
+          or continue with:{' '}
+          <button className="ls-link" onClick={() => onOpen(currentLesson.id)}>
+            {currentLesson.title}
+          </button>
+        </p>
       )}
 
       <div className="ls-worlds">

@@ -144,7 +144,9 @@ function normalizePlan(raw: unknown): DayPlan | null {
     if (typeof x.drill === 'string' && /^[nct]:/.test(x.drill)) step.drill = x.drill
     steps.push(step)
   }
-  return { day: o.day, steps, bonus: o.bonus === true }
+  const plan: DayPlan = { day: o.day, steps, bonus: o.bonus === true }
+  if (typeof o.away === 'number' && isFinite(o.away) && o.away >= 0) plan.away = Math.round(o.away)
+  return plan
 }
 
 /** Checks a parsed value and fills missing fields; null when it isn't progress at all. */

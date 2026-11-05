@@ -327,6 +327,7 @@ export interface DayPlan {
   day: string
   steps: PlanStep[]
   bonus: boolean // the set's XP bonus was given
+  away?: number // days since the last practice day, measured when the set was made (before today's plays)
 }
 
 export interface Progress {

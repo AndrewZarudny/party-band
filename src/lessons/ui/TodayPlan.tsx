@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import type { DayPlan, PlanStep, Progress } from '../types'
 import { lessonById } from '../data'
-import { KIND_LABEL, PLAN_BONUS, improvements, nextStepIndex, planDone, planMinutes, planStreakNow, swapOptions } from '../plan'
+import { ADD_REVIEW, KIND_LABEL, PLAN_BONUS, REVIEWS_PER_DAY, catchUp, improvements, nextStepIndex, planDone, planMinutes, planStreakNow, swapOptions } from '../plan'
 import { drillTitle } from '../heat'
 import { FootGlyph, PickMark } from './LessonMap'
 
@@ -100,6 +100,24 @@ function SetHead({ plan, streak }: { plan: DayPlan; streak: number }) {
   )
 }
 
+/** After a week or more away: how many reviews wait, and a tap to take one more today. */
+function CatchUpNote({ progress, now, onSwap }: { progress: Progress; now: Date; onSwap: (i: number) => void }) {
+  const c = catchUp(progress, now)
+  if (!c) return null
+  return (
+    <div className="ls-set-catchup">
+      <p>
+        <b>Catch-up:</b> <span className="ls-num">{c.waiting}</span> lesson{c.waiting === 1 ? '' : 's'} waiting for review: {REVIEWS_PER_DAY} a day, weakest first.
+      </p>
+      {c.canAdd && (
+        <button className="ls-btn ghost small" onClick={() => onSwap(ADD_REVIEW)}>
+          Add one more today
+        </button>
+      )}
+    </div>
+  )
+}
+
 function SetDone({ progress, plan, streak, max }: { progress: Progress; plan: DayPlan; streak: number; max?: number }) {
   const lines = improvements(progress, plan)
   const shown = max === undefined ? lines : lines.slice(0, max)
@@ -155,6 +173,7 @@ export function TodayCard({
       <section className="ls-set card" aria-label="Today's set">
         <SetHead plan={plan} streak={0} />
         <SetDone progress={progress} plan={plan} streak={streak} max={3} />
+        <CatchUpNote progress={progress} now={now} onSwap={onSwap} />
         <div className="ls-set-foot">
           <button className="ls-link" onClick={onToday}>
             Open the set
@@ -167,6 +186,7 @@ export function TodayCard({
   return (
     <section className="ls-set card" aria-label="Today's set">
       <SetHead plan={plan} streak={streak} />
+      <CatchUpNote progress={progress} now={now} onSwap={onSwap} />
       <SetRows progress={progress} plan={plan} fresh={fresh} onOpen={onOpen} onDrill={onDrill} onSwap={onSwap} onSkip={onSkip} />
       <div className="ls-set-foot">
         {next ? (
@@ -229,6 +249,7 @@ export function TodayScreen({
           <>
             <SetHead plan={plan} streak={done ? 0 : streak} />
             <p className="ls-set-intro">A warm-up, what's due for review, one new lesson, then a jam. Swap or skip anything.</p>
+            <CatchUpNote progress={progress} now={now} onSwap={onSwap} />
             <SetRows progress={progress} plan={plan} fresh={fresh} onOpen={onOpen} onDrill={onDrill} onSwap={onSwap} onSkip={onSkip} />
             {done && <SetDone progress={progress} plan={plan} streak={streak} />}
             {next && (
