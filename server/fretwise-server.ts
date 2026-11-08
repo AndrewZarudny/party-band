@@ -10,7 +10,7 @@ import { z } from 'zod'
 import type { Cost, Feature, ModelId } from './ai'
 import { aiError, costSummary, getClient, runJson } from './ai'
 import { handleSession, isLocal } from './session'
-import { handleAccounts } from './accounts'
+import { accountsReady, closeAccounts, handleAccounts } from './accounts'
 
 const GP_EXT = /\.(gp|gp3|gp4|gp5|gpx|gp7|gp8|musicxml|mxl|nam|zip)$/i
 const DOWNLOADS = path.join(os.homedir(), 'Downloads')
@@ -473,6 +473,9 @@ export function fretwiseServer(): Plugin {
     name: 'fretwise-server',
     configureServer(server) {
       const sse = downloadsWatcher()
+      // Read the accounts now (MariaDB or the JSON files), so a database problem shows in the log at start.
+      void accountsReady()
+      server.httpServer?.on('close', () => void closeAccounts())
 
       // On this Mac, the app always runs at localhost: songs, tones and history are kept per address
       // in the browser unless signed in, so opening the Wi-Fi address here would show an empty app.
@@ -488,7 +491,7 @@ export function fretwiseServer(): Plugin {
       })
 
       // Other devices on the Wi-Fi may only use the live-session and account endpoints (accounts need a
-      // password and keep each player's songs, files and settings in .cache/accounts/). Everything else
+      // password and keep each player's songs and settings in MariaDB or .cache/, files in .cache/accounts/). Everything else
       // (AI calls on your API key, the Downloads folder, the TONE3000 relay) answers to this Mac only.
       server.middlewares.use(async (req, res, next) => {
         if (!req.url?.startsWith('/api/')) return next()

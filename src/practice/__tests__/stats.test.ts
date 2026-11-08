@@ -17,7 +17,8 @@ describe('summarize', () => {
     expect(s).toMatchObject({ today: 900, week: 1430, total: 1730, practiceDays: 3, average: Math.round((300 + 500 + 900) / 3) })
     expect(s.best?.key).toBe('2026-11-04')
     expect(s.week7.map((d) => d.total)).toEqual([500, 30, 900, 0, 0, 0, 0])
-    // No streak or daily goal is worked out from practice time.
-    expect('weekStreak' in s).toBe(false)
+    // The daily goal is only aimed at, never judged: no streak, and no day is marked as missed.
+    for (const k of ['weekStreak', 'streak', 'missed', 'missedDays']) expect(k in s).toBe(false)
+    for (const d of [...s.week7, ...s.last30]) expect(Object.keys(d).sort()).toEqual(['date', 'key', 'secs', 'total'])
   })
 })

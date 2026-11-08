@@ -4,8 +4,9 @@ import { alphaTab } from '@coderline/alphatab-vite'
 import { fretwiseServer } from './server/fretwise-server'
 
 export default defineConfig(({ mode }) => {
-  // Make ANTHROPIC_API_KEY from .env.local available to the local API (never to the browser).
-  const env = loadEnv(mode, process.cwd(), 'ANTHROPIC_')
+  // Make ANTHROPIC_API_KEY and FRETWISE_DB_URL from .env.local available to the local API. Never to the
+  // browser: Vite only puts VITE_ variables in the page.
+  const env = loadEnv(mode, process.cwd(), ['ANTHROPIC_', 'FRETWISE_'])
   Object.assign(process.env, env)
   return {
     plugins: [react(), alphaTab(), fretwiseServer()],

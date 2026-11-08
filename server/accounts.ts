@@ -1,11 +1,14 @@
 // Local Fretwise accounts: a name and password, and everything the player saves in the app (songs, tones,
 // recordings, lessons, settings) follows the account to any browser on this computer and on the Wi-Fi.
-// Users and hashed tokens live in .cache/accounts.json (git-ignored). Each user's data lives in
-// .cache/accounts/<id>/: index.json (key/values and record info) and content/<sha256> (file bytes, stored once).
+// With FRETWISE_DB_URL set, users, hashed tokens and each user's index (key/values and record info) live in
+// MariaDB (server/db.ts). Without it they live in JSON files: users and tokens in .cache/accounts.json
+// (git-ignored), each user's index in .cache/accounts/<id>/index.json. Either way file bytes stay on disk in
+// .cache/accounts/<id>/content/<sha256> (stored once). Everything is kept in memory and written through.
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import { DbError, openDb, type AccountsDb, type DbKv, type DbRecord, type DbToken, type DbUser, type DbUserData } from './db'
 
 // ACCOUNTS_DIR: tests point this at a temp folder.
 const ROOT = path.resolve(process.env.ACCOUNTS_DIR || '.cache')
@@ -53,6 +56,8 @@ const HASH_RE = /^[0-9a-f]{64}$/
 const ID_RE = /^[0-9a-f-]{36}$/
 // eslint-disable-next-line no-control-regex
 const KEY_RE = /^[^\u0000-\u001f\u007f]{1,300}$/
+// Half of a surrogate pair: it can't be stored as UTF-8, so the database would keep a different string.
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
 
 interface User {
   id: string
@@ -99,6 +104,7 @@ interface Loaded {
   entries: number // kv items and records, deleted ones too
   inflight: number // bytes of uploads still arriving
   uploads: number // uploads still arriving
+  stale?: boolean // a database write failed: idx may differ from the database until it's read back
 }
 
 const kvCost = (k: string, v: string | null) => k.length + (v?.length ?? 0) + 40
@@ -120,6 +126,7 @@ function writeAtomic(file: string, text: string) {
   fs.renameSync(tmp, file)
 }
 
+/** The accounts in the JSON files; empty when there are none yet. */
 function load(): Store {
   try {
     const s = JSON.parse(fs.readFileSync(FILE, 'utf8')) as Store
@@ -130,28 +137,41 @@ function load(): Store {
   return { v: 1, users: {}, tokens: {} }
 }
 
-const store = load()
+// Filled on first use (see accountsReady), from the JSON files or from the database.
+const store: Store = { v: 1, users: {}, tokens: {} }
+let db: AccountsDb | null = null // set when FRETWISE_DB_URL chose MariaDB
+// Written on the first start with MariaDB. Both backends share the content folders, so once it's there the
+// JSON files no longer list every file in use, and running on them only recounts content, never removes it.
+const DB_USED = path.join(ROOT, 'accounts-db-used')
+let keepContent = false
+// Sign-outs the database hasn't taken yet: refused here at once, and dropped there on the next chance.
+const revoked = new Set<string>()
 
-/** Writes to a temp file first, so a crash mid-write never loses the accounts. */
+/** JSON files only. Writes to a temp file first, so a crash mid-write never loses the accounts. */
 function save() {
-  writeAtomic(FILE, JSON.stringify(store))
+  if (!db) writeAtomic(FILE, JSON.stringify(store))
 }
 
-// The old Lessons-only accounts kept one blob per user; move it into the user's index as two keys.
+/** The old Lessons-only accounts kept one blob per user: as an index it's two keys. Null when there's none. */
+function blobIndex(u: User): UserIndex | null {
+  const data = u.data as { progress?: unknown; prefs?: unknown } | null | undefined
+  if (!data || typeof data !== 'object') return null
+  const idx = emptyIndex()
+  const t = u.updated || Date.now()
+  if (data.progress !== undefined) idx.kv['lessons-progress'] = { v: JSON.stringify(data.progress), t, rev: ++idx.rev }
+  if (data.prefs !== undefined) idx.kv['lessons-prefs'] = { v: JSON.stringify(data.prefs), t, rev: ++idx.rev }
+  return idx
+}
+
+// JSON files only: move the old blobs into the users' index files.
 function migrate() {
   let changed = false
   for (const u of Object.values(store.users)) {
     if (!('data' in u) && !('updated' in u)) continue
     try {
       const file = path.join(userDir(u.id), 'index.json')
-      const data = u.data as { progress?: unknown; prefs?: unknown } | null | undefined
-      if (data && typeof data === 'object' && !fs.existsSync(file)) {
-        const idx = emptyIndex()
-        const t = u.updated || Date.now()
-        if (data.progress !== undefined) idx.kv['lessons-progress'] = { v: JSON.stringify(data.progress), t, rev: ++idx.rev }
-        if (data.prefs !== undefined) idx.kv['lessons-prefs'] = { v: JSON.stringify(data.prefs), t, rev: ++idx.rev }
-        writeAtomic(file, JSON.stringify(idx))
-      }
+      const idx = blobIndex(u)
+      if (idx && !fs.existsSync(file)) writeAtomic(file, JSON.stringify(idx))
       delete u.data
       delete u.updated
       changed = true
@@ -161,7 +181,6 @@ function migrate() {
   }
   if (changed) save()
 }
-migrate()
 
 const sha = (s: string) => crypto.createHash('sha256').update(s).digest('hex')
 const scrypt = (pw: string, salt: string) =>
@@ -195,14 +214,33 @@ function wslGateway(): string {
 }
 const SHARED_ADDR = wslGateway() // WSL gets a new gateway only after a restart, which restarts this server too
 
-function issueToken(userId: string): string {
+async function issueToken(userId: string): Promise<string> {
   const token = crypto.randomBytes(32).toString('hex')
-  store.tokens[sha(token)] = { userId, created: Date.now() }
+  const created = Date.now()
   // Drop expired tokens while we're here.
-  const cutoff = Date.now() - TOKEN_DAYS * 86400000
+  const cutoff = created - TOKEN_DAYS * 86400000
+  // The database first: when it fails, nothing changes here either.
+  if (db) await db.addToken({ hash: sha(token), userId, created }, cutoff)
+  if (revoked.size) await dropRevoked().catch(() => {}) // the database is back: catch up on sign-outs
+  store.tokens[sha(token)] = { userId, created }
   for (const [k, t] of Object.entries(store.tokens)) if (t.created < cutoff) delete store.tokens[k]
   save()
   return token
+}
+
+/** Drops the sign-outs the database missed; throws a DbError while it can't. */
+async function dropRevoked() {
+  for (const h of [...revoked]) {
+    await db?.dropToken(h)
+    revoked.delete(h)
+  }
+}
+
+/** A name the database has but memory doesn't (a signup whose answer got lost): takes it in, so it can log in. */
+async function adoptUser(key: string) {
+  if (!db || Object.values(store.users).some((x) => x.nameKey === key)) return
+  const u = await db.findUser(key)
+  if (u && !store.users[u.id]) store.users[u.id] = { id: u.id, name: u.name, nameKey: u.nameKey, salt: u.salt, hash: u.hash, created: u.created }
 }
 
 function userFor(req: IncomingMessage): User | null {
@@ -233,6 +271,7 @@ function liveHashes(idx: UserIndex) {
 
 /** Recounts the user's content bytes and removes files no live record uses (after the grace time). */
 function sweep(l: Loaded) {
+  if (l.stale) return // its records may be missing a file's last user
   const dir = path.join(l.dir, 'content')
   let names: string[]
   try {
@@ -242,6 +281,8 @@ function sweep(l: Loaded) {
     return
   }
   const live = liveHashes(l.idx)
+  // Records saved while the server ran on the JSON files (before the import, or since) still use their files.
+  if (db) for (const h of liveHashes(readIndex(l.id) ?? emptyIndex())) live.add(h)
   const now = Date.now()
   let total = 0
   for (const name of names) {
@@ -255,7 +296,7 @@ function sweep(l: Loaded) {
     const old = now - st.mtimeMs
     try {
       if (HASH_RE.test(name)) {
-        if (!live.has(name) && old > GC_GRACE_MS) fs.unlinkSync(file)
+        if (!live.has(name) && old > GC_GRACE_MS && !keepContent) fs.unlinkSync(file)
         else total += st.size
       } else if (name.startsWith('.tmp-') && old > TMP_GRACE_MS) fs.unlinkSync(file)
     } catch {
@@ -265,15 +306,12 @@ function sweep(l: Loaded) {
   l.content = total
 }
 
-function loadUser(id: string): Loaded {
-  const hit = loaded.get(id)
-  if (hit) return hit
-  const dir = userDir(id)
-  let idx = emptyIndex()
+/** A user's index.json; null when nothing was saved yet. */
+function readIndex(id: string): UserIndex | null {
   try {
-    const raw = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')) as Partial<UserIndex>
+    const raw = JSON.parse(fs.readFileSync(path.join(userDir(id), 'index.json'), 'utf8')) as Partial<UserIndex>
     if (raw && raw.v === 1) {
-      idx = {
+      return {
         v: 1,
         rev: typeof raw.rev === 'number' ? raw.rev : 0,
         kv: dict(raw.kv),
@@ -283,6 +321,11 @@ function loadUser(id: string): Loaded {
   } catch {
     /* nothing saved yet */
   }
+  return null
+}
+
+/** Counts what an index costs against the limits. */
+function measure(idx: UserIndex) {
   let kvSize = 0
   let idxSize = 0
   let entries = 0
@@ -296,17 +339,209 @@ function loadUser(id: string): Loaded {
       idxSize += recCost(rid, r.meta)
       entries++
     }
-  const l: Loaded = { id, dir, idx, content: 0, kvSize, idxSize, entries, inflight: 0, uploads: 0 }
+  return { kvSize, idxSize, entries }
+}
+
+function makeLoaded(id: string, idx: UserIndex): Loaded {
+  return { id, dir: userDir(id), idx, content: 0, ...measure(idx), inflight: 0, uploads: 0 }
+}
+
+function loadUser(id: string): Loaded {
+  const hit = loaded.get(id)
+  if (hit) return hit
+  if (db) {
+    // Every account was read at start; one that wasn't is read from the database on first use (withUser).
+    const l = makeLoaded(id, emptyIndex())
+    l.stale = true
+    loaded.set(id, l)
+    return l
+  }
+  const l = makeLoaded(id, readIndex(id) ?? emptyIndex())
   loaded.set(id, l)
   sweep(l)
   return l
 }
 
-async function saveIndex(l: Loaded) {
+// ---- the database's rows ↔ a user's index ----
+
+const kvRow = (k: string, it: KvItem): DbKv => ({ k, v: it.v, t: it.t, rev: it.rev })
+const recordRow = (s: StoreName, id: string, r: RecItem): DbRecord => ({
+  store: s,
+  id,
+  meta: r.meta ? JSON.stringify(r.meta) : null,
+  hash: r.hash,
+  size: r.size,
+  t: r.t,
+  rev: r.rev,
+  deleted: !!r.deleted,
+})
+
+function toRows(idx: UserIndex): DbUserData {
+  const records: DbRecord[] = []
+  for (const s of STORES) for (const [id, r] of Object.entries(idx.records[s])) records.push(recordRow(s, id, r))
+  return { rev: idx.rev, kv: Object.entries(idx.kv).map(([k, it]) => kvRow(k, it)), records }
+}
+
+function fromRows(d: DbUserData): UserIndex {
+  const idx = emptyIndex()
+  idx.rev = d.rev
+  for (const r of d.kv) idx.kv[r.k] = { v: r.v, t: r.t, rev: r.rev }
+  for (const r of d.records) {
+    const s = STORES.find((x) => x === r.store)
+    if (!s) continue
+    let meta: Record<string, unknown> | null = null
+    try {
+      meta = r.meta ? (JSON.parse(r.meta) as Record<string, unknown>) : null
+    } catch {
+      /* unreadable details: keep the record without them */
+    }
+    const item: RecItem = { meta, hash: r.hash, size: r.size, t: r.t, rev: r.rev }
+    if (r.deleted) item.deleted = true
+    idx.records[s][r.id] = item
+  }
+  return idx
+}
+
+/** Writes what changed: the whole index.json, or the changed rows (and the user's rev) in one transaction. */
+async function saveIndex(l: Loaded, kv: string[], records: [StoreName, string][]) {
+  if (db) {
+    try {
+      await db.saveChanges(
+        l.id,
+        l.idx.rev,
+        kv.map((k) => kvRow(k, l.idx.kv[k])),
+        records.map(([s, id]) => recordRow(s, id, l.idx.records[s][id])),
+      )
+    } catch (err) {
+      // Memory already has the change and the database may or may not (a commit can fail after it landed):
+      // read the user back from the database before anyone uses this data again.
+      l.stale = true
+      throw err
+    }
+    return
+  }
   await fs.promises.mkdir(l.dir, { recursive: true, mode: 0o700 })
   const file = path.join(l.dir, 'index.json')
   await fs.promises.writeFile(file + '.tmp', JSON.stringify(l.idx), { mode: 0o600 })
   await fs.promises.rename(file + '.tmp', file)
+}
+
+/** Replaces a stale user's data with what the database has; throws a DbError while it can't be read. */
+async function refresh(l: Loaded) {
+  const d = db ? await db.loadUser(l.id) : null
+  l.idx = d ? fromRows(d) : emptyIndex()
+  Object.assign(l, measure(l.idx))
+  l.stale = false
+  sweep(l)
+}
+
+/** Runs fn in the user's lock, after reading the user back from the database if a failed write left them stale. */
+function withUser<T>(l: Loaded, fn: () => Promise<T> | T): Promise<T> {
+  return lock(l.id, async () => {
+    if (l.stale) await refresh(l)
+    return fn()
+  })
+}
+
+// ---- start: the JSON files, or MariaDB ----
+
+const errorCode = (err: unknown) => {
+  const e = err as { code?: unknown; name?: unknown } | null
+  return typeof e?.code === 'string' ? e.code : typeof e?.name === 'string' ? e.name : 'unknown'
+}
+
+let started = false
+let starting: Promise<boolean> | null = null
+let dbDown = false // logged once per outage
+
+/**
+ * Reads the accounts on first use, from MariaDB when FRETWISE_DB_URL is set, else from the JSON files. Read
+ * late, not at import: vite.config.ts imports this file before it loads .env.local. False while the database
+ * can't be reached; the next call tries again.
+ */
+export function accountsReady(): Promise<boolean> {
+  if (started) return Promise.resolve(true)
+  starting ??= start().finally(() => (starting = null))
+  return starting
+}
+
+/** Closes the database connections (dev server shutdown, tests). */
+export async function closeAccounts() {
+  await db?.close()
+}
+
+let dbUrl: string | null = null // read once: retries after an outage use the same database
+
+async function start(): Promise<boolean> {
+  const url = (dbUrl ??= process.env.FRETWISE_DB_URL ?? '')
+  if (!url) {
+    Object.assign(store, load())
+    migrate()
+    keepContent = fs.existsSync(DB_USED)
+    started = true
+    return true
+  }
+  try {
+    if (!fs.existsSync(DB_USED)) writeAtomic(DB_USED, 'Fretwise ran on MariaDB with this folder: the JSON backend keeps every content file.\n')
+    db ??= openDb(url)
+    await db.connect()
+    await importFiles(db)
+    const all = await db.loadAll()
+    store.users = dict()
+    store.tokens = dict()
+    for (const u of all.users) store.users[u.id] = { id: u.id, name: u.name, nameKey: u.nameKey, salt: u.salt, hash: u.hash, created: u.created }
+    for (const t of all.tokens) if (!revoked.has(t.hash)) store.tokens[t.hash] = { userId: t.userId, created: t.created }
+    loaded.clear()
+    for (const [id, d] of all.data) {
+      try {
+        const l = makeLoaded(id, fromRows(d))
+        loaded.set(id, l)
+        sweep(l)
+      } catch {
+        /* bad id: no data */
+      }
+    }
+    started = true
+    dbDown = false
+    console.log(`[accounts] using MariaDB: ${all.users.length} accounts`)
+    return true
+  } catch (err) {
+    // Only the error's code: never the URL, which holds the password.
+    if (!dbDown) console.warn(`[accounts] can't use the database (${errorCode(err)}); accounts answer 503 until it's back`)
+    dbDown = true
+    return false
+  }
+}
+
+/** First start on an empty database: copies the accounts in from the JSON files, and leaves the files in place. */
+async function importFiles(db: AccountsDb) {
+  if (await db.hasUsers()) return
+  const old = load()
+  const users: DbUser[] = []
+  const tokens: DbToken[] = []
+  const data = new Map<string, DbUserData>()
+  const names = new Set<string>()
+  for (const u of Object.values(old.users)) {
+    const nameKey = u.nameKey ?? u.name.toLowerCase()
+    if (!ID_RE.test(u.id) || names.has(nameKey)) {
+      console.warn('[accounts] not importing a broken or repeated account:', u.name)
+      continue
+    }
+    names.add(nameKey)
+    const idx = readIndex(u.id) ?? blobIndex(u) ?? emptyIndex()
+    users.push({ id: u.id, name: u.name, nameKey, salt: u.salt, hash: u.hash, created: u.created, rev: idx.rev })
+    data.set(u.id, toRows(idx))
+  }
+  if (!users.length) return
+  for (const [hash, t] of Object.entries(old.tokens)) if (HASH_RE.test(hash) && data.has(t.userId)) tokens.push({ hash, userId: t.userId, created: t.created })
+  if (!(await db.importAll(users, tokens, data))) return
+  let kv = 0
+  let records = 0
+  for (const d of data.values()) {
+    kv += d.kv.length
+    records += d.records.length
+  }
+  console.log(`[accounts] imported ${users.length} accounts, ${tokens.length} sign-ins, ${kv} saved items and ${records} records from ${FILE} into MariaDB (the files stay as they were)`)
 }
 
 const contentPath = (l: Loaded, hash: string) => path.join(l.dir, 'content', hash)
@@ -613,7 +848,7 @@ async function putKv(req: IncomingMessage, res: ServerResponse, l: Loaded) {
   const entries = Object.entries(items)
   if (entries.length > MAX_KV_ITEMS) return badRequest(res, 'too many items')
 
-  return lock(l.id, async () => {
+  return withUser(l, async () => {
     const applied: string[] = []
     const revs = dict<number>()
     const stale = dict<{ v: string | null; t: number; rev: number }>()
@@ -625,7 +860,7 @@ async function putKv(req: IncomingMessage, res: ServerResponse, l: Loaded) {
       }
       const v = isObject(item) ? item.v : undefined
       const t = isObject(item) ? clampT(item.t) : null
-      if (!KEY_RE.test(k) || !(typeof v === 'string' || v === null) || t === null) {
+      if (!KEY_RE.test(k) || LONE_SURROGATE.test(k) || !(typeof v === 'string' || v === null) || (v !== null && LONE_SURROGATE.test(v)) || t === null) {
         rejected[k] = 'invalid'
         continue
       }
@@ -657,7 +892,8 @@ async function putKv(req: IncomingMessage, res: ServerResponse, l: Loaded) {
       revs[k] = l.idx.rev
       applied.push(k)
     }
-    if (Object.keys(revs).length) await saveIndex(l)
+    const changed = Object.keys(revs)
+    if (changed.length) await saveIndex(l, changed, [])
     return json(res, 200, { rev: l.idx.rev, applied, revs, stale, rejected })
   })
 }
@@ -669,18 +905,18 @@ async function putRecords(req: IncomingMessage, res: ServerResponse, l: Loaded) 
   if (!Array.isArray(items)) return badRequest(res, 'items')
   if (items.length > MAX_RECORD_ITEMS) return badRequest(res, 'too many items')
 
-  return lock(l.id, async () => {
+  return withUser(l, async () => {
     const applied: string[] = []
     const stale: ReturnType<typeof publicRecord>[] = []
     const missing = new Set<string>()
     const rejected = dict<string>()
     let dropped = false // a hash may have lost its last record
-    let changed = false
+    const changed: [StoreName, string][] = []
     for (const item of items as unknown[]) {
       const o = isObject(item) ? item : {}
       const key = `${String(o.store)}/${String(o.id)}`
       const store = STORES.find((s) => s === o.store)
-      const id = typeof o.id === 'string' && o.id.length >= 1 && o.id.length <= 200 ? o.id : null
+      const id = typeof o.id === 'string' && o.id.length >= 1 && o.id.length <= 200 && !LONE_SURROGATE.test(o.id) ? o.id : null
       const t = clampT(o.t)
       if (!store || id === null || t === null) {
         rejected[key] = 'invalid'
@@ -702,7 +938,7 @@ async function putRecords(req: IncomingMessage, res: ServerResponse, l: Loaded) 
         l.idxSize += recCost(id, null) - recCost(id, cur.meta)
         recs[id] = { meta: null, hash: null, size: 0, t, rev: ++l.idx.rev, deleted: true }
         applied.push(key)
-        changed = true
+        changed.push([store, id])
         continue
       }
 
@@ -734,9 +970,9 @@ async function putRecords(req: IncomingMessage, res: ServerResponse, l: Loaded) 
       l.idxSize += cost
       if (!cur) l.entries++
       applied.push(key)
-      changed = true
+      changed.push([store, id])
     }
-    if (changed) await saveIndex(l)
+    if (changed.length) await saveIndex(l, [], changed)
     if (dropped) sweep(l)
     return json(res, 200, { rev: l.idx.rev, applied, stale, missing: [...missing], rejected })
   })
@@ -746,6 +982,21 @@ async function putRecords(req: IncomingMessage, res: ServerResponse, l: Loaded) 
 export async function handleAccounts(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   const url = req.url ?? ''
   if (!url.startsWith('/api/accounts/')) return false
+  try {
+    return await serve(req, res, url)
+  } catch (err) {
+    if (!(err instanceof DbError)) throw err
+    // Nothing was changed (or the user is read back before next use): the client keeps its changes and retries.
+    console.warn(`[accounts] database: ${err.code}`)
+    if (res.headersSent) {
+      res.destroy()
+      return true
+    }
+    return refuse(req, res, 503, { error: 'db' })
+  }
+}
+
+async function serve(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
   const rest = url.slice('/api/accounts/'.length)
   const q = rest.indexOf('?')
   const route = q < 0 ? rest : rest.slice(0, q)
@@ -769,6 +1020,7 @@ export async function handleAccounts(req: IncomingMessage, res: ServerResponse):
   }
   // A JSON body needs a CORS preflight from other sites, which the dev server doesn't allow.
   if (req.method === 'POST' && !/^application\/json\b/i.test(req.headers['content-type'] ?? '')) return refuse(req, res, 415, { error: 'bad-request', detail: 'type' })
+  if (!(await accountsReady())) return refuse(req, res, 503, { error: 'db' })
 
   if (req.method === 'POST' && (route === 'signup' || route === 'login')) {
     const got = await readJson(req, res, 4096)
@@ -777,7 +1029,7 @@ export async function handleAccounts(req: IncomingMessage, res: ServerResponse):
     const name = cleanName(body.name)
     const pw = typeof body.password === 'string' ? body.password : ''
     const key = name.toLowerCase()
-    if (name.length < 2 || name.length > 24) return json(res, 400, { error: 'name' })
+    if (name.length < 2 || name.length > 24 || LONE_SURROGATE.test(name)) return json(res, 400, { error: 'name' })
     if (pw.length < 6 || pw.length > 200) return json(res, 400, { error: 'password' })
     const existing = Object.values(store.users).find((u) => u.nameKey === key)
 
@@ -795,8 +1047,22 @@ export async function handleAccounts(req: IncomingMessage, res: ServerResponse):
       if (!local) signups.get(addr)!.push(Date.now())
       const salt = crypto.randomBytes(16).toString('hex')
       const u: User = { id: crypto.randomUUID(), name, nameKey: key, salt, hash: (await scrypt(pw, salt)).toString('hex'), created: Date.now() }
+      // Checked again after the wait: the same name may have signed up meanwhile (the database's unique name decides there).
+      let added = false
+      try {
+        added = db ? await db.addUser({ ...u, rev: 0 }) : !Object.values(store.users).some((x) => x.nameKey === key)
+      } catch (err) {
+        // The insert may have landed with only its answer lost: take the row in if it's there.
+        await adoptUser(key).catch(() => {})
+        throw err
+      }
+      if (!added) {
+        await adoptUser(key) // taken by a signup memory never heard of (an answer lost earlier)
+        return json(res, 409, { error: 'taken' })
+      }
       store.users[u.id] = u
-      return json(res, 200, { token: issueToken(u.id), id: u.id, name: u.name, rev: 0 })
+      if (db) loaded.set(u.id, makeLoaded(u.id, emptyIndex()))
+      return json(res, 200, { token: await issueToken(u.id), id: u.id, name: u.name, rev: 0 })
     }
 
     if (tooMany(key) || tooMany(addr, shared ? SHARED_FAIL_LIMIT : FAIL_LIMIT)) return json(res, 429, { error: 'wait' })
@@ -809,7 +1075,9 @@ export async function handleAccounts(req: IncomingMessage, res: ServerResponse):
       noteFail(addr)
       return json(res, 401, { error: 'wrong' })
     }
-    return json(res, 200, { token: issueToken(existing.id), id: existing.id, name: existing.name, rev: loadUser(existing.id).idx.rev })
+    const token = await issueToken(existing.id)
+    const l = loadUser(existing.id)
+    return withUser(l, () => json(res, 200, { token, id: existing.id, name: existing.name, rev: l.idx.rev }))
   }
 
   const u = userFor(req)
@@ -817,14 +1085,22 @@ export async function handleAccounts(req: IncomingMessage, res: ServerResponse):
 
   if (req.method === 'POST' && route === 'logout') {
     const m = /^Bearer ([0-9a-f]{64})$/.exec(req.headers.authorization ?? '')
-    if (m) delete store.tokens[sha(m[1])]
-    save()
+    if (m) {
+      // Refused here first, so the token is dead even while the database can't take the sign-out yet.
+      delete store.tokens[sha(m[1])]
+      save()
+      if (db) {
+        revoked.add(sha(m[1]))
+        await dropRevoked()
+      }
+    }
     return json(res, 200, { ok: true })
   }
 
   const l = loadUser(u.id)
-  if (req.method === 'GET' && route === 'me') return json(res, 200, { id: u.id, name: u.name, rev: l.idx.rev, usage: usage(l) })
-  if (req.method === 'GET' && route === 'changes') return changes(res, l, query)
+  // Reads wait in the user's lock too, so they never see a change the database hasn't taken yet.
+  if (req.method === 'GET' && route === 'me') return withUser(l, () => json(res, 200, { id: u.id, name: u.name, rev: l.idx.rev, usage: usage(l) }))
+  if (req.method === 'GET' && route === 'changes') return withUser(l, () => changes(res, l, query))
   if (req.method === 'PUT' && route === 'kv') return putKv(req, res, l)
   if (req.method === 'PUT' && route === 'records') return putRecords(req, res, l)
 

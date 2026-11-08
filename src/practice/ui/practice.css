@@ -52,7 +52,20 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* This week: seven short bars, the ones that reached the streak goal in gold. */
+.prac-figs dd.prac-note,
+.prac-stats dd.prac-note {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+/* Reaching the goal: the note turns gold, nothing louder. */
+.prac-figs dd.prac-met,
+.prac-stats dd.prac-met {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* This week: seven short bars under a faint goal line; the days that reached the daily goal in gold. */
 .prac-week {
   align-self: stretch;
   display: grid;
@@ -70,6 +83,7 @@
   gap: 4px;
 }
 .prac-week-bar {
+  position: relative;
   display: flex;
   align-items: flex-end;
   width: 100%;
@@ -84,6 +98,19 @@
   background: var(--muted);
   opacity: 0.55;
 }
+.prac-week li.met .prac-week-bar i {
+  background: var(--accent);
+  opacity: 0.9;
+}
+/* Each day's piece of the goal line; side by side they read as one dotted line across the week. */
+.prac-week-goal {
+  position: absolute;
+  left: -3px;
+  right: -3px;
+  height: 0;
+  border-top: 1px dashed rgb(var(--accent-rgb) / 0.6);
+  pointer-events: none;
+}
 .prac-week-day {
   color: var(--muted);
   font-size: var(--fs-xs);
@@ -96,7 +123,7 @@
   border-bottom-style: dashed;
 }
 
-/* Guest: the practice button in the top bar. */
+/* The practice button in the top bar: a ring of today against the daily goal, then the minutes. */
 .prac-btn {
   display: inline-flex;
   align-items: center;
@@ -118,6 +145,31 @@
 .prac-btn svg {
   flex: none;
 }
+.prac-btn.met {
+  color: var(--text);
+  border-color: rgb(var(--accent-rgb) / 0.55);
+}
+.prac-btn.met:hover,
+.prac-btn.met[aria-expanded='true'] {
+  border-color: var(--accent);
+}
+
+.prac-ring circle {
+  fill: none;
+  stroke-width: 2;
+}
+.prac-ring-track {
+  stroke: var(--line);
+}
+.prac-ring-fill {
+  stroke: currentColor;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.6s ease-out;
+}
+.prac-ring.met .prac-ring-fill {
+  stroke: var(--accent);
+  stroke-linecap: butt;
+}
 .prac-guest-note {
   color: var(--muted);
 }
@@ -132,13 +184,8 @@
   gap: 12px;
   margin: 18px 0 0;
 }
-.prac-stats dd {
+.prac-stats dd:not(.prac-note) {
   font-size: var(--fs-h2);
-}
-.prac-stats dd.prac-note {
-  font-family: var(--font-ui);
-  font-size: var(--fs-xs);
-  color: var(--muted);
 }
 
 .prac-chart {
@@ -174,6 +221,75 @@
 }
 .prac-chart g.today .prac-axis {
   fill: var(--text);
+}
+/* The daily goal across the chart: a quiet dashed rule in gold, with its name on the left. */
+.prac-goal {
+  pointer-events: none;
+}
+.prac-goal line {
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.75;
+}
+.prac-goal text {
+  fill: var(--accent);
+  font-size: 11px;
+  paint-order: stroke;
+  stroke: var(--panel);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/* Daily goal choice: a row of segments, like the lessons settings. */
+.prac-goal-set {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin: 20px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.prac-goal-h {
+  font-size: var(--fs-ui);
+  font-weight: 600;
+}
+.prac-seg {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  overflow: hidden;
+}
+.prac-seg button {
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 12px;
+  font: inherit;
+  font-size: var(--fs-ui);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.prac-seg button:last-child {
+  border-right: 0;
+}
+.prac-seg button:hover {
+  color: var(--text);
+}
+.prac-seg button.on {
+  background: var(--panel-2);
+  color: var(--text);
+  font-weight: 700;
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.prac-goal-note {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-sm);
 }
 
 /* One colour per activity, from the fretboard's own marker palette. */
@@ -233,5 +349,23 @@
   }
   .prac-btn .prac-btn-text {
     display: none;
+  }
+  /* Just the ring on phones. */
+  .prac-btn {
+    padding: 6px 8px;
+  }
+  .prac-seg {
+    display: flex;
+    width: 100%;
+  }
+  .prac-seg button {
+    flex: 1 1 0;
+    padding: 6px 4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prac-ring-fill {
+    transition: none;
   }
 }

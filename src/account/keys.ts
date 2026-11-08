@@ -16,6 +16,7 @@ export const SYNC_KEYS = [
   'lessons-prefs',
   't3k-client-id',
   'practice-log',
+  'practice-goal',
   'skills-stats',
 ]
 

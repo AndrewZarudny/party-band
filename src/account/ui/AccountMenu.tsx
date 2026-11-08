@@ -7,7 +7,7 @@ import { reloadWithUpdates, signOutFlow } from '../sync'
 import { AccountPanel } from './AccountPanel'
 import { PracticeCard } from '../../practice/ui/PracticeCard'
 import { PracticePanel } from '../../practice/ui/PracticePanel'
-import { fmtDuration, usePractice } from '../../practice/stats'
+import { PracticeButton } from '../../practice/ui/PracticeButton'
 
 const SHORT: Record<SyncStatus, string> = {
   guest: 'guest',
@@ -18,37 +18,55 @@ const SHORT: Record<SyncStatus, string> = {
   error: 'not saving',
 }
 
-/** The top bar's account control: Sign in for guests, the name and save state when signed in. */
+type Opener = 'practice' | 'name'
+
+/**
+ * The top bar's account control: the practice button (today against the daily goal), then Sign in for guests or
+ * the name and save state when signed in. Both buttons open the same menu.
+ */
 export function AccountMenu() {
   const st = useAccount()
-  const [open, setOpen] = useState(false)
+  const [openBy, setOpenBy] = useState<Opener | null>(null)
+  const open = openBy !== null
   const [confirm, setConfirm] = useState(false)
   const [outBusy, setOutBusy] = useState(false)
   const [outErr, setOutErr] = useState<string | null>(null)
   const btn = useRef<HTMLButtonElement>(null)
+  const pracBtn = useRef<HTMLButtonElement>(null)
+  // The button that last opened the menu: focus goes back to it when the menu or a dialog closes.
+  const opener = useRef<Opener>('practice')
   const wrap = useRef<HTMLDivElement>(null)
+  const refocus = useCallback(() => {
+    if (opener.current === 'name' && btn.current) btn.current.focus()
+    else pracBtn.current?.focus()
+  }, [])
+  const toggle = (by: Opener) => {
+    opener.current = by
+    setOpenBy((o) => (o ? null : by))
+    setConfirm(false)
+    setOutErr(null)
+  }
 
   const closeDialog = useCallback(() => {
     closeAccountDialog()
-    btn.current?.focus()
-  }, [])
+    refocus()
+  }, [refocus])
   const [practiceOpen, setPracticeOpen] = useState(false)
   const closePractice = useCallback(() => {
     setPracticeOpen(false)
-    btn.current?.focus()
-  }, [])
-  const today = usePractice().today
+    refocus()
+  }, [refocus])
 
   // The menu closes on a click outside it or on Escape.
   useEffect(() => {
     if (!open) return
     const onDown = (ev: MouseEvent) => {
-      if (!wrap.current?.contains(ev.target as Node)) setOpen(false)
+      if (!wrap.current?.contains(ev.target as Node)) setOpenBy(null)
     }
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === 'Escape') {
-        setOpen(false)
-        btn.current?.focus()
+        setOpenBy(null)
+        refocus()
       }
     }
     document.addEventListener('mousedown', onDown)
@@ -57,7 +75,7 @@ export function AccountMenu() {
       document.removeEventListener('mousedown', onDown)
       window.removeEventListener('keydown', onKey)
     }
-  }, [open])
+  }, [open, refocus])
 
   // Keys pressed on these buttons stay here: Space on "Sign out" mustn't also start the jam behind it.
   useEffect(() => {
@@ -65,13 +83,13 @@ export function AccountMenu() {
       if (!wrap.current?.contains(ev.target as Node)) return
       ev.stopPropagation()
       if (ev.key === 'Escape' && open) {
-        setOpen(false)
-        btn.current?.focus()
+        setOpenBy(null)
+        refocus()
       }
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [open])
+  }, [open, refocus])
 
   const signOut = async (force: boolean) => {
     setOutBusy(true)
@@ -98,30 +116,17 @@ export function AccountMenu() {
   const practiceCard = (
     <PracticeCard
       onOpen={() => {
-        setOpen(false)
+        setOpenBy(null)
         setPracticeOpen(true)
       }}
     />
   )
+  const practiceBtn = <PracticeButton ref={pracBtn} open={openBy === 'practice'} onClick={() => toggle('practice')} />
 
   if (!a)
     return (
       <div className="acct" ref={wrap}>
-        <button
-          ref={btn}
-          className="prac-btn"
-          title="Practice time"
-          aria-label={`Practice time, today ${fmtDuration(today)}`}
-          aria-expanded={open}
-          aria-controls="acct-menu"
-          onClick={() => setOpen((o) => !o)}
-        >
-          <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
-            <circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
-            <path d="M8 4.5V8l2.5 1.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-          <span className="prac-btn-text">{fmtDuration(today)}</span>
-        </button>
+        {practiceBtn}
         <button className="acct-signin" onClick={() => openAccountDialog('login')}>
           Sign in
         </button>
@@ -132,7 +137,7 @@ export function AccountMenu() {
             <button
               className="btn small primary"
               onClick={() => {
-                setOpen(false)
+                setOpenBy(null)
                 openAccountDialog('login')
               }}
             >
@@ -177,18 +182,15 @@ export function AccountMenu() {
           )}
         </button>
       )}
+      {practiceBtn}
       <button
         ref={btn}
         className="acct-btn"
         title={label}
         aria-label={label}
-        aria-expanded={open}
+        aria-expanded={openBy === 'name'}
         aria-controls="acct-menu"
-        onClick={() => {
-          setOpen((o) => !o)
-          setConfirm(false)
-          setOutErr(null)
-        }}
+        onClick={() => toggle('name')}
       >
         <span className={`acct-dot ${st.status}`} aria-hidden="true" />
         <span className="acct-name">{a.name}</span>
@@ -203,7 +205,7 @@ export function AccountMenu() {
             <button
               className="btn small primary"
               onClick={() => {
-                setOpen(false)
+                setOpenBy(null)
                 openAccountDialog('login')
               }}
             >

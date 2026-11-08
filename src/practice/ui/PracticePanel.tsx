@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 import './practice.css'
+import { chartCaption, chartScale } from '../chart'
 import { KINDS } from '../data'
+import { GOAL_CHOICES, reachedGoal, setDailyGoal, useDailyGoal } from '../goal'
 import type { PracticeSummary } from '../stats'
 import { KIND_LABEL, fmtDay, fmtDuration, usePractice } from '../stats'
 
@@ -12,31 +14,18 @@ const TOP = 8
 const BOTTOM = 22
 const PLOT_H = H - TOP - BOTTOM
 const SLOT = (W - LEFT) / 30
-const STEPS = [300, 600, 900, 1200, 1800, 2400, 3600, 5400, 7200, 10800, 14400]
-
-/** Gridline step and top of the scale: about three lines, never below 30 minutes. */
-function scaleOf(max: number): { step: number; top: number } {
-  const want = Math.max(max, 1800) / 3
-  const step = STEPS.find((s) => s >= want) ?? Math.ceil(want / 3600) * 3600
-  return { step, top: Math.ceil(Math.max(max, 1800) / step) * step }
-}
 
 const short = (sec: number) => (sec >= 3600 ? `${+(sec / 3600).toFixed(1)} h` : `${Math.round(sec / 60)} min`)
 
-function summaryText(p: PracticeSummary): string {
-  if (!p.total30) return 'No practice in the last 30 days yet.'
-  const days = p.last30.filter((d) => d.total > 0).length
-  const lead = KINDS.map((k, i) => [k, p.byKind30[i]] as const).sort((a, b) => b[1] - a[1])[0]
-  return `Last 30 days: ${fmtDuration(p.total30)} over ${days} ${days === 1 ? 'day' : 'days'}, most of it ${KIND_LABEL[lead[0]].toLowerCase()}.`
-}
-
-function Chart({ p }: { p: PracticeSummary }) {
+function Chart({ p, goal }: { p: PracticeSummary; goal: number }) {
   const max = Math.max(...p.last30.map((d) => d.total))
-  const { step, top } = scaleOf(max)
+  const goalSec = goal * 60
+  // The goal line always fits on the scale, even in a quiet month.
+  const { step, top } = chartScale(max, goalSec)
   const y = (sec: number) => TOP + PLOT_H - (sec / top) * PLOT_H
   const lines: number[] = []
   for (let s = step; s <= top; s += step) lines.push(s)
-  const caption = summaryText(p)
+  const caption = chartCaption(p, goal)
   return (
     <figure className="prac-chart">
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-labelledby="prac-chart-cap">
@@ -55,7 +44,7 @@ function Chart({ p }: { p: PracticeSummary }) {
           let acc = 0
           return (
             <g key={d.key} className={i === 29 ? 'today' : undefined}>
-              <title>{`${fmtDay(d.date, true)}: ${fmtDuration(d.total)}`}</title>
+              <title>{`${fmtDay(d.date, true)}: ${fmtDuration(d.total)}${reachedGoal(d.total, goal) ? ', goal met' : ''}`}</title>
               {/* a full-height hit area so the tooltip works on empty days too */}
               <rect className="prac-hit" x={LEFT + i * SLOT} width={SLOT} y={TOP} height={PLOT_H} />
               {KINDS.map((k, ki) => {
@@ -74,6 +63,13 @@ function Chart({ p }: { p: PracticeSummary }) {
             </g>
           )
         })}
+        {/* the daily goal, drawn over the bars but out of the way of their tooltips */}
+        <g className="prac-goal" aria-hidden="true">
+          <line x1={LEFT} x2={W} y1={y(goalSec)} y2={y(goalSec)} />
+          <text x={LEFT + 4} y={y(goalSec) - 5}>
+            goal {goal} min
+          </text>
+        </g>
       </svg>
       <figcaption id="prac-chart-cap">{caption}</figcaption>
       <ul className="prac-legend">
@@ -88,9 +84,14 @@ function Chart({ p }: { p: PracticeSummary }) {
   )
 }
 
-/** "Your practice": the last 30 days, the best day and the average. A modal. Time is shown, not judged. */
+/**
+ * "Your practice": today against the daily goal, the last 30 days, the best day and the average, and the goal
+ * itself. A modal. Time is shown and gently aimed at, not judged.
+ */
 export function PracticePanel({ guest, onClose }: { guest: boolean; onClose: () => void }) {
   const p = usePractice()
+  const goal = useDailyGoal()
+  const metToday = reachedGoal(p.today, goal)
   const box = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -144,6 +145,11 @@ export function PracticePanel({ guest, onClose }: { guest: boolean; onClose: () 
 
         <dl className="prac-stats">
           <div>
+            <dt>Today</dt>
+            <dd>{fmtDuration(p.today)}</dd>
+            <dd className={`prac-note${metToday ? ' prac-met' : ''}`}>{metToday ? 'Goal met' : `of ${goal} min`}</dd>
+          </div>
+          <div>
             <dt>Best day</dt>
             <dd>{p.best ? fmtDuration(p.best.total) : 'None yet'}</dd>
             {p.best && <dd className="prac-note">{fmtDay(p.best.date, true)}</dd>}
@@ -162,7 +168,24 @@ export function PracticePanel({ guest, onClose }: { guest: boolean; onClose: () 
           </div>
         </dl>
 
-        <Chart p={p} />
+        <Chart p={p} goal={goal} />
+
+        <div className="prac-goal-set">
+          <span id="prac-goal-h" className="prac-goal-h">
+            Daily goal
+          </span>
+          {/* Toggle buttons, not radios: each is its own Tab stop, which the dialog's Tab trap expects. */}
+          <div className="prac-seg" role="group" aria-labelledby="prac-goal-h" aria-describedby="prac-goal-note">
+            {GOAL_CHOICES.map((m) => (
+              <button key={m} type="button" aria-pressed={goal === m} className={goal === m ? 'on' : ''} onClick={() => setDailyGoal(m)}>
+                {m} min
+              </button>
+            ))}
+          </div>
+          <p id="prac-goal-note" className="prac-goal-note">
+            Counts lessons, songs, jamming and free play. Days off are fine.
+          </p>
+        </div>
 
         <p className="prac-how">
           Time counts while a lesson, song or jam is playing, or while you play the connected guitar (it stops after

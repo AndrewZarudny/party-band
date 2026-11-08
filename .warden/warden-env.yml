@@ -1,0 +1,26 @@
+# Fretwise's MariaDB for local development (`warden env up`). The app itself runs outside Docker (npm run dev)
+# and reaches the database on 127.0.0.1:${FRETWISE_DB_PORT}.
+# Warden's "local" type can't switch on its own db service (that one expects a php-fpm container), so it's defined here.
+services:
+  db:
+    hostname: "${WARDEN_ENV_NAME}-mariadb"
+    image: ${WARDEN_IMAGE_REPOSITORY}/mariadb:${MARIADB_VERSION:-11.4}
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-fretwise}
+      - MYSQL_USER=${MYSQL_USER:-fretwise}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_HISTFILE=/sql_history/.sql_history
+      # When MARIADB_VERSION is raised, the container upgrades the existing data on start.
+      - MARIADB_AUTO_UPGRADE=1
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--max-allowed-packet=64M"]
+    ports:
+      # This computer only, never the Wi-Fi.
+      - "127.0.0.1:${FRETWISE_DB_PORT:-3316}:3306"
+    volumes:
+      - dbdata:/var/lib/mysql
+      - sqlhistory:/sql_history
+
+volumes:
+  dbdata:
+  sqlhistory:

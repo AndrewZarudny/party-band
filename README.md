@@ -253,10 +253,24 @@ No guitar connected? Every game takes keys instead: Space for a right answer or 
 
 **Sign in** (top right) to keep everything in an account: songs and tabs, recordings, tones and presets, history, band, lyrics and timings, phrases, and lessons. Sign in from any browser on this computer, or from a device on your Wi-Fi, and it's all there.
 
-- Accounts live on this computer only, in `.cache/accounts.json` and `.cache/accounts/` (git-ignored). Passwords are stored as scrypt hashes. On the Wi-Fi the connection is plain http, so use a password you don't use anywhere else.
+- Accounts live on this computer only: in MariaDB when it's set up (below), else in `.cache/accounts.json` and `.cache/accounts/` (git-ignored). Passwords are stored as scrypt hashes. On the Wi-Fi the connection is plain http, so use a password you don't use anywhere else.
 - Changes save about a second after you make them; offline changes go up when the app can reach the server again. A green dot by your name means everything is saved.
 - Signing in from a browser that already has guest data: the account's data wins, and the guest data is kept in a local backup. Signing up keeps what this browser has.
 - Signing out clears your data from this browser (it stays in the account). Audio devices, latency sync and the theme stay with the browser.
+
+### Database (Warden + MariaDB)
+
+The browser stays the working copy and syncs to the server; MariaDB is where the server keeps accounts, ready to move to a host later. Without it, the server uses the JSON files as before.
+
+1. Run `scripts/db-setup.sh` (needs [Warden](https://docs.warden.dev) and Docker). It starts MariaDB 11.4 on `127.0.0.1:3316` (this computer only), writes passwords to `.env` and `FRETWISE_DB_URL` and `FRETWISE_TEST_DB_URL` to `.env.local` (both git-ignored), and creates the tests' database `fretwise_test`. Safe to run again: it keeps the passwords and data.
+2. Restart `npm run dev`. The log says `[accounts] using MariaDB`. On the first start with an empty database, the accounts in `.cache/accounts.json` are copied in once (the files stay as they were).
+
+- **In MariaDB**: users and password hashes, sign-in tokens (hashed), every saved setting and list (key/values), and the details of songs, captures and recordings.
+- **On disk**: the files themselves (tabs, recordings, captures) in `.cache/accounts/<id>/content/`, stored once per content hash. Back that folder up too.
+- **Backup**: `warden env exec -T db sh -c 'mariadb-dump -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --single-transaction "$MYSQL_DATABASE"' > fretwise-backup.sql` (run from the project folder).
+- If MariaDB is stopped, account requests answer "try again later" (the app keeps your changes and retries); everything else keeps working. It reconnects by itself.
+- Guests (not signed in) keep their data in the browser only. Signing up takes it into the new account; signing in to an existing account keeps it in the browser's local backup (see above).
+- Tests: `FRETWISE_TEST_DB_URL="$(grep '^FRETWISE_TEST_DB_URL=' .env.local | cut -d= -f2-)" npm test` also runs the account tests on MariaDB (they empty that database each run). Type it as is: the password comes from `.env.local`, so it never lands in your shell history.
 
 ## Theme
 

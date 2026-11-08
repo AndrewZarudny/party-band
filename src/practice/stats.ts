@@ -5,8 +5,9 @@ import { KINDS, dayKey, daysBefore, sum, zero } from './data'
 import type { PracticeSnapshot } from './log'
 import { getPracticeSnapshot, subscribePractice } from './log'
 
-// Practice time is shown, never judged: no daily goal and no streak here. The one weekly measure is the lessons'
-// session goal (lessons/review.ts weekStatus), which ignores pocket sessions.
+// Practice time is shown and gently aimed at, never judged. A daily goal in minutes (goal.ts) counts every kind of
+// practice and marks the days that reached it; there is no streak, and a day without practice is never "missed".
+// The one weekly measure is the lessons' session goal (lessons/review.ts weekStatus), which ignores pocket sessions.
 /** Days with less than this aren't "practice days" for the average (a stray strum). */
 const PRACTICE_DAY_SEC = 60
 
