@@ -10,6 +10,7 @@ import { LessonsMode } from './modes/LessonsMode'
 import { AudioPanel, AudioStatus } from './components/AudioPanel'
 import { AccountMenu } from './account/ui/AccountMenu'
 import { ThemeToggle } from './components/ThemeToggle'
+import { onOpenProgress } from './practice/progressLink'
 
 type Mode = 'song' | 'jam' | 'songs' | 'tune' | 'lessons'
 
@@ -34,6 +35,20 @@ export default function App() {
   const onToneLabel = useCallback(() => {}, [])
   const showSong = useCallback(() => setMode('song'), [])
   const e = useEngineState()
+
+  // "What's sticking" in the practice dialog: over to Lessons, as the tab does (LessonsMode opens its progress screen).
+  useEffect(
+    () =>
+      onOpenProgress(() => {
+        setMode('lessons')
+        try {
+          localStorage.setItem('mode', 'lessons')
+        } catch {
+          /* storage unavailable */
+        }
+      }),
+    [],
+  )
 
   // Reconnect the guitar automatically if it was connected before this page load.
   useEffect(() => {

@@ -191,6 +191,7 @@ export class LessonRun {
         onsetRatio: (lesson.type === 'chords' || lesson.type === 'rhythm' ? 1.4 : 1.6) + (o.mic ? 0.2 : 0),
         absRms: o.mic ? 0.004 : undefined,
         refractoryMs: Number.isFinite(minGapSec) ? clamp(0.45 * minGapSec * 1000, 40, 90) : 90,
+        strums: this.chart.events.some((e) => e.kind === 'chord' || e.kind === 'mute'),
         keyboard: keyboardMode,
         useEngine,
       })

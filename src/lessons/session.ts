@@ -9,7 +9,7 @@ import { ORDER, PLAN_PATH, lessonById, stageOf, weeksLabel } from './data'
 import { dayKey, daysAway, isPassed, isUnlocked, nextLesson, trimLog } from './progress'
 import { autoSpeed, bpmAt, earnedTop } from './speed'
 import { heatReady, spotLabel, topSpots } from './heat'
-import { SESSION_MIN_SEC, coldSpeedFor, isCold, isReviewItem, sessionNow, sessionOf, weekKey, weekStatus } from './review'
+import { SESSION_MIN_SEC, coldSpeedFor, isCold, isReviewItem, reviewBrake, sessionNow, sessionOf, strugglingList, weekKey, weekStatus } from './review'
 
 export const WARMUPS = ['w1-02', 'w2-01', 'w5-01', 'w5-03']
 export const SHAPE_LABEL: Record<WeekShape, string> = { A: 'New material', B: 'Review and ear', C: 'Consolidate, longer jam', D: 'Mostly jam and recording' }
@@ -110,6 +110,7 @@ interface Pick {
   why: string
   drill?: string
   consolidate?: boolean
+  brake?: boolean
 }
 
 /** Today's drill warm-up: the top trouble spot, once there is enough data and its lesson still exists. */
@@ -143,6 +144,16 @@ function coldWhy(p: Progress, id: string): string {
 }
 
 const NEW_WHY = 'Practise it on its own. Rest 20–30 s between runs.'
+const BRAKE_WHY = "Review first: this one isn't sticking yet. Its cold start first if it's due, then slow and clean, on its own. Rest 20–30 s between runs."
+
+/**
+ * Under the review brake: struggling items for the New slot, lowest cold score first. Items not due a cold start today
+ * come first; most struggling items are due next session though, and those open with their cold test (stepOpensCold).
+ */
+function brakeList(p: Progress, now: Date): string[] {
+  const all = strugglingList(p)
+  return [...all.filter((id) => !isCold(p, id, now)), ...all.filter((id) => isCold(p, id, now))]
+}
 
 /**
  * New lessons: the plan's path first (the same list as the map's Continue), then the open extras in map order
@@ -240,6 +251,7 @@ function lessonStep(p: Progress, kind: StepKind, pick: Pick, min: number): Sessi
   }
   if (pick.drill) step.drill = pick.drill
   if (pick.consolidate) step.consolidate = true
+  if (pick.brake) step.brake = true
   return step
 }
 
@@ -261,6 +273,8 @@ export function makeSessionPlan(p: Progress, now: Date, ctx: PlanCtx): SessionPl
   const s = sessionNow(p, now)
   const used = new Set<string>()
   const colds = coldList(p, now)
+  // Plan section 4: with REVIEW_BRAKE or more items failing their cold start, no new lesson today.
+  const brake = reviewBrake(p)
   let extraJam = 0
   let spare = 0
   const steps: SessionStep[] = []
@@ -293,6 +307,15 @@ export function makeSessionPlan(p: Progress, now: Date, ctx: PlanCtx): SessionPl
       used.add(id)
       steps.push(lessonStep(p, 'cold', { id, why: coldWhy(p, id) }, m))
     } else if (kind === 'new') {
+      if (brake) {
+        // The New minutes go to a struggling item, blocked; with none free, to the mix (or changes and ear).
+        const id = brakeList(p, now).find((x) => !used.has(x))
+        if (id) {
+          used.add(id)
+          steps.push(lessonStep(p, 'new', { id, consolidate: true, brake: true, why: BRAKE_WHY }, m))
+        } else steps.push({ ...skillStep('mix', undefined, '', m), lessonId: null })
+        continue
+      }
       const allowed = shape === 'A' || (shape === 'C' && newAllowedInC(p, now, s))
       const cons = allowed ? null : consolidatePick(p, s)
       if (cons && !used.has(cons)) {
@@ -329,11 +352,14 @@ export function makeSessionPlan(p: Progress, now: Date, ctx: PlanCtx): SessionPl
     }
   }
 
-  // Mix steps are filled last, so they skip today's new and cold items.
+  // Mix steps are filled last, so they skip today's new and cold items. Under the brake, struggling items go first
+  // (only those not due a cold test today, so mostly ones with two clean cold tests behind them).
+  const stuck = brake ? strugglingList(p) : []
   for (let i = 0; i < steps.length; i++) {
     const st = steps[i]
     if (st.kind !== 'mix') continue
-    const items = mixList(p, s, used, now).slice(0, 3)
+    const pool = mixList(p, s, used, now)
+    const items = [...stuck.filter((id) => pool.includes(id)), ...pool.filter((id) => !stuck.includes(id))].slice(0, 3)
     if (items.length >= 2) {
       for (const id of items) used.add(id)
       steps[i] = { ...st, items, played: [], why: mixWhy(items) }
@@ -356,16 +382,28 @@ export function makeSessionPlan(p: Progress, now: Date, ctx: PlanCtx): SessionPl
   return plan(steps)
 }
 
+/** A plan made before the brake came on, with a new lesson in it and nothing played yet: made again. */
+const brakeStale = (p: Progress, plan: SessionPlan) =>
+  !plan.steps.some((s) => s.state === 'done') && plan.steps.some((s) => s.kind === 'new' && !s.consolidate && s.lessonId !== null && !isSync(s.lessonId)) && reviewBrake(p)
+
 /** Progress with today's plan, or null when today's v2 plan is already stored (no save needed). */
 export function withTodayPlan(p: Progress, now: Date, ctx: PlanCtx): Progress | null {
   const plan = p.plan
-  if (plan && plan.v === 2 && plan.day === dayKey(now) && !(setupOnly(plan) && syncDone(p))) return null
+  if (plan && plan.v === 2 && plan.day === dayKey(now) && !(setupOnly(plan) && syncDone(p)) && !brakeStale(p, plan)) return null
   return { ...p, plan: makeSessionPlan(p, now, ctx) }
 }
 
 export function planDone(plan: SessionPlan): boolean {
   const done = plan.steps.filter((s) => s.state === 'done').length
   return plan.steps.length > 0 && !plan.steps.some((s) => s.state === 'todo') && done >= Math.min(2, plan.steps.length)
+}
+
+/**
+ * The step opens the Cold start card: a cold step, or a review-first step whose item is still due its cold test.
+ * As an ordinary run, its first try today would not be scored as the cold test, and the test would wait for a later session.
+ */
+export function stepOpensCold(p: Progress, step: SessionStep, now: Date): boolean {
+  return !!step.lessonId && (step.kind === 'cold' || !!step.brake) && isCold(p, step.lessonId, now)
 }
 
 /** First todo step, -1 when none. */
@@ -478,6 +516,7 @@ export function stepSource(step: SessionStep): string | null {
   if (!step.lessonId) return null
   if (step.kind === 'cold') return 'Review, due today'
   if (step.kind !== 'new') return null
+  if (step.brake) return 'Review first'
   // A new step on a lesson passed before the plan was made: polishing it.
   if (!step.consolidate && step.from.stars > 0) return 'Going for 3 stars'
   const at = stageOf(step.lessonId)
@@ -494,7 +533,7 @@ function candidates(p: Progress, step: SessionStep, now: Date): string[] {
   const s = sessionNow(p, now)
   if (step.kind === 'warmup') return warmupList(p, now)
   if (step.kind === 'cold') return coldList(p, now)
-  if (step.kind === 'new') return step.consolidate ? [] : newList(p).ids
+  if (step.kind === 'new') return step.brake ? brakeList(p, now) : step.consolidate ? [] : newList(p).ids
   if (step.kind === 'jam') return jamList(p, s).filter((id) => isUnlocked(p, id))
   return []
 }
@@ -503,6 +542,7 @@ function whyFor(p: Progress, step: SessionStep, id: string): string {
   if (step.kind === 'cold') return coldWhy(p, id)
   if (step.kind === 'warmup') return 'Easy start. Shake off the day.'
   if (step.kind === 'jam') return jamWhy(p, id)
+  if (step.brake) return BRAKE_WHY
   return isPassed(p, id) ? 'Go for 3 stars.' : NEW_WHY
 }
 
@@ -526,7 +566,7 @@ export function swapStep(p: Progress, i: number, now: Date): Progress {
   const id = list[(at + 1) % list.length]
   if (!id || id === step.lessonId) return p
   const next = clone(p)
-  ;(next.plan as SessionPlan).steps[i] = lessonStep(next, step.kind, { id, why: whyFor(next, step, id) }, step.min)
+  ;(next.plan as SessionPlan).steps[i] = lessonStep(next, step.kind, { id, why: whyFor(next, step, id), consolidate: step.brake, brake: step.brake }, step.min)
   return next
 }
 

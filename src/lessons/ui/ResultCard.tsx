@@ -6,7 +6,7 @@ import { VERDICT_LABEL } from '../scoring'
 import { DINO_STAGES, levelFor } from '../progress'
 import { ACHIEVEMENTS } from '../achievements'
 import { STAGES, lessonById, weeksLabel } from '../data'
-import { EARN_PASSES, MIN_SPEED, bpmAt, tempoStep } from '../speed'
+import { EARN_PASSES, MIN_SPEED, bpmAt, pct, tempoStep } from '../speed'
 import { buildChart } from '../charts'
 import { hardRange } from '../loop'
 import { retentionGap } from '../review'
@@ -271,6 +271,7 @@ export function ResultCard({
   const coldGap = cold && outcome.review ? outcome.review.due - cold.s : null
   // the newest clean cold attempt is this one only when this run was clean from cold
   const gapInfo = cold && cold.clean ? retentionGap(p.lessons[lesson.id]) : null
+  const firstPass = outcome.lines.some((l) => l.label === 'First pass')
   const chords = result.chordStats
   const showResync = result.meanErrMs !== null && Math.abs(result.meanErrMs) > 40 && graded >= 12
   const mood = result.stars >= 2 ? 'proud' : result.passed ? 'happy' : 'idle'
@@ -374,19 +375,23 @@ export function ResultCard({
                 <li key={l}>{l}</li>
               ))}
               {result.passed && outcome.speed.played < 1 && <li>Pass at full tempo for the 3rd star.</li>}
+              {firstPass && outcome.speed.played < 1 && outcome.review && (
+                <li>Passed at {pct(outcome.speed.played)}, so the next lesson is open. It counts as learned once it's clean from cold at full tempo.</li>
+              )}
             </ul>
           )}
           {cold && (
             <p className="ls-muted">
               {cold.clean
-                ? `Cold start at ${cold.bpm} BPM: clean.${coldGap !== null && coldGap > 0 ? ` Next check in ${plural(coldGap, 'session')}.` : ''}`
+                ? `Cold start at ${cold.bpm} BPM: clean.${coldGap !== null && coldGap > 0 ? ` Next check in ${plural(coldGap, 'session')}.` : ''}${cold.speed < 1 ? ` That was ${pct(cold.speed)}; the next one is a little faster, on the way to full tempo, which is what counts toward learned.` : ''}`
                 : `Cold start at ${cold.bpm} BPM: not clean yet. You'll see it again next session, a little slower.`}
             </p>
           )}
           {gapInfo && gapInfo.gap !== null && gapInfo.best !== null && gapInfo.cold !== null && (
             <p className="ls-muted">
               Retention gap: best last session {gapInfo.best} BPM, cold today {gapInfo.cold} BPM, a {gapInfo.gap} BPM gap.
-              {gapInfo.gap > 10 && ' A big gap usually means the tempo went up too early. Slow down; it will stick better.'}
+              {/* not while the cold tests climb back from a slower speed: the line above says the next one is faster */}
+              {gapInfo.gap > 10 && outcome.review?.coldSpeed === undefined && ' A big gap usually means the tempo went up too early. Slow down; it will stick better.'}
             </p>
           )}
           {showResync && (

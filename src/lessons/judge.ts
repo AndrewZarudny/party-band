@@ -12,6 +12,11 @@ export const WINDOWS: Record<Timing, Windows> = {
   tight: { perfect: 55, good: 100, ok: 150, lateExtra: 20 },
 }
 export const STRUM_SHIFT_MS = 15 // a strum is heard at its first string
+// A ringing chord keeps re-triggering the attack detector between strums. The strum is the attack where the
+// level jumps; one that lifts it at least this much counts at once, others wait for a clearer or sharper one.
+export const STRUM_RISE = 1.5
+const RISE_BEFORE_SEC = 0.03 // frames ending this long before the onset give the level before it
+const RISE_AFTER_SEC = 0.06 // and frames this long after it the peak
 
 const VOTE_SEC = 0.12 // pitch vote after each onset
 const VOTE_RMS = 0.002
@@ -28,7 +33,7 @@ const GRADE_CREDIT: Record<Grade, number> = { perfect: 1, good: 0.85, ok: 0.6, m
 const WRONG_CREDIT = 0.15
 const CHROMA_FROM = 0.17
 const CHROMA_TO = 0.45
-const CHROMA_MIN_FRAMES = 3
+export const CHROMA_MIN_FRAMES = 3
 const CHORD_FAIL = 0.7
 const POWER_FAIL = 0.85
 const MUTE_STABLE = 0.6
@@ -142,9 +147,13 @@ export class Judge {
   private frames: InputFrame[] = []
   private queue: InputOnset[] = []
   private prov = new Map<number, Match>()
+  // chord and mute events: the sharpest strike so far, when none lifted the level clearly
+  private held = new Map<number, InputOnset>()
   private posts: Post[] = []
   private settledIds: number[] = []
-  private chroma = new Map<number, { from: number; to: number; frames: Float32Array[] }>()
+  // chord check windows; frames carry the time they were heard, so a window that moves keeps the ones inside it
+  private chroma = new Map<number, { from: number; to: number; frames: { t: number; v: Float32Array }[] }>()
+  private chromaT = -Infinity // the time of the last chromaWindows call: the frame addChroma is given
   private openTech: { from: number; to: number }[] = []
   private openBend: { ev: NoteEv; to: number } | null = null
   private lastMatchT = -Infinity
@@ -152,12 +161,14 @@ export class Judge {
   private prevPeak = 0
   private listen: Set<number>
   private chartMidis: Set<number>
+  private strums: boolean
 
   constructor(chart: Chart, o: JudgeOpts) {
     this.chart = chart
     this.o = o
     this.listen = new Set(o.listenBars)
     this.chartMidis = new Set(chart.events.flatMap((e) => (e.kind === 'note' ? [e.midi] : [])))
+    this.strums = chart.events.some((e) => e.kind === 'chord' || e.kind === 'mute')
     const W = o.windows
     const spb = o.secPerBeat
     const sw = (b: number) => o.start + swungBeat(b, o.swing) * spb
@@ -196,6 +207,7 @@ export class Judge {
   }
 
   chromaWindows(t: number): number[] {
+    this.chromaT = t
     const ids: number[] = []
     this.chroma.forEach((w, id) => {
       if (t >= w.from && t <= w.to) ids.push(id)
@@ -203,8 +215,9 @@ export class Judge {
     return ids
   }
 
+  /** A chroma frame for the windows chromaWindows just returned, heard at the time it was called with. */
   addChroma(eventIds: number[], v: Float32Array) {
-    for (const id of eventIds) this.chroma.get(id)?.frames.push(Float32Array.from(v))
+    for (const id of eventIds) this.chroma.get(id)?.frames.push({ t: this.chromaT, v: Float32Array.from(v) })
   }
 
   tick(t: number): JudgeResult[] {
@@ -227,7 +240,7 @@ export class Judge {
       if (v.e.kind === 'rest') {
         if (t >= v.end + REST_AFTER) out.push(this.judgeRest(v))
       } else if (t > this.lateBound(v) + VOTE_SEC) {
-        out.push(this.miss(v))
+        out.push(this.close(v))
       }
     }
     this.runPosts(t)
@@ -265,7 +278,7 @@ export class Judge {
     for (const v of this.evs) {
       if (this.results.has(v.e.id)) continue
       if (v.e.kind === 'rest') this.judgeRest(v)
-      else this.miss(v)
+      else this.close(v)
     }
     this.runPosts(Infinity)
     return { results: this.evs.map((v) => this.results.get(v.e.id)!), extras: this.extras, listenViolations: this.listenViolations }
@@ -328,7 +341,8 @@ export class Judge {
       }
     }
     const { midi: voted, stable } = voteMidi(this.frames, o)
-    const strike = o.source === 'attack' || o.source === 'key' || o.source === 'auto'
+    const instant = o.source === 'key' || o.source === 'auto'
+    const strike = o.source === 'attack' || instant
     const cands = this.evs.filter((v) => {
       if (v.e.kind === 'rest') return false
       if (this.results.has(v.e.id) && !this.prov.has(v.e.id)) return false
@@ -348,6 +362,19 @@ export class Judge {
           break
         }
       } else if (strike && !this.prov.has(v.e.id)) {
+        const rise = instant ? Infinity : this.rise(o)
+        if (rise < STRUM_RISE) {
+          // Maybe the last chord ringing on, maybe a strum over a loud ring: keep the sharpest attack
+          // until the window closes, unless a clear strum comes first.
+          const h = this.held.get(v.e.id)
+          if (!h || (o.strength ?? 0) > (h.strength ?? 0)) {
+            this.held.set(v.e.id, o)
+            // Its chord check listens from now on: by the time the window closes, most of it would have gone by.
+            this.openChroma(v, o)
+          }
+          return
+        }
+        this.held.delete(v.e.id)
         pick = v
         break
       }
@@ -377,6 +404,7 @@ export class Judge {
       return
     }
     if (cands.length) return // e.g. a pitch change while a chord is due
+    if (this.strums && o.source === 'attack' && this.rise(o) < STRUM_RISE) return // a chord ringing on, not an extra strum
     if (o.t - this.lastMatchT > EXTRA_GAP_SEC) this.extras++
   }
 
@@ -398,12 +426,9 @@ export class Judge {
     if (e.kind === 'note') this.noteChecks(v, e, r, m, slip, instant)
     else if (e.kind === 'chord') {
       r.chordOk = null
-      const from = m.o.t + CHROMA_FROM
-      const to = Math.min(m.o.t + CHROMA_TO, v.next)
-      if (e.chroma && to > from) {
-        this.chroma.set(e.id, { from, to, frames: [] })
-        this.posts.push({ id: e.id, until: to, run: () => this.chordCheck(v, r, m) })
-      } else this.chordCheck(v, r, m)
+      const w = this.openChroma(v, m.o)
+      if (w) this.posts.push({ id: e.id, until: w.to, run: () => this.chordCheck(v, r, m) })
+      else this.chordCheck(v, r, m)
       // a palm-muted strum gets the same decay check as a palm-muted note
       if (e.dir === 'P') {
         if (instant) r.pmOk = true
@@ -475,6 +500,35 @@ export class Judge {
     return out
   }
 
+  /** How far the level jumped at an onset: the peak just after it over the level just before (Infinity when unknown). */
+  private rise(o: InputOnset): number {
+    let before = -1
+    let after = -1
+    for (const f of this.frames) {
+      if (f.t < o.t && f.t >= o.t - RISE_BEFORE_SEC) before = Math.max(before, f.rms)
+      else if (f.t > o.t && f.t <= o.t + RISE_AFTER_SEC) after = Math.max(after, f.rms)
+    }
+    if (before <= VOTE_RMS || after < 0) return Infinity // from quiet, or no frames to tell
+    return after / before
+  }
+
+  /**
+   * Opens a chord's chroma window after strike o, or moves it there, keeping the frames already heard inside it.
+   * Null (and no window) for a chord with no chroma check or no room before the next event.
+   */
+  private openChroma(v: Ev, o: InputOnset): { from: number; to: number } | null {
+    const e = v.e
+    const from = o.t + CHROMA_FROM
+    const to = Math.min(o.t + CHROMA_TO, v.next)
+    const old = this.chroma.get(e.id)
+    if (e.kind !== 'chord' || !e.chroma || to <= from) {
+      this.chroma.delete(e.id)
+      return null
+    }
+    this.chroma.set(e.id, { from, to, frames: (old?.frames ?? []).filter((f) => f.t >= from && f.t <= to) })
+    return { from, to }
+  }
+
   private framesIn(a: number, b: number): InputFrame[] {
     return this.frames.filter((f) => f.t >= a && f.t <= b)
   }
@@ -491,7 +545,7 @@ export class Judge {
     const instant = m.o.source === 'key' || m.o.source === 'auto'
     if (e.chroma && w && w.frames.length >= CHROMA_MIN_FRAMES) {
       const avg = new Float32Array(12)
-      for (const f of w.frames) for (let i = 0; i < 12; i++) avg[i] += f[i] / w.frames.length
+      for (const f of w.frames) for (let i = 0; i < 12; i++) avg[i] += f.v[i] / w.frames.length
       const c = checkChord(avg, e.symbol)
       const conf = chordConfidence(c, w.frames.length)
       r.chordConf = conf
@@ -585,6 +639,15 @@ export class Judge {
     }
     this.results.set(v.e.id, r)
     return r
+  }
+
+  /** The window has closed with no clear hit: the best held strike if there was one, else a miss. */
+  private close(v: Ev): JudgeResult {
+    const o = this.held.get(v.e.id)
+    if (!o) return this.miss(v)
+    this.held.delete(v.e.id)
+    const { midi: voted, stable } = voteMidi(this.frames, o)
+    return this.match(v, { o, err: this.err(v, o), voted, stable }, false)
   }
 
   private miss(v: Ev): JudgeResult {

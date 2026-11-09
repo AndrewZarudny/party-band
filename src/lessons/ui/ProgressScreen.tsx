@@ -1,5 +1,5 @@
 // "Your progress": what is sticking, measured cold at the start of a session (research section 7).
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 import type { Progress } from '../types'
 import { loadStats } from '../../skills/store'
@@ -19,6 +19,7 @@ import {
   jamQuality,
   minutesVsPlan,
   painFlags,
+  progressSummary,
   timingTrend,
   weeksVsGoal,
 } from '../metrics'
@@ -52,8 +53,22 @@ function Empty({ hint }: { hint: string }) {
   )
 }
 
-export function ProgressScreen({ progress: p, onBack, onOpen }: { progress: Progress; onBack: () => void; onOpen: (lessonId: string) => void }) {
+export function ProgressScreen({
+  progress: p,
+  onBack,
+  onOpen,
+  focusHeading = false,
+}: {
+  progress: Progress
+  onBack: () => void
+  onOpen: (lessonId: string) => void
+  focusHeading?: boolean // opened from the practice dialog: focus moves here, so the change of view is read out
+}) {
   const stats = useMemo(loadStats, [])
+  const heading = useRef<HTMLHeadingElement>(null)
+  useEffect(() => {
+    if (focusHeading) heading.current?.focus()
+  }, [focusHeading])
   const now = new Date()
   const s = sessionNow(p, now)
 
@@ -76,6 +91,7 @@ export function ProgressScreen({ progress: p, onBack, onOpen }: { progress: Prog
   const ear = earFirstSeries(stats)
   const jam = jamQuality(p, stats)
   const bends = bendSeries(p)
+  const summary = progressSummary(p, stats)
 
   return (
     <section className="ls-panel mt-screen" aria-labelledby="mt-h">
@@ -84,12 +100,26 @@ export function ProgressScreen({ progress: p, onBack, onOpen }: { progress: Prog
           Back
         </button>
         <div>
-          <h2 id="mt-h" className="ls-display">
+          <h2 id="mt-h" className="ls-display" ref={heading} tabIndex={-1}>
             Your progress
           </h2>
           <p className="ls-muted">Measured cold, at the start of a session, where it counts.</p>
         </div>
       </header>
+
+      {/* The short version first: what stuck, the biggest gap, chord changes, what's next. */}
+      <section className="mt-section mt-summary" aria-labelledby="mt-sum-h">
+        <h3 id="mt-sum-h" className="mt-h">
+          What's sticking
+        </h3>
+        <ul className="mt-sum">
+          {summary.map((l) => (
+            <li key={l.label}>
+              <strong>{l.label}:</strong> {l.text}
+            </li>
+          ))}
+        </ul>
+      </section>
 
       <Section title="Sessions per week" why="A few sessions spread over the week tend to stick better than one long one (moderate evidence)." rule={`Goal: ${plural(weeks.goal, 'session')} a week. Any sharp, lingering or tingling pain: stop.`}>
         <Bars
@@ -123,7 +153,7 @@ export function ProgressScreen({ progress: p, onBack, onOpen }: { progress: Prog
       <Section
         title="Cold-start tempo"
         why="Your first try at an item, before any warm-up. This is what really stuck."
-        rule="Move on when you hit the target in 2 separate sessions. Back to review when cold is more than 10 BPM under your last session's best (a rule of thumb)."
+        rule="Learned when it's clean from cold at full tempo in 2 separate sessions. Back to review when cold is more than 10 BPM under your last session's best (a rule of thumb)."
       >
         {cold.length ? (
           <>

@@ -180,7 +180,7 @@ function mergeHeat(a: unknown, b: unknown): unknown {
 
 /**
  * Two copies of the same player's lessons progress: the one with more XP is the base, each lesson keeps the
- * record that was played more (its session history combined, the review with the later cold pass), achievements
+ * record that was played more (its session history combined, the review with the later cold pass, the faster pass speed), achievements
  * are combined, today's plan takes the later day, session logs, met weeks and run samples are combined, heat cells
  * take the later day. Loop counts live in lesson records and follow the record that wins.
  * Null when a side is unreadable.
@@ -210,6 +210,9 @@ export function mergeLessonsProgress(a: string, b: string): string | null {
       if (hist) win.hist = hist
       const review = pickReview(winner.review, lose.review, winner.hist, lose.hist)
       if (review) win.review = review
+      // The pass speed is the fastest passing speed (as applyResult keeps it): a faster pass on the other side counts.
+      const speeds = [winner.passedSpeed, lose.passedSpeed].filter((v): v is number => typeof v === 'number' && isFinite(v))
+      if (winner.passedAt !== undefined && speeds.length) win.passedSpeed = Math.max(...speeds)
       lessons[id] = win
     }
     const achievements = { ...((other.achievements as Record<string, number>) ?? {}), ...((base.achievements as Record<string, number>) ?? {}) }

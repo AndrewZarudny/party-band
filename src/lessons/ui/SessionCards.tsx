@@ -117,7 +117,7 @@ export function PainNote({ pain }: { pain: PainLevel | null }) {
 }
 
 /** Before a cold-start test: what it is and why there's no warm-up or tab. */
-export function ColdStart({ title, bpm, onStart, onBack }: { title: string; bpm: number; onStart: () => void; onBack: () => void }) {
+export function ColdStart({ title, bpm, speed, onStart, onBack }: { title: string; bpm: number; speed?: number; onStart: () => void; onBack: () => void }) {
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === 'Escape') onBack()
@@ -131,7 +131,10 @@ export function ColdStart({ title, bpm, onStart, onBack }: { title: string; bpm:
         Cold start: {title}
       </h2>
       <p>First try, no warm-up, no tab. This shows what stuck since last time, not what you can do after practising.</p>
-      <p className="sc-facts ls-num">{bpm} BPM · no tab</p>
+      <p className="sc-facts ls-num">
+        {bpm} BPM{speed !== undefined && speed < 1 ? ` (${Math.round(speed * 100)}%)` : ''} · no tab
+      </p>
+      {speed !== undefined && speed < 1 && <p className="ls-muted">Clean at full tempo is what counts toward learned. Each clean cold start brings the next one a little closer.</p>}
       <p className="ls-muted">Stuck? Peek shows the tab for 3 seconds.</p>
       <div className="sc-acts">
         <button className="ls-btn primary" onClick={onStart} autoFocus>

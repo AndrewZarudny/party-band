@@ -60,7 +60,7 @@ describe('learned', () => {
     const o = cold(r, 4, true)
     expect(o.review).toMatchObject({ coldPasses: LEARN_SESSIONS, learned: true, learnedAt: 1004 })
     expect(o.xp.map((x) => x.label)).toContain('Learned')
-    expect(o.lines.some((l) => l.endsWith('is learned: clean from cold in two separate sessions.'))).toBe(true)
+    expect(o.lines.some((l) => l.endsWith('is learned: clean from cold at full tempo in two separate sessions.'))).toBe(true)
   })
 
   it('a clean cold below the target lengthens the interval but does not count', () => {

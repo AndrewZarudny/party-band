@@ -1,14 +1,19 @@
 // Spaced review counted in sessions, not days, with cold-start tests (research sections 2 and 4). Pure, no DOM.
 import type { ColdAttempt, HistEntry, Lesson, LessonRecord, LessonResult, Progress, ReviewState, Speed, XpLine } from './types'
-import { lessonById } from './data'
+import { ORDER, lessonById } from './data'
 import { dayKey } from './progress'
-import { MIN_SPEED, autoSpeed, snapSpeed, speedCap, tempoStep } from './speed'
+import { FULL_SPEED, MIN_SPEED, autoSpeed, pct, snapSpeed, speedCap, tempoStep } from './speed'
 
 export const SESSION_GAPS = [1, 2, 4, 8] // sessions (research)
 export const SESSION_MIN_SEC = 600 // heuristic: half the 20-minute template
-export const LEARN_SESSIONS = 2 // research: clean from cold in 2 separate sessions
+export const LEARN_SESSIONS = 2 // research: clean from cold at full tempo in 2 separate sessions
 export const REVIEW_DROP_BPM = 10 // heuristic (research): back to review when cold is this far under the last best
 export const HIST_MAX = 16
+/**
+ * Plan section 4, "Repeat or move on" (added 8 Nov 2026, from week-1 data): while this many items are still
+ * failing their cold start, sessions are review only, with no new lessons.
+ */
+export const REVIEW_BRAKE = 3
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
@@ -57,10 +62,76 @@ function newestBestSpeed(lesson: Lesson, rec: LessonRecord): Speed | undefined {
   return h?.best !== undefined ? snapSpeed(h.best / lesson.bpm) : undefined
 }
 
-/** The speed of the next cold-start test. */
+/** The newest cold-start test, if any. */
+export function newestCold(rec: LessonRecord | undefined): ColdAttempt | undefined {
+  return [...(rec?.hist ?? [])].reverse().find((e) => e.cold)?.cold
+}
+
+/**
+ * The speed of the next cold-start test. After a failed one: the staircase down (review.coldSpeed), then one step up
+ * after each clean one while it is still far under the best.
+ * Otherwise the newest in-session best, but never under one tempo step above the last clean cold test:
+ * only a clean cold start at full tempo counts toward learned (plan section 4), so cold tests climb to it and stay there.
+ */
 export function coldSpeedFor(lesson: Lesson, rec: LessonRecord | undefined): Speed {
-  const s = rec?.review?.coldSpeed ?? (rec ? newestBestSpeed(lesson, rec) : undefined) ?? rec?.topSpeed ?? autoSpeed(lesson, rec)
-  return clamp(snapSpeed(s), MIN_SPEED, speedCap(rec))
+  const base = rec?.review?.coldSpeed ?? (rec ? newestBestSpeed(lesson, rec) : undefined) ?? rec?.topSpeed ?? autoSpeed(lesson, rec)
+  const c = rec?.review?.coldSpeed === undefined ? newestCold(rec) : undefined
+  const up = c?.clean ? Math.min(FULL_SPEED, snapSpeed(c.speed + tempoStep(lesson))) : 0
+  return clamp(snapSpeed(Math.max(base, up)), MIN_SPEED, speedCap(rec))
+}
+
+// ---- Struggling items and the review brake ------------------------------------------
+
+/**
+ * A review item that is started but not sticking: in review, not learned, and failing its cold start.
+ * Failing means the newest cold test was not clean, or it was clean but more than REVIEW_DROP_BPM under the
+ * in-session best before it. An item with no cold test yet isn't counted: nothing says it's failing.
+ * A clean one at the slower speed the app asked for after a fail is climbing back (review.coldSpeed still set), not failing.
+ */
+export function isStruggling(lesson: Lesson | undefined, rec: LessonRecord | undefined): boolean {
+  if (!lesson || !rec?.review || rec.review.learned || !isReviewItem(lesson)) return false
+  const g = retentionGap(rec)
+  if (g.coldClean === null) return false
+  if (g.coldClean && rec.review.coldSpeed !== undefined) return false
+  return !g.coldClean || (g.gap !== null && g.gap > REVIEW_DROP_BPM)
+}
+
+/** Struggling items, lowest newest cold score first, then map order. */
+export function strugglingList(p: Progress): string[] {
+  return ORDER.filter((id) => isStruggling(lessonById(id), p.lessons[id]))
+    .map((id, i) => ({ id, i, score: newestCold(p.lessons[id])?.score ?? 0 }))
+    .sort((a, b) => a.score - b.score || a.i - b.i)
+    .map((x) => x.id)
+}
+
+/** The brake is on: REVIEW_BRAKE or more items are failing their cold start, so no new lessons are suggested. */
+export function reviewBrake(p: Progress): boolean {
+  return strugglingList(p).length >= REVIEW_BRAKE
+}
+
+// ---- Passed vs learned -----------------------------------------------------------------
+
+export type Standing = 'open' | 'passed' | 'learned'
+
+/** Passed unlocks the next lesson at any speed; learned needs clean cold starts at full tempo (plan section 4). */
+export function standingOf(rec: LessonRecord | undefined): Standing {
+  if (rec?.review?.learned) return 'learned'
+  return rec?.passedAt !== undefined ? 'passed' : 'open'
+}
+
+/** "Learned", "Passed at 72%", "Passed at full tempo", or "Passed" when the pass speed isn't known; null when not passed. */
+export function standingLabel(rec: LessonRecord | undefined): string | null {
+  const st = standingOf(rec)
+  if (st === 'learned') return 'Learned'
+  if (st === 'open') return null
+  const s = rec?.passedSpeed
+  if (s === undefined) return 'Passed'
+  return s >= FULL_SPEED - 1e-9 ? 'Passed at full tempo' : `Passed at ${pct(s)}`
+}
+
+/** Clean cold starts at full tempo so far, toward LEARN_SESSIONS. */
+export function fullColds(rec: LessonRecord | undefined): number {
+  return Math.min(LEARN_SESSIONS, rec?.review?.coldPasses ?? 0)
 }
 
 export interface GapInfo {
@@ -153,10 +224,13 @@ export function applyCold(
 
   const lines: string[] = []
   const xp: XpLine[] = []
+  // Asked at a slower speed after a failed test: the app picked that tempo, so it isn't measured against the best.
+  const stair = before.coldSpeed !== undefined
   if (clean) {
     review.step = Math.min(SESSION_GAPS.length - 1, review.step + 1)
     delete review.coldSpeed
-    if (r.speed >= 1 - 1e-9 && review.lastColdS !== s) {
+    // Only full tempo counts toward learned (plan section 4); a clean cold under it moves the next one up a step.
+    if (r.speed >= FULL_SPEED - 1e-9 && review.lastColdS !== s) {
       review.coldPasses++
       review.lastColdS = s
       if (review.coldPasses >= LEARN_SESSIONS && !review.learned) {
@@ -175,7 +249,11 @@ export function applyCold(
       xp.push(plusLine('Gap shrinking', 10))
       lines.push(`Retention gap on ${title}: ${g.prevGap} → ${g.gap} BPM. The tempo is sticking.`)
     }
-    if (prevBest !== null && prevBest - cold.bpm > REVIEW_DROP_BPM) {
+    if (stair && r.speed < FULL_SPEED - 1e-9 && prevBest !== null && prevBest - cold.bpm > REVIEW_DROP_BPM) {
+      // Still far under the best: the next test climbs one step from here, not straight back up to the best.
+      // Not a return to review: the result card already says the next one is a little faster.
+      review.coldSpeed = Math.min(FULL_SPEED, snapSpeed(r.speed + tempoStep(lesson)))
+    } else if (prevBest !== null && prevBest - cold.bpm > REVIEW_DROP_BPM) {
       review.step = 0
       review.learned = false
       review.coldPasses = 0
@@ -183,7 +261,7 @@ export function applyCold(
       lines.push(`${title} goes back to review: cold ${cold.bpm} BPM, ${prevBest - cold.bpm} BPM under your best. Slow down a little and it will stick.`)
     } else if (review.learned && !wasLearned) {
       xp.push(plusLine('Learned', 40))
-      lines.push(`${title} is learned: clean from cold in two separate sessions.`)
+      lines.push(`${title} is learned: clean from cold at full tempo in two separate sessions.`)
     }
   } else {
     review.step = Math.max(0, review.step - 1)

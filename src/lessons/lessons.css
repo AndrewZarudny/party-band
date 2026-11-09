@@ -656,6 +656,25 @@
 .lessons .ls-node .ls-pips {
   margin-top: 1px;
 }
+/* Pass speed under full tempo ("72%"), or "learned": passed opens the next lesson, learned needs full tempo from cold. */
+.lessons .ls-node-tag {
+  font-size: var(--fs-xs);
+  line-height: 1.2;
+  color: var(--muted);
+}
+.lessons .ls-node-tag.learned {
+  color: var(--target);
+  font-weight: 600;
+}
+.lessons .ls-standing.learned {
+  color: var(--target);
+  font-weight: 600;
+}
+.lessons .ls-learn-note {
+  margin-top: 4px;
+  font-size: var(--fs-ui);
+  max-width: 52ch;
+}
 /* Optional lessons: a quieter second row of smaller picks under the plan's path. */
 .lessons .ls-extra-h {
   margin: 4px 0 0 32px;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_GOAL, GOAL_CHOICES, goalFraction, parseGoal, reachedGoal, ringDash, wholeMin } from '../goal'
+import { DEFAULT_GOAL, GOAL_CHOICES, goalFraction, parseGoal, reachedGoal, ringDash, sessionGoal, wholeMin } from '../goal'
 
 describe('parseGoal', () => {
   it('reads the stored minutes when they are one of the choices', () => {
@@ -10,6 +10,32 @@ describe('parseGoal', () => {
     expect(DEFAULT_GOAL).toBe(30)
     for (const raw of [null, '', 'nope', '{', 'null', '[]', '30', '{"min":"30"}', '{"min":25}', '{"min":0}', '{"min":-15}', '{"min":90}', '{}'])
       expect(parseGoal(raw)).toBe(30)
+  })
+})
+
+describe('the goal before one is picked', () => {
+  const lessons = (sessionMin: unknown) => JSON.stringify({ v: 1, xp: 120, lessons: {}, sessionMin })
+
+  it('starts at the lesson session length, 20 or 30 minutes', () => {
+    expect(sessionGoal(lessons(20))).toBe(20)
+    expect(sessionGoal(lessons(30))).toBe(30)
+    expect(parseGoal(null, sessionGoal(lessons(20)))).toBe(20)
+  })
+
+  it('keeps an explicit pick, whatever the session length', () => {
+    expect(parseGoal(JSON.stringify({ min: 45 }), sessionGoal(lessons(20)))).toBe(45)
+    expect(parseGoal(JSON.stringify({ min: 30 }), sessionGoal(lessons(20)))).toBe(30)
+    expect(parseGoal(JSON.stringify({ min: 15 }), sessionGoal(lessons(30)))).toBe(15)
+  })
+
+  it('falls back to 30 when the lessons data is missing, unreadable or has another length', () => {
+    for (const raw of [null, '', 'nope', '{', 'null', '[]', '20', lessons('20'), lessons(25), lessons(45), lessons(null), JSON.stringify({ v: 1 })])
+      expect(sessionGoal(raw)).toBe(30)
+  })
+
+  it('uses the session length when the stored goal itself is unreadable', () => {
+    expect(parseGoal('{"min":25}', sessionGoal(lessons(20)))).toBe(20)
+    expect(parseGoal('{', 20)).toBe(20)
   })
 })
 

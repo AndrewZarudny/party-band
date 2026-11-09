@@ -15,6 +15,7 @@ import { FEELS } from '../../music/parts'
 import { KEYBOARD_DEVICE, deviceKey, latencyAdvice, loadLatency, micWarning } from '../calibration'
 import { clicksMuted } from '../clock'
 import { DINO_STAGES, dinoStageFor } from '../progress'
+import { LEARN_SESSIONS, fullColds, isReviewItem, standingLabel, standingOf } from '../review'
 import { whereLabel } from '../data'
 import { connectSource } from '../source'
 import { EARN_PASSES, MANUAL_SPEEDS, autoSpeed, bpmAt, bpmPct, pickFor, speedCap } from '../speed'
@@ -113,6 +114,12 @@ export function LessonIntro({
       ? 'Jams play at full speed. Auto slows the band only far under the pass mark, and goes back up after a pass.'
       : `Auto: ${bpmAt(lesson, auto)} BPM. A tempo counts after a clean first try and two more clean runs. Then it goes up about 3 BPM.`
   const trial = rec?.trial
+  // Passed vs learned (plan section 4): a review item is learned once it's clean from cold at full tempo in 2 sessions.
+  const standing = standingLabel(rec)
+  const learnNote =
+    standingOf(rec) === 'passed' && isReviewItem(lesson)
+      ? `Learned once it's clean from cold at full tempo in ${LEARN_SESSIONS} separate sessions (${fullColds(rec)} of ${LEARN_SESSIONS} so far). The cold starts in your session step up to it.`
+      : null
   const pick = pickFor(prefs, lesson.id)
   const speed = pick ?? auto
   const speedOptions: { v: 'auto' | Speed; label: string }[] = [
@@ -197,8 +204,15 @@ export function LessonIntro({
           {rec && rec.plays > 0 && (
             <p className="ls-best">
               <StarPips stars={rec.stars} /> <span className="ls-num">{rec.best}%</span> · best chain <span className="ls-num">{rec.bestChain}</span>
+              {standing && (
+                <>
+                  {' '}
+                  · <span className={`ls-standing ${standingOf(rec)}`}>{standing}</span>
+                </>
+              )}
             </p>
           )}
+          {learnNote && <p className="ls-muted ls-learn-note">{learnNote}</p>}
         </div>
         <div className="ls-intro-dino">
           {lesson.tips[0] && <p className="ls-bubble">{lesson.tips[0]}</p>}

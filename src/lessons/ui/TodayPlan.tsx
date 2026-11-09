@@ -134,7 +134,7 @@ function SetHead({ progress, plan, now }: { progress: Progress; plan: SessionPla
   return (
     <header className="ls-set-head">
       <h2 className="ls-set-h">
-        Session {plan.shape} · {plan.min} min: {SHAPE_LABEL[plan.shape]}
+        Session {plan.shape} · {plan.min} min: {plan.steps.some((s) => s.brake) ? 'Review first' : SHAPE_LABEL[plan.shape]}
       </h2>
       <span className="ls-set-total ls-num">about {planMinutes(plan)} min</span>
       <WeekDots progress={progress} now={now} />
@@ -250,7 +250,10 @@ export function TodayScreen({ progress, onStep, onSwap, onSkip, onPain, onPressu
         {plan && plan.steps.length ? (
           <>
             <SetHead progress={progress} plan={plan} now={now} />
-            <p className="ls-set-intro">Cold starts first, before any warm-up of that piece. New material on its own, then mixed with the rest. A jam to finish. Swap or skip anything.</p>
+            <p className="ls-set-intro">
+              Cold starts first, before any warm-up of that piece.{' '}
+              {plan.steps.some((s) => s.brake) ? 'Review on its own' : 'New material on its own'}, then mixed with the rest. A jam to finish. Swap or skip anything.
+            </p>
             <SetRows progress={progress} plan={plan} fresh={fresh} onStep={onStep} onSwap={onSwap} onSkip={onSkip} paused={paused} />
             <ScoreKey progress={progress} plan={plan} />
             {done && <SetDone progress={progress} plan={plan} />}

@@ -6,17 +6,32 @@ export const GOAL_KEY = 'practice-goal'
 export const GOAL_CHOICES = [15, 20, 30, 45, 60] as const
 export type GoalMin = (typeof GOAL_CHOICES)[number]
 export const DEFAULT_GOAL: GoalMin = 30
+export const LESSONS_KEY = 'lessons-progress'
 
 const isChoice = (v: unknown): v is GoalMin => GOAL_CHOICES.includes(v as GoalMin)
 
-/** The stored goal ({"min": 30}); anything unreadable or not one of the choices is the default. */
-export function parseGoal(raw: string | null): GoalMin {
+/**
+ * The lessons session length (20 or 30) from the stored lessons progress; anything else is 30. Until a goal is
+ * picked, the goal is this (plan section 4, "Daily time goal"): it stays a session's length, not "every day".
+ */
+export function sessionGoal(raw: string | null): GoalMin {
   if (!raw) return DEFAULT_GOAL
   try {
-    const o = JSON.parse(raw) as { min?: unknown } | null
-    return o && typeof o === 'object' && isChoice(o.min) ? o.min : DEFAULT_GOAL
+    const o = JSON.parse(raw) as { sessionMin?: unknown } | null
+    return o && typeof o === 'object' && (o.sessionMin === 20 || o.sessionMin === 30) ? o.sessionMin : DEFAULT_GOAL
   } catch {
     return DEFAULT_GOAL
+  }
+}
+
+/** The stored goal ({"min": 30}); anything unreadable or not one of the choices is the fallback (an explicit pick wins). */
+export function parseGoal(raw: string | null, fallback: GoalMin = DEFAULT_GOAL): GoalMin {
+  if (!raw) return fallback
+  try {
+    const o = JSON.parse(raw) as { min?: unknown } | null
+    return o && typeof o === 'object' && isChoice(o.min) ? o.min : fallback
+  } catch {
+    return fallback
   }
 }
 
@@ -43,15 +58,23 @@ export function ringDash(sec: number, min: number): number {
 /** Whole minutes played so far: "12 / 30 min" never rounds up to a goal that isn't reached yet. */
 export const wholeMin = (sec: number): number => Math.floor(Math.max(0, sec) / 60)
 
-function readRaw(): string | null {
+function readRaw(key: string): string | null {
   try {
-    return localStorage.getItem(GOAL_KEY)
+    return localStorage.getItem(key)
   } catch {
     return null
   }
 }
 
-export const getDailyGoal = (): GoalMin => parseGoal(readRaw())
+// The lessons progress is big and the goal is read on every render: parse it again only when it changed.
+let lessonsSeen: { raw: string | null; min: GoalMin } = { raw: null, min: DEFAULT_GOAL }
+function lessonsGoal(): GoalMin {
+  const raw = readRaw(LESSONS_KEY)
+  if (raw !== lessonsSeen.raw) lessonsSeen = { raw, min: sessionGoal(raw) }
+  return lessonsSeen.min
+}
+
+export const getDailyGoal = (): GoalMin => parseGoal(readRaw(GOAL_KEY), lessonsGoal())
 
 const listeners = new Set<() => void>()
 
@@ -64,9 +87,9 @@ export function setDailyGoal(min: GoalMin): void {
   listeners.forEach((fn) => fn())
 }
 
-// Another tab changed it (or cleared storage).
+// Another tab changed it, or the session length it starts from (or cleared storage).
 const onStorage = (ev: StorageEvent) => {
-  if (ev.key === GOAL_KEY || ev.key === null) listeners.forEach((fn) => fn())
+  if (ev.key === GOAL_KEY || ev.key === LESSONS_KEY || ev.key === null) listeners.forEach((fn) => fn())
 }
 
 export function subscribeGoal(fn: () => void): () => void {

@@ -381,6 +381,7 @@ export interface LessonRecord {
   plays: number
   fails: number // failed runs before the first pass
   passedAt?: number
+  passedSpeed?: Speed // fastest speed of a passing run (old saves: the run nearest the first pass, when the run log has it)
   bestChain: number
   clean: boolean
   playsDay: string // dayKey of playsToday
@@ -427,8 +428,8 @@ export interface HistEntry {
 export interface ReviewState {
   step: number // 0–3, index into SESSION_GAPS
   due: number // session number the next cold test is due at
-  coldPasses: number // clean cold attempts at the cold target, in separate sessions, since the last failed one
-  lastColdS: number // session number of the last counted clean cold attempt at target (0 = none)
+  coldPasses: number // clean cold attempts at full tempo, in separate sessions, since the last failed one
+  lastColdS: number // session number of the last counted clean cold attempt at full tempo (0 = none)
   learned: boolean
   learnedAt?: number // ms
   coldSpeed?: Speed // speed of the next cold test (after a fail: the staircase down); unset = coldSpeedFor's default
@@ -456,6 +457,7 @@ export interface SessionStep {
   items?: string[] // 'mix': lessons played in turn, one run each
   played?: string[] // 'mix': items played so far in this step
   consolidate?: boolean // 'new' in a C session: last session's new item again, blocked
+  brake?: boolean // 'new' under the review brake: a struggling item, blocked, instead of a new lesson
   min: number
   state: 'todo' | 'done' | 'skipped'
   why: string

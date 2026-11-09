@@ -4,6 +4,8 @@ import type { SkillStart } from '../../skills/data'
 import { STAGES, checkpointOf, lessonById, weeksLabel } from '../data'
 import { DINO_STAGES, dinoStageFor, eggCracked, isPassed, isUnlocked, levelFor, nextLesson, stageOpen, starsInStage } from '../progress'
 import { knownChords, planDone, pocketOpen } from '../session'
+import { REVIEW_BRAKE, standingLabel, standingOf, strugglingList } from '../review'
+import { FULL_SPEED, pct } from '../speed'
 import { weakestPair } from '../../skills/chords'
 import { loadStats } from '../../skills/store'
 import { ACHIEVEMENTS } from '../achievements'
@@ -126,7 +128,10 @@ function PathNode({ id, mark, extra, progress, current, onOpen }: { id: string; 
   const unlocked = isUnlocked(progress, id)
   const state = passed ? 'done' : !unlocked ? 'locked' : id === current ? 'current' : 'open'
   const kind = l.boss ? ', checkpoint' : extra ? ', optional' : ''
-  const label = `${l.title}${kind}: ${state === 'locked' ? 'locked' : passed ? `${rec?.stars ?? 0} stars` : 'open'}`
+  const standing = standingLabel(rec)
+  const label = `${l.title}${kind}: ${state === 'locked' ? 'locked' : passed ? `${rec?.stars ?? 0} stars, ${(standing ?? 'passed').toLowerCase()}` : 'open'}`
+  // Passed but not learned shows its pass speed when under full tempo; learned items say so.
+  const tag = standingOf(rec) === 'learned' ? 'learned' : rec?.passedSpeed !== undefined && rec.passedSpeed < FULL_SPEED - 1e-9 ? pct(rec.passedSpeed) : null
   return (
     <li className={`ls-fret ${l.boss ? 'boss' : ''}`}>
       <button className={`ls-node ${state}`} disabled={!unlocked} onClick={() => onOpen(id)} aria-label={label} aria-current={state === 'current' ? 'step' : undefined}>
@@ -136,6 +141,11 @@ function PathNode({ id, mark, extra, progress, current, onOpen }: { id: string; 
         </span>
         <span className="ls-node-title">{l.title}</span>
         {passed && <StarPips stars={rec?.stars ?? 0} />}
+        {passed && tag && (
+          <span className={`ls-node-tag ls-num ${tag === 'learned' ? 'learned' : ''}`} aria-hidden>
+            {tag}
+          </span>
+        )}
       </button>
     </li>
   )
@@ -229,7 +239,10 @@ export function LessonMap({
   const stageName = DINO_STAGES[stage]?.name ?? ''
   const lv = levelFor(progress.xp)
   const current = nextLesson(progress)
-  const currentLesson = current ? lessonById(current) : undefined
+  // Review brake (plan section 4): no new lesson is suggested, but every open lesson on the map still opens.
+  const stuck = strugglingList(progress).length
+  const brake = stuck >= REVIEW_BRAKE
+  const currentLesson = current && !brake ? lessonById(current) : undefined
   const earned = Object.keys(progress.achievements).length
   // Today's session leads the home screen and Continue is one quiet line under it.
   // Once the session is done (or there is none), Continue is the main card again, above it.
@@ -267,6 +280,12 @@ export function LessonMap({
       {notice && (
         <p className="sc-quiet-note" role="status">
           {notice}
+        </p>
+      )}
+
+      {brake && (
+        <p className="sc-quiet-note ls-brake-note" role="status">
+          Review first: {stuck} lessons aren't sticking yet. New ones will be suggested once a few pass their cold start. Any open lesson on the map still plays.
         </p>
       )}
 
@@ -310,7 +329,7 @@ export function LessonMap({
 
       <div className="ls-worlds">
         {STAGES.map((s) => (
-          <StageRow key={s.id} stage={s} progress={progress} current={current} onOpen={onOpen} />
+          <StageRow key={s.id} stage={s} progress={progress} current={brake ? null : current} onOpen={onOpen} />
         ))}
       </div>
 

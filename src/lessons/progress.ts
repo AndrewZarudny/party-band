@@ -31,7 +31,7 @@ import { GROWTH, LEGACY_IDS, LESSONS, ORDER, PLAN_PATH, STAGES, checkpointOf, le
 import { legacyOpen, legacyStage } from './legacyMap'
 import { ACHIEVEMENTS, checkAchievements } from './achievements'
 import { MIN_GRADED, RECENT_MAX, pickLines, pushRecent } from './facts/pick'
-import { bpmAt, cleanSpeed, nextSpeed } from './speed'
+import { bpmAt, cleanSpeed, nextSpeed, snapSpeed } from './speed'
 import { normalizeHeat } from './heat'
 import { HIST_MAX, SESSION_GAPS, applyCold, firstReview, histEntry, isReviewItem, sessionNow, weekStatus } from './review'
 
@@ -185,6 +185,8 @@ function normalizeRecord(raw: unknown, lesson: Lesson | undefined, today: string
     lastPlayed: num(o.lastPlayed, 0),
   }
   if (typeof o.passedAt === 'number') rec.passedAt = o.passedAt
+  const passedSpeed = cleanSpeed(o.passedSpeed)
+  if (passedSpeed !== undefined && rec.passedAt !== undefined) rec.passedSpeed = passedSpeed
   const last = obj(o.last)
   if (last) {
     rec.last = { score: num(last.score, 0), spreadMs: typeof last.spreadMs === 'number' ? last.spreadMs : null, bpm: num(last.bpm, 0), bestChain: num(last.bestChain, 0) }
@@ -245,6 +247,7 @@ function normalizeStep(raw: unknown): SessionStep | null {
   if (played) step.played = played
   if (kind === 'mix' && !items?.length) return null
   if (x.consolidate === true) step.consolidate = true
+  if (x.brake === true) step.brake = true
   if (typeof x.score === 'number') step.score = x.score
   if (typeof x.best === 'number' && isFinite(x.best)) step.best = x.best
   if (typeof x.speed === 'number') step.speed = x.speed
@@ -322,6 +325,27 @@ function normalizeRun(raw: unknown): RunSample | null {
   return s
 }
 
+/** How far from the first pass a logged run may be to count as that pass (the run is logged as it ends). */
+const PASS_MATCH_MS = 5 * 60000
+
+/**
+ * Saves from before passedSpeed: the speed of the logged run nearest the first pass, when the run log still has it.
+ * Nothing is guessed otherwise; the lesson then just shows "Passed". Mutates p.
+ */
+function fillPassedSpeed(p: Progress): void {
+  for (const id of Object.keys(p.lessons)) {
+    const rec = p.lessons[id]
+    const lesson = lessonById(id)
+    const at = rec.passedAt
+    if (at === undefined || rec.passedSpeed !== undefined || !lesson || lesson.type === 'sync') continue
+    const near = p.runs
+      .filter((r) => r.id === id && r.bpm > 0 && Math.abs(r.at - at) <= PASS_MATCH_MS)
+      .sort((a, b) => Math.abs(a.at - at) - Math.abs(b.at - at))[0]
+    const s = near ? cleanSpeed(near.bpm / lesson.bpm) : undefined
+    if (s !== undefined) rec.passedSpeed = s
+  }
+}
+
 /** Checks a parsed value and fills missing fields; null when it isn't progress at all. */
 function normalize(raw: unknown, now = new Date()): Progress | null {
   const o = obj(raw)
@@ -359,6 +383,7 @@ function normalize(raw: unknown, now = new Date()): Progress | null {
   }
   if (Array.isArray(o.weekXp)) p.weekXp = [...new Set(o.weekXp.filter(isDay))].sort().slice(-WEEK_XP_MAX)
   if (Array.isArray(o.runs)) p.runs = o.runs.map(normalizeRun).filter((r): r is RunSample => r !== null).sort((a, b) => a.at - b.at).slice(-RUNS_MAX)
+  fillPassedSpeed(p)
   // The one-time "weeks, not days" note: shown to a save from the day-streak era, and until dismissed.
   if (o.seenWeekly !== true && ('streak' in o || 'dailyGoal' in o || 'sessions' in o)) delete p.seenWeekly
   if (Array.isArray(o.keepOpen)) p.keepOpen = [...new Set(o.keepOpen.filter((id): id is string => typeof id === 'string' && !!lessonById(id)))]
@@ -674,6 +699,8 @@ export function applyResult(p: Progress, lesson: Lesson, r: LessonResult, now: D
   rec.plays++
   if (rec.passedAt === undefined && !r.passed) rec.fails++
   if (r.passed && rec.passedAt === undefined) rec.passedAt = now.getTime()
+  // A pass at any speed unlocks the next lesson; the map shows how fast (learned needs full tempo from cold).
+  if (r.passed && lesson.type !== 'sync') rec.passedSpeed = Math.max(rec.passedSpeed ?? 0, snapSpeed(r.speed))
   rec.bestChain = Math.max(rec.bestChain, r.bestChain)
   rec.clean = rec.clean || r.clean
   rec.playsToday = playsToday + 1

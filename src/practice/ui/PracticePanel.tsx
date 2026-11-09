@@ -3,6 +3,7 @@ import './practice.css'
 import { chartCaption, chartScale } from '../chart'
 import { KINDS } from '../data'
 import { GOAL_CHOICES, reachedGoal, setDailyGoal, useDailyGoal } from '../goal'
+import { openProgress } from '../progressLink'
 import type { PracticeSummary } from '../stats'
 import { KIND_LABEL, fmtDay, fmtDuration, usePractice } from '../stats'
 
@@ -170,6 +171,21 @@ export function PracticePanel({ guest, onClose }: { guest: boolean; onClose: () 
 
         <Chart p={p} goal={goal} />
 
+        {/* Time is half of it: what stuck lives in Lessons, on "Your progress". */}
+        <p className="prac-sticking">
+          <button
+            type="button"
+            className="prac-link"
+            onClick={() => {
+              openProgress()
+              onClose()
+            }}
+          >
+            What's sticking
+          </button>{' '}
+          Cold starts, timing and chord changes, in Lessons.
+        </p>
+
         <div className="prac-goal-set">
           <span id="prac-goal-h" className="prac-goal-h">
             Daily goal
@@ -183,7 +199,7 @@ export function PracticePanel({ guest, onClose }: { guest: boolean; onClose: () 
             ))}
           </div>
           <p id="prac-goal-note" className="prac-goal-note">
-            Counts lessons, songs, jamming and free play. Days off are fine.
+            Starts at your lesson session length. Counts lessons, songs, jamming and free play. Days off are fine.
           </p>
         </div>
 

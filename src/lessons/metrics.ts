@@ -1,11 +1,11 @@
 // The progress screen's numbers (research section 7): plain data for each chart, plus its threshold. Pure.
-import type { PainLevel, Progress } from './types'
+import type { ColdAttempt, LessonRecord, PainLevel, Progress } from './types'
 import type { SkillStats } from '../skills/data'
 import { median } from '../skills/data'
 import { CORE_PAIRS, RETIRE_AT } from '../skills/chords'
 import { ORDER, lessonById } from './data'
 import { dayKey, daysBetween } from './progress'
-import { retentionGap, weekKey, weekStatus } from './review'
+import { LEARN_SESSIONS, isReviewItem, reviewBrake, retentionGap, standingOf, strugglingList, weekKey, weekStatus } from './review'
 
 export const DRIFT_TARGET = 25 // heuristic: under a quarter of a beat (in % of a beat) after 4 silent bars
 export const DRIFT_GAP = 4 // silent bars the drift target is for
@@ -267,4 +267,106 @@ export function painFlags(p: Progress, now: Date = new Date()): { day: string; p
 /** Per counted day: minutes played vs the planned session length (null when no plan was made). */
 export function minutesVsPlan(p: Progress): { day: string; min: number; plan: number | null }[] {
   return p.sessions.log.filter((d) => d.counted).map((d) => ({ day: d.day, min: Math.round(d.sec / 60), plan: d.min ?? null }))
+}
+
+// ---- Summary -----------------------------------------------------------------------------
+
+export interface SummaryLine {
+  label: string
+  text: string
+}
+
+const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+
+/** The newest cold test and the in-session best of the session before it (null when none). Clean or not. */
+function coldVsBest(rec: LessonRecord | undefined): { cold: ColdAttempt; best: number | null } | null {
+  let prevBest: number | null = null
+  let out: { cold: ColdAttempt; best: number | null } | null = null
+  for (const e of rec?.hist ?? []) {
+    if (e.cold) out = { cold: e.cold, best: prevBest }
+    if (e.best !== undefined) prevBest = e.best
+  }
+  return out
+}
+
+/** The item with the widest gap between its in-session best and its cold tempo, among `ids` (first wins a tie). */
+function widestGap(p: Progress, ids: string[]): { id: string; best: number; cold: number; clean: boolean } | null {
+  let top: { id: string; best: number; cold: number; clean: boolean; gap: number } | null = null
+  for (const id of ids) {
+    const g = coldVsBest(p.lessons[id])
+    if (!g || g.best === null) continue
+    const gap = g.best - g.cold.bpm
+    if (gap > 0 && (!top || gap > top.gap)) top = { id, best: g.best, cold: g.cold.bpm, clean: g.cold.clean, gap }
+  }
+  return top
+}
+
+/**
+ * The 2–4 lines at the top of the progress screen: what has stuck, where the biggest gap is, chord changes,
+ * and what comes next. Competence feedback, not points (plan section 9). "Learned" and "struggling" are the
+ * review rules' own (review.ts), so the summary always agrees with the review brake on the daily plan.
+ */
+export function progressSummary(p: Progress, stats: SkillStats): SummaryLine[] {
+  const passed = ORDER.filter((id) => {
+    const l = lessonById(id)
+    return !!l && isReviewItem(l) && standingOf(p.lessons[id]) !== 'open'
+  })
+  const learned = passed.filter((id) => standingOf(p.lessons[id]) === 'learned').length
+  const struggling = strugglingList(p)
+  const lines: SummaryLine[] = []
+
+  // What has stuck. Only lessons in review (notes, chords, rhythm) get cold starts, so the count says so:
+  // the map also counts Tap In and the jams as passed.
+  if (!passed.length)
+    lines.push({ label: 'Sticking', text: 'Nothing to measure yet. Pass a lesson with notes, chords or rhythm, and a cold start in a later session shows what stuck.' })
+  else if (learned === passed.length)
+    lines.push({ label: 'Sticking', text: `${passed.length === 1 ? 'Your lesson in review is' : `All ${passed.length} lessons in review are`} learned: clean from cold at full tempo.` })
+  else
+    lines.push({
+      label: 'Sticking',
+      text: `${learned} of ${count(passed.length, 'lesson')} in review learned so far. Learned means clean from cold at full tempo in ${LEARN_SESSIONS} separate sessions.`,
+    })
+
+  // The widest gap: struggling items first, as the plan reviews them; else any item not learned yet.
+  const notLearned = passed.filter((id) => standingOf(p.lessons[id]) !== 'learned')
+  const gap = widestGap(p, struggling) ?? (struggling.length ? null : widestGap(p, notLearned))
+  if (gap)
+    lines.push({
+      label: 'Biggest gap',
+      text: `${titleOf(gap.id)}, ${gap.best} BPM at best in a session vs ${gap.cold} from cold${gap.clean ? '' : ', not clean yet'}.`,
+    })
+  else if (struggling.length) {
+    const id = struggling[0]
+    const c = coldVsBest(p.lessons[id])!.cold
+    lines.push({ label: 'Furthest to go', text: `${titleOf(id)}: the last cold start, at ${c.bpm} BPM, scored ${c.score}.` })
+  }
+
+  // One-minute changes: the pairs still on their way to 60, best first.
+  const pairs = changesByPair(stats).filter((r) => r.best > 0)
+  if (pairs.length) {
+    const open = pairs.filter((r) => !r.retired).sort((a, b) => b.best - a.best)
+    lines.push({
+      label: 'Chord changes',
+      text: open.length
+        ? `${open
+            .slice(0, 3)
+            .map((r) => `${r.pair} ${r.best}`)
+            .join(', ')} a minute at best. A pair is done at ${RETIRE_AT}.`
+        : `Every pair you've played is at ${RETIRE_AT} a minute or more.`,
+    })
+  }
+
+  // What comes next, by the same rules as today's plan.
+  if (reviewBrake(p))
+    lines.push({
+      label: 'Next',
+      text: `Review before new lessons. ${count(struggling.length, "lesson isn't", "lessons aren't")} sticking yet; new ones come once a few pass their cold start.`,
+    })
+  else if (struggling.length)
+    lines.push({ label: 'Next', text: `${count(struggling.length, 'lesson')} to firm up in your review steps, alongside new lessons.` })
+  else if (!passed.length) lines.push({ label: 'Next', text: 'Start with the first open lesson on the map.' })
+  else if (learned === passed.length) lines.push({ label: 'Next', text: 'Something new: everything you passed has stuck.' })
+  else lines.push({ label: 'Next', text: 'Keep up the cold starts. Each clean one at full tempo moves a lesson closer to learned.' })
+
+  return lines
 }

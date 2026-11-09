@@ -10,8 +10,8 @@ import { drillSpec } from '../lessons/drill'
 import { lessonById, stageOf, validateLessons } from '../lessons/data'
 import { applyResult, dayKey, dinoStageFor, isPassed, isUnlocked, loadProgress, nextLesson, recordSkip, saveProgress } from '../lessons/progress'
 import { bpmAt, pickFor, slowerSpeed, speedFor } from '../lessons/speed'
-import { REST_SEC, markPocket, planAfterLoop, planAfterRun, planAfterSkill, setPain, skipStep, swapStep, withSessionDay, withTodayPlan } from '../lessons/session'
-import { coldRun, coldSpeedFor, isCold } from '../lessons/review'
+import { REST_SEC, markPocket, planAfterLoop, planAfterRun, planAfterSkill, setPain, skipStep, stepOpensCold, swapStep, withSessionDay, withTodayPlan } from '../lessons/session'
+import { coldRun, coldSpeedFor, reviewBrake } from '../lessons/review'
 import { isJam, tabLevelFor } from '../lessons/listen'
 import { openAccountDialog, useAccount } from '../account/session'
 import { loadPrefs, savePrefs } from '../lessons/prefs'
@@ -32,6 +32,7 @@ import { PlayScreen } from '../lessons/ui/PlayScreen'
 import { PlanStrip, TodayScreen } from '../lessons/ui/TodayPlan'
 import { ColdStart, MentalCard } from '../lessons/ui/SessionCards'
 import { ProgressScreen } from '../lessons/ui/ProgressScreen'
+import { lessonsStartScreen, onOpenProgress, progressAsked, progressShown } from '../practice/progressLink'
 import { PlanWeeks } from '../lessons/ui/PlanWeeks'
 import { BasicsSheet } from '../lessons/ui/teach/BasicsSheet'
 import { LoopScreen } from '../lessons/ui/LoopScreen'
@@ -78,8 +79,12 @@ function hasSavedProgress() {
   }
 }
 
-/** After an extra: the next open unpassed extra of its stage, else the plan's next lesson. After anything else: the plan's next lesson. */
+/**
+ * After an extra: the next open unpassed extra of its stage, else the plan's next lesson. After anything else: the plan's next lesson.
+ * None under the review brake: new lessons wait until a few struggling items pass their cold start (plan section 4).
+ */
 function nextAfter(p: Progress, id: string): string | null {
+  if (reviewBrake(p)) return null
   const at = stageOf(id)
   if (at && !at.core) {
     const more = at.stage.extra.slice(at.pos + 1).find((x) => isUnlocked(p, x) && !isPassed(p, x))
@@ -111,7 +116,9 @@ let validated = false
 export function LessonsMode({ onConnect }: { onConnect: () => void }) {
   const [progress, setProgress] = useState<Progress>(loadProgress)
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs)
-  const [screen, setScreen] = useState<Screen>(() => (hasSavedProgress() ? 'home' : 'welcome'))
+  const [screen, setScreen] = useState<Screen>(() => lessonsStartScreen(hasSavedProgress(), progressAsked()))
+  // The progress screen came from the practice dialog: its heading takes focus.
+  const [progressFocus, setProgressFocus] = useState(() => screen === 'progress')
   const [lessonId, setLessonId] = useState<string | null>(null)
   const [syncLesson, setSyncLesson] = useState(false)
   const [syncBack, setSyncBack] = useState<Screen>('home')
@@ -165,6 +172,18 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // "What's sticking" in the practice dialog: the progress screen (asked before this mounted, or while it shows).
+  // Not before the Welcome is done: a new player sets up first.
+  useEffect(() => {
+    progressShown()
+    return onOpenProgress(() => {
+      progressShown()
+      if (!hasSavedProgress()) return
+      setProgressFocus(true)
+      setScreen('progress')
+    })
+  }, [])
+
   const lesson: Lesson | undefined = lessonId ? lessonById(lessonId) : undefined
 
   // Saved in this browser; when signed in, the account sync picks the change up from storage.
@@ -181,6 +200,7 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
   const goHome = useCallback(() => {
     setScreen('home')
     setLast(null)
+    setProgressFocus(false)
   }, [])
 
   // Today's session plan (made once per practice day) and today's session day, when the home or plan screen shows.
@@ -347,9 +367,10 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
     const id = step.lessonId
     const l = lessonById(id)
     if (!l) return
-    if (step.kind === 'cold' && isCold(progress, id, new Date())) {
+    // A review-first step on an item due its cold test takes the test first, then its blocked reps (with rests).
+    if (stepOpensCold(progress, step, new Date())) {
       setLessonId(id)
-      setFromNew(null)
+      setFromNew(step.brake ? id : null)
       setScreen('cold')
       return
     }
@@ -429,6 +450,7 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
       <ColdStart
         title={lesson.title}
         bpm={bpmAt(lesson, speed)}
+        speed={speed}
         onStart={() => startRun({ cold: true, quiet: false, shuffle: false, tab: 'hidden', speed })}
         onBack={() => setScreen('today')}
       />
@@ -501,7 +523,7 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
   } else if (screen === 'pocket-mental') {
     body = <MentalCard progress={progress} onBack={goHome} />
   } else if (screen === 'progress') {
-    body = <ProgressScreen progress={progress} onBack={goHome} onOpen={open} />
+    body = <ProgressScreen progress={progress} onBack={goHome} onOpen={open} focusHeading={progressFocus} />
   } else if (screen === 'weeks') {
     body = <PlanWeeks progress={progress} onBack={goHome} onOpen={open} />
   } else if (screen === 'achievements') {

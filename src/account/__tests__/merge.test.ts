@@ -48,6 +48,15 @@ describe('mergeLessonsProgress', () => {
     expect(ab.achievements).toEqual({ a: 1, b: 2 })
   })
 
+  it('keeps the faster pass speed, whichever record wins', () => {
+    // Passed at 70% here with more plays; at full tempo on the other browser, offline, with fewer.
+    const here = prog({ xp: 500, lessons: { 'w1-02': lessonRec({ plays: 6, lastPlayed: 10, passedAt: 5, passedSpeed: 0.7 }) } })
+    const there = prog({ xp: 300, lessons: { 'w1-02': lessonRec({ plays: 3, lastPlayed: 20, passedAt: 8, passedSpeed: 1 }) } })
+    for (const m of [merge(here, there), merge(there, here)]) {
+      expect(m.lessons['w1-02']).toMatchObject({ plays: 6, passedAt: 5, passedSpeed: 1 })
+    }
+  })
+
   it('heat: per cell the later day wins, then more events; never summed', () => {
     const hc = merge(A, B).heat!.cells
     expect(hc['n:1.1']).toMatchObject({ n: 4, d: D })

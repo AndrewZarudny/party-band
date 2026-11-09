@@ -12,6 +12,9 @@ const RING = 32 // frames kept for the glide test and peaks
 const NEAR = 0.3 // semitones: "at" a pitch for the glide test
 const SYNTH_SEC = 0.25 // synthetic frames after a key or injected onset
 const PEAKS_KEPT = 16
+const RISE_BEFORE_SEC = 0.03
+const ROSE = 1.2 // a frame this much louder than before an attack shows the attack was real
+const SHARPER = 4 // onset ratio: a strum's attack against a re-trigger of the chord ringing before it
 
 export interface InputOpts {
   clock: AudioClock
@@ -20,6 +23,7 @@ export interface InputOpts {
   onsetRatio: number // 1.6 for notes/improv/sync, 1.4 for chords/rhythm (+0.2 on a mic)
   absRms?: number // quietest level an attack can have (default ABS_RMS; higher on a mic)
   refractoryMs: number // clamp(0.45 * chart.minGapBeats * secPerBeat * 1000, 40, 90)
+  strums?: boolean // the chart has strums: a re-trigger of the ringing chord must not hide the next strum
   keyboard: boolean // listen to keys
   useEngine: boolean // subscribe to the engine emitters (false in autoplay / keyboard-only)
 }
@@ -44,6 +48,7 @@ interface Pending {
   ratio: number
   midi: number | null
   lagMs?: number
+  before: number // the level just before the attack
 }
 
 const KEYS: Record<string, KeyName> = {
@@ -73,6 +78,7 @@ export class LessonInput {
   private frameT = 0
   private open: RawFrame | null = null
   private pending: Pending | null = null
+  private lastAttack: Pending | null = null // pending or already sent
   private lastOnsetRaw = -Infinity // any source, emitted or pending
   private lastAttackRaw = -Infinity
   private lastNote: number | null = null
@@ -137,6 +143,7 @@ export class LessonInput {
     cancelAnimationFrame(this.raf)
     this.raf = 0
     this.pending = null
+    this.lastAttack = null
     this.open = null
     this.synth = []
   }
@@ -176,11 +183,35 @@ export class LessonInput {
     const cur = this.frames[this.frames.length - 1]
     if (on.ratio < this.o.onsetRatio || !cur || cur.rms <= (this.o.absRms ?? ABS_RMS)) return
     const raw = this.frameT - on.ageSec
-    if (raw - this.lastOnsetRaw < this.o.refractoryMs / 1000) return
+    let midi: number | null = null
+    if (raw - this.lastOnsetRaw < this.o.refractoryMs / 1000) {
+      // A ringing chord re-triggers the detector between strums: a weak attack that never lifts the level.
+      // A far sharper one right after it (the real strum) is not lost: it replaces it, or follows it when
+      // it was already sent (the judge then tells them apart). Strings of one strum are about as sharp.
+      const p = this.lastAttack
+      if (!this.o.strums || !p || p.raw !== this.lastOnsetRaw || on.ratio < SHARPER * p.ratio || this.roseSince(p)) return
+      if (this.pending === p) {
+        this.pending = null
+        midi = p.midi
+      }
+    }
     if (this.pending) this.flushPending()
-    this.pending = { raw, ratio: on.ratio, midi: null }
+    this.pending = { raw, ratio: on.ratio, midi, before: this.levelBefore(raw) }
+    this.lastAttack = this.pending
     this.lastOnsetRaw = raw
     this.lastAttackRaw = raw
+  }
+
+  /** The loudest frame that ended in the 30 ms before `raw` (the open frame when there is none). */
+  private levelBefore(raw: number): number {
+    let l = -1
+    for (const f of this.frames) if (f.t < raw && f.t >= raw - RISE_BEFORE_SEC) l = Math.max(l, f.rms)
+    return l >= 0 ? l : (this.frames[this.frames.length - 1]?.rms ?? 0)
+  }
+
+  /** A frame since the attack got clearly louder than before it: it was a real attack. */
+  private roseSince(p: Pending): boolean {
+    return this.frames.some((f) => f.t > p.raw && f !== this.open && f.rms > ROSE * p.before)
   }
 
   private handlePitch = (p: PitchFrame | null) => {
