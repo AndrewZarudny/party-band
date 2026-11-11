@@ -141,7 +141,10 @@ function warmupList(p: Progress, now: Date): string[] {
 
 /** Due cold-start items: soonest due first, then fewest cold passes, then map order. */
 export function coldList(p: Progress, now: Date): string[] {
-  return ORDER.map((id, i) => ({ id, i, r: p.lessons[id]?.review }))
+  // The plan's lessons in map order, then the player's song parts that were passed (their lessons are made at run time).
+  const ids = [...ORDER, ...Object.keys(p.lessons).filter((id) => id.startsWith('song:') && !!lessonById(id))]
+  return ids
+    .map((id, i) => ({ id, i, r: p.lessons[id]?.review }))
     .filter((x) => x.r && isCold(p, x.id, now))
     .sort((a, b) => (a.r?.due ?? 0) - (b.r?.due ?? 0) || (a.r?.coldPasses ?? 0) - (b.r?.coldPasses ?? 0) || a.i - b.i)
     .map((x) => x.id)

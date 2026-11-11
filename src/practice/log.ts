@@ -3,6 +3,7 @@
 // being played (input above the noise floor within the last 10 seconds). Seconds gather in memory and are added
 // to this browser's bucket in storage every 15 seconds and when the page goes away.
 import { engine } from '../audio/engine'
+import { onMicInput } from '../lessons/source'
 import { onSignOut, practisingNow } from '../account/activity'
 import type { PracticeKind, Secs } from './data'
 import { DEVICE_KEY, EARLY_HOUR, KINDS, PRACTICE_KEY, dayKey, parseLog, prune, totalsOf, zero } from './data'
@@ -28,7 +29,9 @@ function kindNow(): PracticeKind | null {
   if (document.visibilityState !== 'visible') return null
   const on = practisingNow()
   for (const k of KINDS) if (k !== 'guitar' && on.has(k)) return k
-  if (engine.running && performance.now() - lastSound < IDLE_MS) return 'guitar'
+  // Free playing counts by sound level, which only means the guitar on the cable: a room microphone hears talking
+  // and the TV just as well, so on the mic only runs (lessons, songs, jams, skill rounds) count.
+  if (engine.running && !onMicInput() && performance.now() - lastSound < IDLE_MS) return 'guitar'
   return null
 }
 

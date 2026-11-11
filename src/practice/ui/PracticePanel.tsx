@@ -205,7 +205,7 @@ export function PracticePanel({ guest, onClose }: { guest: boolean; onClose: () 
 
         <p className="prac-how">
           Time counts while a lesson, song or jam is playing, or while you play the connected guitar (it stops after
-          10 seconds of quiet). Each second counts once. A hidden tab doesn't count.
+          10 seconds of quiet). On a microphone only lessons, songs, jams and skill rounds count. Each second counts once. A hidden tab doesn't count.
         </p>
       </div>
     </div>
