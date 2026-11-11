@@ -13,6 +13,7 @@ import { FULL_SPEED, pct } from '../speed'
 import { weakestPair } from '../../skills/chords'
 import { loadStats } from '../../skills/store'
 import { ACHIEVEMENTS } from '../achievements'
+import { pace } from '../weeks'
 import { Dino } from './Dino'
 import { TodayCard } from './TodayPlan'
 import { PocketCard, WeekDots, WeeklyNote } from './SessionCards'
@@ -293,6 +294,9 @@ export function LessonMap({
 }) {
   const [now] = useState(() => new Date())
   const [pair] = useState(() => weakestPair(loadStats(), knownChords(progress)))
+  // Where the lessons stand against the 12-week calendar, in one line; the plan screen says what to do about it.
+  const [stats] = useState(loadStats)
+  const pc = pace(progress, stats, now)
   const stage = dinoStageFor(progress)
   const stageName = DINO_STAGES[stage]?.name ?? ''
   const lv = levelFor(progress.xp)
@@ -345,6 +349,13 @@ export function LessonMap({
           {notice}
         </p>
       )}
+
+      <p className="ls-pace-line">
+        <button className="ls-link" onClick={onWeeks}>
+          {pc.headline}
+        </button>
+        <span className="ls-muted"> · {pc.advice[0]}</span>
+      </p>
 
       {brake && (
         <p className="sc-quiet-note ls-brake-note" role="status">

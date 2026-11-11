@@ -4,7 +4,7 @@ import type { Progress } from '../types'
 import { lessonById } from '../data'
 import { loadStats } from '../../skills/store'
 import type { CheckState } from '../weeks'
-import { PLAN_WEEKS, planWeek } from '../weeks'
+import { PLAN_WEEKS, pace, planWeek } from '../weeks'
 import './metrics.css'
 
 const CHIP: Record<CheckState, string> = { met: 'Met', partial: 'Getting there', open: 'Not yet' }
@@ -12,6 +12,7 @@ const CHIP: Record<CheckState, string> = { met: 'Met', partial: 'Getting there',
 export function PlanWeeks({ progress: p, onBack, onOpen }: { progress: Progress; onBack: () => void; onOpen: (lessonId: string) => void }) {
   const stats = useMemo(loadStats, [])
   const week = planWeek(p, new Date())
+  const pc = pace(p, stats, new Date())
 
   return (
     <section className="ls-panel mt-screen" aria-labelledby="mt-weeks-h">
@@ -28,6 +29,15 @@ export function PlanWeeks({ progress: p, onBack, onOpen }: { progress: Progress;
           </p>
         </div>
       </header>
+
+      <section className={`mt-pace ${pc.state}`} aria-labelledby="mt-pace-h">
+        <h3 id="mt-pace-h">{pc.headline}</h3>
+        <ul>
+          {pc.advice.map((a) => (
+            <li key={a}>{a}</li>
+          ))}
+        </ul>
+      </section>
 
       <ol className="mt-weeks">
         {PLAN_WEEKS.map((w) => {
