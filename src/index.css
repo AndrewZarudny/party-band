@@ -2982,3 +2982,80 @@ code {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Song levels: how the pass is going, and the count-in on screen. */
+.song-level-meter {
+  flex: 1 1 100%;
+  display: grid;
+  gap: 4px;
+  padding-top: 4px;
+}
+.song-level-now {
+  margin: 0;
+  font-size: 1.05em;
+}
+.song-level-now b {
+  font-size: 1.5em;
+  font-variant-numeric: tabular-nums;
+}
+.song-level-now small {
+  color: var(--muted);
+}
+.song-level-bar {
+  position: relative;
+  height: 8px;
+  max-width: 420px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.song-level-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+  transition: width 200ms ease-out;
+}
+.song-level-bar.ok span {
+  background: var(--target);
+}
+.song-level-bar i {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--text);
+}
+.song-level-facts {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9em;
+}
+.song-countin {
+  position: fixed;
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -50%);
+  z-index: 20;
+  display: grid;
+  justify-items: center;
+  padding: 18px 34px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  pointer-events: none;
+}
+.song-countin b {
+  font-size: 84px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+.song-countin span {
+  color: var(--muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .song-level-bar span {
+    transition: none;
+  }
+}

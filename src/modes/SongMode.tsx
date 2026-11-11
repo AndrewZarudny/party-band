@@ -87,6 +87,12 @@ function namesFromFile(fileName: string): { artist: string; title: string } | nu
   return artist && title ? { artist, title } : null
 }
 
+type HitCount = { hit: number; miss: number }
+function clearHits(ref: { current: HitCount }, set: (h: HitCount) => void) {
+  ref.current = { hit: 0, miss: 0 }
+  set({ hit: 0, miss: 0 })
+}
+
 const ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.gp7,.gp8,.musicxml,.mxl,.xml,.cap'
 
 interface Expected {
@@ -154,8 +160,10 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
   const [levels, setLevels] = useState<SongLevels | null>(null)
   const [levelNote, setLevelNote] = useState('')
   const levelRef = useRef<number | 'full' | null>(null)
-  const hitsRef = useRef(hits)
-  hitsRef.current = hits
+  const countRef = useRef<HitCount>({ hit: 0, miss: 0 })
+  // The last full pass of the level being played, for the meter under the level buttons.
+  const [lastPass, setLastPass] = useState<{ pct: number; passed: boolean } | null>(null)
+  const [countBeat, setCountBeat] = useState<number | null>(null)
   const finishRef = useRef<() => void>(() => {})
   const autoLevel = useRef(false) // opened from the Lessons session: start on the next level not passed yet
   const [beatHit, setBeatHit] = useState(false)
@@ -266,12 +274,20 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
       const idx = byName >= 0 ? byName : (pendingTrack.current ?? Math.max(0, s.tracks.findIndex(isGuitar)))
       pendingTrack.current = null
       setTrackIdx(idx)
-      setHits({ hit: 0, miss: 0 })
+      clearHits(countRef, setHits)
     })
     api.playedBeatChanged.on((b) => {
       if (waitRef.current.on) return
       const prev = beatRef.current
-      if (prev && expectedFor(prev).midis.length && !beatHitRef.current) setHits((h) => ({ ...h, miss: h.miss + 1 }))
+      if (prev && expectedFor(prev).midis.length && !beatHitRef.current) {
+        countRef.current.miss++
+        setHits((h) => ({ ...h, miss: h.miss + 1 }))
+      }
+      // A looping level came round to its start: that pass is judged, and the count starts again.
+      if (prev && typeof levelRef.current === 'number' && b.absolutePlaybackStart < prev.absolutePlaybackStart) {
+        finishRef.current()
+        clearHits(countRef, setHits)
+      }
       beatRef.current = b
       beatHitRef.current = false
       setBeat(b)
@@ -302,10 +318,11 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
         api.playbackRange = { startTick: a.start, endTick: b.start + b.calculateDuration() }
         api.tickPosition = a.start
       } else api.playbackRange = null
-      api.isLooping = false
+      api.isLooping = !!s
       levelRef.current = lv
+      setLastPass(null)
       setLevel(lv)
-      setHits({ hit: 0, miss: 0 })
+      clearHits(countRef, setHits)
       setLevelNote('')
     },
     [score, sections],
@@ -325,16 +342,48 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
     }
   }, [score, sections, startLevel])
 
+  // The count-in on screen: one big number per beat while the clicks play, so the start is seen as well as heard.
+  useEffect(() => {
+    if (!playing || !countIn || !score) return
+    const bar = score.masterBars[beatRef.current?.voice.bar.index ?? 0] ?? score.masterBars[0]
+    const beats = Math.max(1, bar?.timeSignatureNumerator ?? 4)
+    const ms = 60000 / Math.max(20, (score.tempo * speed) / 100)
+    let n = 1
+    setCountBeat(1)
+    const id = window.setInterval(() => {
+      n++
+      if (n > beats) {
+        window.clearInterval(id)
+        setCountBeat(null)
+      } else setCountBeat(n)
+    }, ms)
+    return () => {
+      window.clearInterval(id)
+      setCountBeat(null)
+    }
+    // Only when playback starts: a speed change mid-song must not bring the count back.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing])
+
   // The player reached the end of the level: passed or not, and why.
   finishRef.current = () => {
     const lv = levelRef.current
     const id = entryRef.current?.id
     if (lv === null || !id || !track) return
-    const { hit, miss } = hitsRef.current
+    const { hit, miss } = countRef.current
     const total = hit + miss
     const pct = total ? Math.round((100 * hit) / total) : 0
     const name = lv === 'full' ? 'The whole song' : (sections[lv]?.name ?? 'This part')
-    if (!levelPassed(hit, miss, speed)) {
+    // A pass is the part played through: a run that was cut short (stopped, or the cursor moved back) isn't judged.
+    const sec = typeof lv === 'number' ? sections[lv] : undefined
+    const inPart = playableBeats(track).filter((b) => !sec || (b.voice.bar.index >= sec.from && b.voice.bar.index <= sec.to)).length
+    if (total < Math.floor(inPart * 0.8)) {
+      if (total >= MIN_NOTES) setLevelNote(`${name}: play it through to the end for it to count.`)
+      return
+    }
+    const passed = levelPassed(hit, miss, speed)
+    setLastPass({ pct, passed })
+    if (!passed) {
       setLevelNote(
         total < MIN_NOTES
           ? `${name}: no notes heard. Connect the guitar and play along.`
@@ -685,6 +734,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
         if (!beatHitRef.current) {
           beatHitRef.current = true
           setBeatHit(true)
+          countRef.current.hit++
           setHits((h) => ({ ...h, hit: h.hit + 1 }))
         }
         if (waitRef.current.on) gotoWaitBeat(waitRef.current.i + 1)
@@ -843,8 +893,36 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
               </button>
             )}
             <span className="song-levels-note" role="status">
-              {levelNote || (level !== null ? `Press Play. ${PASS_PCT}% of the notes at ${PASS_SPEED}% speed or faster passes it.` : 'Pick a part to play it for a pass.')}
+              {levelNote || (level !== null ? `Press Play. ${typeof level === 'number' ? 'The part loops until you stop. ' : ''}${PASS_PCT}% of the notes at ${PASS_SPEED}% speed or faster passes it.` : 'Pick a part to play it for a pass.')}
             </span>
+            {level !== null && (
+              <div className="song-level-meter">
+                <p className="song-level-now">
+                  <b>{pct}%</b> of the notes right this pass{' '}
+                  <small>
+                    ({hits.hit} of {total})
+                  </small>
+                </p>
+                <div className={`song-level-bar${pct >= PASS_PCT && total >= MIN_NOTES ? ' ok' : ''}`} role="img" aria-label={`${pct} percent right, the pass mark is ${PASS_PCT} percent`}>
+                  <span style={{ width: `${pct}%` }} />
+                  <i style={{ left: `${PASS_PCT}%` }} />
+                </div>
+                <p className="song-level-facts">
+                  {lastPass ? `Last pass: ${lastPass.pct}%, ${lastPass.passed ? 'passed' : 'not yet'}.` : 'No full pass yet.'}{' '}
+                  {(() => {
+                    const best = levels?.track === track?.name ? (level === 'full' ? levels?.full : levels?.passed[String(level)]) : undefined
+                    return best ? `Best: ${best.pct}% at ${best.speed}% speed.` : 'Best: none yet.'
+                  })()}{' '}
+                  Pass mark: {PASS_PCT}%.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+        {countBeat !== null && (
+          <div className="song-countin" role="status" aria-live="assertive">
+            <b>{countBeat}</b>
+            <span>Count-in</span>
           </div>
         )}
         {error && <div className="error">{error}</div>}
@@ -906,7 +984,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
                 <span>
                   {pct}% <small>({hits.hit}/{total})</small>
                 </span>
-                <button className="link" onClick={() => setHits({ hit: 0, miss: 0 })}>
+                <button className="link" onClick={() => clearHits(countRef, setHits)}>
                   reset
                 </button>
               </div>
