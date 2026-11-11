@@ -163,6 +163,18 @@ export function openDb(url: string): AccountsDb {
   // A small pool: one dev server, a band's worth of players. Short connect timeout so a stopped database
   // answers 503 quickly instead of hanging requests.
   const pool: Pool = createPool({ uri: url, connectionLimit: 4, maxIdle: 2, connectTimeout: 5000, enableKeepAlive: true })
+  // A statement that hangs (a lock, a stuck disk) is given up by the server after 40 s, so one bad query can't hold
+  // every later request of that player behind it. Above the 30 s the migration lock may wait.
+  pool.on('connection', (c) => {
+    // This hook gets the driver's plain (callback) connection, whatever the types say: pass a callback, and never throw.
+    try {
+      ;(c as unknown as { query: (sql: string, cb: (err: unknown) => void) => void }).query('SET SESSION max_statement_time = 40', () => {
+        /* an older server without the setting: carry on without it */
+      })
+    } catch {
+      /* no timeout then */
+    }
+  })
 
   /** Runs fn in a transaction; any error rolls it back and comes out as a DbError. */
   async function tx<T>(fn: (c: PoolConnection) => Promise<T>): Promise<T> {

@@ -416,7 +416,12 @@ async function sendRecords(token: string, items: PushRecord[], hashSid: Map<stri
       if (!i.deleted) st.refusedRec[sid] = true
     }
     // The account has a newer copy: it wins, and arrives with the reload.
-    for (const r of stale) delete st.dirtyRec[sidOf(r.store, r.id)]
+    for (const r of stale) {
+      // Not when it was edited again while this push was on its way: that edit is still to send.
+      const sid = sidOf(r.store, r.id)
+      const i = bySid.get(sid)
+      if (!i || st.dirtyRec[sid] === i.t) delete st.dirtyRec[sid]
+    }
   })
   for (const [sid, why] of Object.entries(rejected)) {
     console.warn(`Account didn't take "${sid}": ${why}`)
@@ -1105,8 +1110,10 @@ async function firstMerge(acct: StoredAccount, progress?: Progress): Promise<voi
       dirtyRec[sid] = now
       continue
     }
-    hashes[sid] = r.hash
+    // Only a file this browser really holds is marked as the account's copy. One still to download is marked when it
+    // arrives; marked early, an interrupted first merge would leave a guest's file passing for the account's.
     if (localHash.get(sid) === r.hash) {
+      hashes[sid] = r.hash
       const e = await rawGet(r.store, r.id)
       if (e && stable(metaOf(e)) !== stable(r.meta)) plan.records.push({ kind: 'put', sid, item: r, reuse: e })
       continue

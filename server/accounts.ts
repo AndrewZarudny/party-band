@@ -194,7 +194,12 @@ function tooMany(key: string, limit = FAIL_LIMIT) {
   fails.set(key, list)
   return list.length >= limit
 }
-const noteFail = (key: string) => fails.set(key, [...(fails.get(key) ?? []), Date.now()])
+const noteFail = (key: string, at = Date.now()) => fails.set(key, [...(fails.get(key) ?? []), at])
+const forgetFail = (key: string, at: number) => {
+  const list = fails.get(key) ?? []
+  const i = list.indexOf(at)
+  if (i >= 0) fails.set(key, [...list.slice(0, i), ...list.slice(i + 1)])
+}
 const signups = new Map<string, number[]>() // Wi-Fi address → recent signup times
 
 /** The WSL default gateway (e.g. 172.26.128.1) when running in WSL, else ''. Never X-Forwarded-For: anyone can fake it. */
@@ -270,6 +275,28 @@ function liveHashes(idx: UserIndex) {
 }
 
 /** Recounts the user's content bytes and removes files no live record uses (after the grace time). */
+const TRASH_KEEP_MS = 30 * 24 * 3600 * 1000
+
+/**
+ * A content file nothing points at any more goes to the user's trash folder instead of being deleted: if the
+ * server was started against the wrong or an empty database, the files are still there to put back. The trash
+ * empties itself after 30 days and doesn't count toward the account's space.
+ */
+function toTrash(userDir: string, name: string, file: string) {
+  const trash = path.join(userDir, 'trash')
+  fs.mkdirSync(trash, { recursive: true })
+  fs.renameSync(file, path.join(trash, name))
+  const now = Date.now()
+  for (const old of fs.readdirSync(trash)) {
+    try {
+      const f = path.join(trash, old)
+      if (now - fs.statSync(f).mtimeMs > TRASH_KEEP_MS) fs.unlinkSync(f)
+    } catch {
+      /* gone already */
+    }
+  }
+}
+
 function sweep(l: Loaded) {
   if (l.stale) return // its records may be missing a file's last user
   const dir = path.join(l.dir, 'content')
@@ -296,7 +323,7 @@ function sweep(l: Loaded) {
     const old = now - st.mtimeMs
     try {
       if (HASH_RE.test(name)) {
-        if (!live.has(name) && old > GC_GRACE_MS && !keepContent) fs.unlinkSync(file)
+        if (!live.has(name) && old > GC_GRACE_MS && !keepContent) toTrash(l.dir, name, file)
         else total += st.size
       } else if (name.startsWith('.tmp-') && old > TMP_GRACE_MS) fs.unlinkSync(file)
     } catch {
@@ -478,6 +505,9 @@ async function start(): Promise<boolean> {
     Object.assign(store, load())
     migrate()
     keepContent = fs.existsSync(DB_USED)
+    // The database was used before and isn't configured now: say so loudly, since what is saved from here on
+    // lands in the JSON files and the database never sees it.
+    if (keepContent) console.warn('[accounts] FRETWISE_DB_URL is not set, but this folder ran on MariaDB before: using the JSON files. Check .env.local.')
     started = true
     return true
   }
@@ -1068,13 +1098,15 @@ async function serve(req: IncomingMessage, res: ServerResponse, url: string): Pr
     if (tooMany(key) || tooMany(addr, shared ? SHARED_FAIL_LIMIT : FAIL_LIMIT)) return json(res, 429, { error: 'wait' })
     // Same work whether or not the name exists, so timing doesn't reveal accounts.
     const salt = existing?.salt ?? 'no-such-player'
+    const stamp = Date.now()
+    noteFail(key, stamp)
+    noteFail(addr, stamp)
     const got2 = await scrypt(pw, salt)
     const ok = !!existing && crypto.timingSafeEqual(got2, Buffer.from(existing.hash, 'hex'))
-    if (!existing || !ok) {
-      noteFail(key)
-      noteFail(addr)
-      return json(res, 401, { error: 'wrong' })
-    }
+    if (!existing || !ok) return json(res, 401, { error: 'wrong' })
+    // A right password was never a failed attempt.
+    forgetFail(key, stamp)
+    forgetFail(addr, stamp)
     const token = await issueToken(existing.id)
     const l = loadUser(existing.id)
     return withUser(l, () => json(res, 200, { token, id: existing.id, name: existing.name, rev: l.idx.rev }))

@@ -38,6 +38,8 @@ interface Opts {
   body?: BodyInit
   signal?: AbortSignal
   keepalive?: boolean
+  /** Give up after this long (JSON calls; file transfers have none). A timeout counts as offline: try again later. */
+  timeoutMs?: number
 }
 
 async function send(path: string, o: Opts): Promise<Response> {
@@ -51,7 +53,7 @@ async function send(path: string, o: Opts): Promise<Response> {
       method: o.method ?? 'GET',
       headers,
       body: o.json !== undefined ? JSON.stringify(o.json) : o.body,
-      signal: o.signal,
+      signal: o.signal ?? (o.timeoutMs && typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(o.timeoutMs) : undefined),
       keepalive: o.keepalive,
       cache: 'no-store',
     })
@@ -67,7 +69,8 @@ async function send(path: string, o: Opts): Promise<Response> {
 }
 
 async function json<T>(path: string, o: Opts): Promise<T> {
-  const res = await send(path, o)
+  // A server that never answers (a hung database) must not leave the tab saving forever.
+  const res = await send(path, { timeoutMs: 20000, ...o })
   return (await res.json()) as T
 }
 

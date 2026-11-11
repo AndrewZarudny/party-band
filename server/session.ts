@@ -101,12 +101,18 @@ function readBody(req: IncomingMessage): Promise<string> {
     let data = ''
     req.on('data', (c) => {
       data += c
-      if (data.length > 200_000) req.destroy()
+      if (data.length > 200_000) {
+        req.destroy()
+        reject(new Error('Body too large'))
+      }
     })
     req.on('end', () => resolve(data))
     req.on('error', reject)
   })
 }
+
+const MAX_MEMBERS = 24
+const wrongCodes = new Map<string, number[]>() // Wi-Fi address → recent wrong session codes
 
 const code = () => Array.from({ length: 4 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('')
 
@@ -164,7 +170,18 @@ export async function handleSession(req: IncomingMessage, res: ServerResponse, p
   // /api/session/<code>/events | join | leave
   const m = /^\/api\/session\/([A-Z0-9]{4})\/(events|join|leave)$/.exec(p)
   if (!m) return json(res, 404, { error: 'Not found' }), true
-  if (!session || session.id !== m[1]) return json(res, 404, { error: 'That session has ended or the code is wrong.' }), true
+  if (!session || session.id !== m[1]) {
+    // Guessing codes from the Wi-Fi: a handful of wrong ones, then wait.
+    if (!isLocal(req)) {
+      const addr = req.socket.remoteAddress ?? ''
+      const now = Date.now()
+      const recent = (wrongCodes.get(addr) ?? []).filter((t) => now - t < 10 * 60 * 1000)
+      recent.push(now)
+      wrongCodes.set(addr, recent)
+      if (recent.length > 20) return json(res, 429, { error: 'Too many tries. Wait a few minutes.' }), true
+    }
+    return json(res, 404, { error: 'That session has ended or the code is wrong.' }), true
+  }
   const s = session
 
   if (m[2] === 'events') {
@@ -191,6 +208,8 @@ export async function handleSession(req: IncomingMessage, res: ServerResponse, p
     // Rejoining (page reload) keeps the same id, so the host keeps their role settings.
     // Rejoining keeps the same id (also after a server restart), so the host keeps their role.
     const id = body.id && /^m[a-z0-9]{4,20}$/.test(body.id) ? body.id : `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`
+    // A band, not a crowd: a full session takes no new members (rejoining with a known id still works).
+    if (!s.members.has(id) && s.members.size >= MAX_MEMBERS) return json(res, 429, { error: 'This session is full.' }), true
     s.members.set(id, { id, name, instrument, online: false })
     broadcast()
     json(res, 200, { id })
