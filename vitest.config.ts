@@ -6,5 +6,8 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts', 'server/**/*.test.ts'],
     setupFiles: ['src/test/setup.ts'],
+    // A few tests build and check every lesson or drill: a couple of seconds alone, more than the default
+    // 5 s when the whole suite shares a laptop's cores.
+    testTimeout: 30_000,
   },
 })

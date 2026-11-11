@@ -34,7 +34,8 @@ describe('the plucked lead voice', () => {
   it('stays in range and dies away like a string', () => {
     const p = pluck(SR, 196, seeded(7))
     const rms = (a: number, b: number) => Math.sqrt(p.samples.slice(a, b).reduce((s, v) => s + v * v, 0) / (b - a))
-    expect(Math.max(...p.samples.map(Math.abs))).toBeCloseTo(1, 5)
+    // A loop, not Math.max(...samples): spreading seconds of samples overflows the call stack on some Node builds.
+    expect(p.samples.reduce((m, v) => Math.max(m, Math.abs(v)), 0)).toBeCloseTo(1, 5)
     expect(rms(SR * 2, SR * 2.4)).toBeLessThan(rms(0, SR * 0.2) / 3)
   })
 })
