@@ -1,14 +1,16 @@
 // One-minute chord changes: strum one chord, switch, strum the other. Each clean switch counts.
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { ChordDiagram } from '../../components/PartViews'
 import { guitarShape } from '../../music/parts'
 import { parseChord } from '../../music/theory'
-import { CHANGE_CHORDS, RETIRE_AT, countStrum, emptyCount, judgeStrum, pairKey } from '../chords'
+import { CHANGE_CHORDS, RETIRE_AT, countStrum, emptyCount, judgeStrum, pairKey, weakestPair } from '../chords'
+import { knownChords } from '../../lessons/session'
+import { loadProgress } from '../../lessons/progress'
 import { bestKey, dailyBest } from '../data'
 import { finishRound, loadStats } from '../store'
 import { useGuitar, useKeys, useRoundActivity, useTick } from '../hooks'
 import type { RoundSummary } from './Common'
-import { GameHead, RoundDone, Timer, TrendChart } from './Common'
+import { GameHead, RoundDone, RoundSessionContext, Timer, TrendChart } from './Common'
 
 const ROUND_SEC = 60
 
@@ -50,6 +52,18 @@ export function ChordChanges({ keyboard, onBack, pair: startPair }: { keyboard: 
     setDone(null)
     setEndAt(performance.now() + ROUND_SEC * 1000)
     setRunning(true)
+  }
+
+  // Inside a session's changes block, Again moves on to the weakest pair now (the round just played raised its own best),
+  // so the block's minutes go round the pairs that need them instead of repeating one.
+  const inSession = useContext(RoundSessionContext) !== null
+  const again = () => {
+    const next = inSession ? splitPair(weakestPair(loadStats(), knownChords(loadProgress())) ?? undefined) : null
+    if (next) {
+      setA(next[0])
+      setB(next[1])
+    }
+    start()
   }
 
   const add = (chord: string | null) => {
@@ -110,7 +124,7 @@ export function ChordChanges({ keyboard, onBack, pair: startPair }: { keyboard: 
       {done ? (
         <RoundDone
           s={done}
-          onAgain={start}
+          onAgain={again}
           onBack={onBack}
           actions={
             <button className="ls-btn ghost" onClick={() => setDone(null)}>

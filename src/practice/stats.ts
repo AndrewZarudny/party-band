@@ -1,7 +1,7 @@
 // What the account menu and the practice panel show, worked out from the log.
 import { useMemo, useSyncExternalStore } from 'react'
 import type { PracticeKind, Secs } from './data'
-import { KINDS, dayKey, daysBefore, sum, zero } from './data'
+import { EARLY_HOUR, KINDS, dayKey, daysBefore, practiceDaySec, sum, zero } from './data'
 import type { PracticeSnapshot } from './log'
 import { getPracticeSnapshot, subscribePractice } from './log'
 
@@ -46,7 +46,6 @@ function bar(snap: PracticeSnapshot, date: Date): DayBar {
 
 export function summarize(snap: PracticeSnapshot): PracticeSummary {
   const now = snap.today
-  const todayKey = dayKey(now)
   const monday = (now.getDay() + 6) % 7 // days since Monday
   const week7 = Array.from({ length: 7 }, (_, i) => bar(snap, daysBefore(now, monday - i)))
   const last30 = Array.from({ length: 30 }, (_, i) => bar(snap, daysBefore(now, 29 - i)))
@@ -66,7 +65,9 @@ export function summarize(snap: PracticeSnapshot): PracticeSummary {
   }
   if (best && best.total === 0) best = null
 
-  const todayTotal = sum(snap.days.get(todayKey) ?? zero())
+  // "Today" is the practice day (4 am to 4 am), the day the lessons session counts: a session that runs past
+  // midnight keeps filling the same ring, and the ring and the session card never disagree.
+  const todayTotal = practiceDaySec(snap, dayKey(new Date(now.getTime() - EARLY_HOUR * 3600000)))
 
   const byKind30 = KINDS.map((_, k) => last30.reduce((n, d) => n + d.secs[k], 0))
   return {
