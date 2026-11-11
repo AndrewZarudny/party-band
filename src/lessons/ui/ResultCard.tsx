@@ -11,6 +11,7 @@ import { buildChart } from '../charts'
 import { hardRange } from '../loop'
 import { retentionGap } from '../review'
 import { BarStrip } from './BarStrip'
+import { RunCoach } from './CoachCard'
 import { Dino } from './Dino'
 import { STAR } from './LessonMap'
 import { RestTimer } from './RestTimer'
@@ -314,6 +315,9 @@ export function ResultCard({
           <p className="ls-score ls-num">{result.score}%</p>
           {!result.passed && short > 0 && <p className="ls-almost">Almost! {short} more points for a star.</p>}
         </div>
+        {lesson.type !== 'sync' && (
+          <RunCoach lesson={lesson} result={result} outcome={outcome} block={session ? { timeLeft: session.running, nextButton: session.running ? session.againLabel : session.nextLabel } : null} />
+        )}
         {factLines.length > 0 && (
           <section className="ls-pebble" aria-label={`${p.dinoName} says`}>
             <p className="ls-pebble-who">{p.dinoName} says</p>

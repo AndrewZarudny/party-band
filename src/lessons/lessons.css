@@ -2209,6 +2209,12 @@
   border-radius: 0 8px 8px 0;
   background: var(--panel);
 }
+/* On the result card: the full width of the header, between the score and what the dino says. */
+.lessons .ls-coach-card.in-result,
+.lessons .ls-coach-off.in-result {
+  grid-column: 1 / -1;
+  margin: 0;
+}
 .lessons .ls-coach-who {
   margin: 0 0 6px;
   font-family: var(--font-display);

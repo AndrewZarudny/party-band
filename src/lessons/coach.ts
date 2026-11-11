@@ -1,7 +1,8 @@
 // The coach: a short note from Claude when the player opens Lessons and when a session is done.
 // This file gathers the facts the note is written from (only numbers the app already has) and fetches the note.
 // One note per practice day and moment is kept in this browser, so opening the screen again costs nothing.
-import type { Progress, SessionPlan } from './types'
+import type { ApplyOutcome, Lesson, LessonResult, Progress, SessionPlan } from './types'
+import { bpmAt } from './speed'
 import type { SkillStats } from '../skills/data'
 import { lessonById } from './data'
 import { dayKey, nextLesson } from './progress'
@@ -53,6 +54,47 @@ export function coachFacts(p: Progress, stats: SkillStats, now: Date, moment: Co
     recentTiming: timed.length ? { averageMsLateIsPositive: avg(timed.map((r) => r.mean as number)), spreadMs: avg(timed.filter((r) => r.spread !== null).map((r) => r.spread as number)), runs: timed.length } : null,
     lastHandPain: [...(p.sessions?.log ?? [])].reverse().find((d) => d.pain)?.pain ?? null,
   }
+}
+
+/** What the coach is told after one run: the numbers on the result card, nothing guessed. */
+export function runFacts(lesson: Lesson, r: LessonResult, o: ApplyOutcome, x: { name: string | null; block: { timeLeft: boolean; nextButton: string } | null }) {
+  const p = o.progress
+  const rec = p.lessons[lesson.id]
+  const counts = Object.fromEntries(Object.entries(r.counts).filter(([, n]) => n > 0))
+  return {
+    moment: 'the player just finished one run of a lesson and is looking at its result',
+    player: x.name,
+    dino: p.dinoName,
+    run: {
+      lesson: lesson.title,
+      kind: lesson.type,
+      scorePercent: r.score,
+      passMarkPercent: lesson.pass,
+      passed: r.passed,
+      starsOf3: r.stars,
+      bpm: r.bpm,
+      percentOfFullTempo: Math.round(r.speed * 100),
+      secondsPlayed: Math.round(r.playedSec),
+      notes: counts,
+      timing: r.meanErrMs === null ? null : { averageMsLateIsPositive: Math.round(r.meanErrMs), spreadMs: r.spreadMs },
+      hardestBar: r.hardestBar === null ? null : r.hardestBar + 1,
+      chords: r.chordStats ? { rangTrue: r.chordStats.ok, soundedOff: r.chordStats.wrong, unclear: r.chordStats.unsure } : null,
+      bendCentsOff: r.bendCents ?? null,
+      jam: r.improv ? { scoresOutOf100: Object.fromEntries(Object.entries(r.improv.metrics).map(([k, v]) => [k, Math.round(v ?? 0)])), tips: r.improv.tips } : null,
+      firstTryFromColdToday: o.cold ? { clean: o.cold.clean, bpm: o.cold.bpm } : null,
+    },
+    thisLessonSoFar: rec ? { runs: rec.plays, bestScorePercent: rec.best } : null,
+    whatGotBetter: o.competence,
+    nextTimeBpm: o.speed ? bpmAt(lesson, o.speed.next) : null,
+    newlyOpened: o.unlocked.map(title),
+    sessionBlock: x.block,
+    lastHandPain: [...(p.sessions?.log ?? [])].reverse().find((d) => d.pain)?.pain ?? null,
+  }
+}
+
+/** One key per run. */
+export function runKey(r: LessonResult): string {
+  return `${dayKey(new Date(r.at))}:run:${r.at}`
 }
 
 function read(): Record<string, CoachNote> {

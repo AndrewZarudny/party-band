@@ -76,6 +76,7 @@ Rules:
 - If they were away for several days, welcome them back without guilt. Days off are part of the plan.
 - If hand pain was flagged, put that first and keep the advice gentle.
 - Opening note: set up today in two or three sentences. Finishing note: say what today showed in two to four sentences.
+- Note after one run (the facts then hold "run" instead of the plan): two sentences about this run only. Say what its numbers show, then the one thing to change or keep on the very next run; "next" is that one thing. In a jam there are no wrong notes to count: speak from the jam scores and tips. A pass mark missed by a few points is close, not a failure.
 - "next" is one short, concrete thing to do next (at most 20 words). For a finishing note it may be "rest" or something for the next session.
 - Plain words, no hype, no emoji, no exclamation marks, no headings or lists. Do not mention JSON, data or "the app says".`
 
