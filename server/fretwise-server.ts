@@ -5,7 +5,7 @@ import path from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
 import { createHash } from 'node:crypto'
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { z } from 'zod'
 import type { Cost, Feature, ModelId } from './ai'
 import { aiError, costSummary, getClient, runJson } from './ai'
@@ -79,9 +79,86 @@ Rules:
 - "next" is one short, concrete thing to do next (at most 20 words). For a finishing note it may be "rest" or something for the next session.
 - Plain words, no hype, no emoji, no exclamation marks, no headings or lists. Do not mention JSON, data or "the app says".`
 
+// ---- The coach through Claude Code: the player's own Claude subscription, no API key --------------------------
+// Claude Code is signed in on this computer with the player's Claude account. Run headless (`claude -p`), it answers
+// one prompt and exits; its usage counts against that subscription, exactly as a Claude Code session does.
+
+let claudeCodeFound: boolean | null = null
+/** True when the `claude` command is on this computer's PATH (checked once). */
+function hasClaudeCode(): Promise<boolean> {
+  if (claudeCodeFound !== null) return Promise.resolve(claudeCodeFound)
+  return new Promise((resolve) => {
+    execFile('claude', ['--version'], { timeout: 15000 }, (err) => {
+      claudeCodeFound = !err
+      resolve(claudeCodeFound)
+    })
+  })
+}
+
+const SIGN_IN = "Claude Code's sign-in on this computer has expired or is missing. Open a terminal, run claude, type /login and sign in with your Claude account. Then reload this page."
+
+const COACH_JSON_SCHEMA = JSON.stringify({
+  type: 'object',
+  properties: { message: { type: 'string' }, next: { type: 'string' } },
+  required: ['message', 'next'],
+  additionalProperties: false,
+})
+
+/** The first {...} in a text that parses as a coach note. */
+function noteFromText(text: string): { message: string; next: string } | null {
+  const a = text.indexOf('{')
+  const b = text.lastIndexOf('}')
+  if (a < 0 || b <= a) return null
+  try {
+    const o = JSON.parse(text.slice(a, b + 1)) as { message?: unknown; next?: unknown }
+    return typeof o.message === 'string' && o.message.trim() ? { message: o.message, next: typeof o.next === 'string' ? o.next : '' } : null
+  } catch {
+    return null
+  }
+}
+
+/** One coach note written by Claude Code in headless mode. The facts go in on stdin; nothing is run from the project folder. */
+function coachViaClaudeCode(user: string): Promise<{ message: string; next: string }> {
+  return new Promise((resolve, reject) => {
+    const env = { ...process.env }
+    // The subscription sign-in, never a key that happens to be in the environment.
+    delete env.ANTHROPIC_API_KEY
+    delete env.ANTHROPIC_AUTH_TOKEN
+    const child = spawn(
+      'claude',
+      ['-p', '--output-format', 'json', '--system-prompt', `${COACH_SYSTEM}\n\nAnswer with one JSON object and nothing else: {"message": "...", "next": "..."}.`, '--json-schema', COACH_JSON_SCHEMA],
+      { cwd: os.tmpdir(), env, stdio: ['pipe', 'pipe', 'pipe'] },
+    )
+    let out = ''
+    let errText = ''
+    const timer = setTimeout(() => child.kill(), 120000)
+    child.stdout.on('data', (c) => (out += c))
+    child.stderr.on('data', (c) => (errText += c))
+    child.on('error', (err) => {
+      clearTimeout(timer)
+      reject(err)
+    })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      try {
+        const o = JSON.parse(out) as { result?: unknown; structured_output?: unknown; is_error?: boolean }
+        const s = o.structured_output as { message?: unknown; next?: unknown } | undefined
+        const note = s && typeof s.message === 'string' ? { message: s.message, next: typeof s.next === 'string' ? s.next : '' } : noteFromText(String(o.result ?? ''))
+        if (note && !o.is_error) return resolve(note)
+        reject(new Error(/log ?in|auth|expired/i.test(String(o.result ?? '')) ? SIGN_IN : "Couldn't read the coach's answer."))
+      } catch {
+        reject(new Error(code === 0 ? "Couldn't read the coach's answer." : `Claude Code stopped (${code}): ${errText.slice(0, 200)}`))
+      }
+    })
+    child.stdin.end(`Here are the facts about this player right now. Write the note.\n\n${user}`)
+  })
+}
+
 /** A short coach note from Claude, written from the practice facts the browser sends. */
 async function coachNote(facts: unknown) {
   const user = JSON.stringify(facts).slice(0, 12000)
+  // The player's Claude subscription through Claude Code when it is here; else the API client (a key or an `ant` sign-in).
+  if (await hasClaudeCode()) return { ...(await coachViaClaudeCode(user)), cost: null }
   const { data, cost } = await runJson({
     feature: 'coach',
     model: MODELS.coach,
@@ -555,13 +632,15 @@ export function fretwiseServer(): Plugin {
       // The coach note (this computer only, like every AI call): practice facts in, two short strings out.
       server.middlewares.use('/api/coach', async (req, res) => {
         if (req.method !== 'POST') return json(res, 405, { error: 'POST only' })
-        if (!getClient()) return json(res, 503, { error: 'AI is off' })
+        if (!(await hasClaudeCode()) && !getClient()) return json(res, 503, { error: 'Claude can coach you here through Claude Code and your Claude subscription. Install Claude Code on this computer, sign in, then restart the app.' })
         try {
           const { facts } = JSON.parse(await readBody(req)) as { facts?: unknown }
           if (!facts || typeof facts !== 'object') return json(res, 400, { error: 'No facts' })
           json(res, 200, await coachNote(facts))
         } catch (err) {
-          json(res, 500, { error: aiError(err) })
+          // Not signed in is something the player can fix: say so (503), unlike a failed call (500).
+          const msg = aiError(err)
+          json(res, msg === SIGN_IN ? 503 : 500, { error: msg })
         }
       })
 

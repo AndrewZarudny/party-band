@@ -75,12 +75,15 @@ export function coachKey(p: Progress, now: Date, moment: CoachMoment): string {
   return `${dayKey(now)}:${moment}:${moment === 'done' && plan ? plan.steps.filter((s) => s.state === 'done').length : 0}`
 }
 
-/** Asks the local server for a note. 'off' when the server has no API key; null when the call fails (the app then shows none). */
-export async function fetchCoach(key: string, facts: unknown): Promise<CoachNote | 'off' | null> {
+/** Asks the local server for a note. { off } with the reason when the coach can't run here (not signed in); null when the call fails (the app then shows none). */
+export async function fetchCoach(key: string, facts: unknown): Promise<CoachNote | { off: string } | null> {
   try {
     const res = await fetch('/api/coach', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ facts }) })
     // 503: no Anthropic API key on the server, so the coach is switched off.
-    if (res.status === 503) return 'off'
+    if (res.status === 503) {
+      const why = ((await res.json().catch(() => ({}))) as { error?: unknown }).error
+      return { off: typeof why === 'string' ? why : 'The coach is switched off on this computer.' }
+    }
     if (!res.ok) return null
     const note = (await res.json()) as Partial<CoachNote>
     if (typeof note.message !== 'string' || !note.message.trim()) return null

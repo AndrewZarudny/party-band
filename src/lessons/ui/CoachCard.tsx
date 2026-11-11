@@ -17,7 +17,7 @@ export function CoachCard({ progress, moment }: { progress: Progress; moment: Co
   const key = coachKey(progress, now, moment)
   const [note, setNote] = useState<CoachNote | null>(() => savedCoach(key))
   const [busy, setBusy] = useState(false)
-  const [off, setOff] = useState(false)
+  const [off, setOff] = useState<string | null>(null)
   const { account } = useAccount()
   const snap = useSyncExternalStore(subscribePractice, getPracticeSnapshot)
   const goal = useDailyGoal()
@@ -33,7 +33,7 @@ export function CoachCard({ progress, moment }: { progress: Progress; moment: Co
     void fetchCoach(key, facts).then((n) => {
       if (!live) return
       setBusy(false)
-      if (n === 'off') setOff(true)
+      if (n && 'off' in n) setOff(n.off)
       else if (n) setNote(n)
     })
     return () => {
@@ -43,13 +43,7 @@ export function CoachCard({ progress, moment }: { progress: Progress; moment: Co
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
 
-  if (off) {
-    return (
-      <p className="ls-coach-off ls-muted">
-        Claude can coach you here: sign in once with <code>ant auth login</code> in the terminal (or add an API key to <code>.env.local</code>), then restart the app.
-      </p>
-    )
-  }
+  if (off) return <p className="ls-coach-off ls-muted">{off}</p>
   if (!note && !busy) return null
   return (
     <section className="ls-coach-card" aria-label="A note from Claude, your coach" aria-busy={busy}>
