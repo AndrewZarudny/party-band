@@ -155,7 +155,41 @@ function PathNode({ id, mark, extra, progress, current, onOpen }: { id: string; 
   )
 }
 
-function StageRow({ stage, progress, current, onOpen }: { stage: StageDef; progress: Progress; current: string | null; onOpen: (id: string) => void }) {
+/** A part of one of the player's songs, as a lesson placed in a course week. */
+export interface MapSongPart {
+  id: string // lesson id
+  song: string
+  part: string
+  stage: number
+}
+
+/** A song part's node: open with its week (or once played), like an optional lesson. */
+function SongNode({ sp, open, progress, onOpen }: { sp: MapSongPart; open: boolean; progress: Progress; onOpen: (id: string) => void }) {
+  const rec = progress.lessons[sp.id]
+  const passed = isPassed(progress, sp.id)
+  const unlocked = open || (rec?.plays ?? 0) > 0
+  const state = passed ? 'done' : unlocked ? 'open' : 'locked'
+  return (
+    <li className="ls-fret">
+      <button
+        className={`ls-node ${state}`}
+        disabled={!unlocked}
+        onClick={() => onOpen(sp.id)}
+        aria-label={`${sp.song}, ${sp.part}: ${state === 'locked' ? 'locked' : passed ? `${rec?.stars ?? 0} stars, passed` : 'open'}`}
+      >
+        <span className="ls-node-pick">
+          <PickMark />
+          <span className="ls-node-mark ls-num">{state === 'locked' ? <LockGlyph /> : ''}</span>
+        </span>
+        <span className="ls-node-title">{sp.part}</span>
+        <span className="ls-node-song">{sp.song}</span>
+        {passed && <StarPips stars={rec?.stars ?? 0} />}
+      </button>
+    </li>
+  )
+}
+
+function StageRow({ stage, progress, current, onOpen, parts = [] }: { stage: StageDef; progress: Progress; current: string | null; onOpen: (id: string) => void; parts?: MapSongPart[] }) {
   const open = stageOpen(progress, stage.id)
   const { got, max } = starsInStage(progress, stage.id)
   const i = STAGES.indexOf(stage)
@@ -192,6 +226,16 @@ function StageRow({ stage, progress, current, onOpen }: { stage: StageDef; progr
           </ol>
         </>
       )}
+      {parts.length > 0 && (
+        <>
+          <h4 className="ls-extra-h">From your songs</h4>
+          <ol className="ls-path extra" aria-label={`${stage.weeks ? weeksLabel(stage) : 'Extras'}: parts of your songs`}>
+            {parts.map((sp) => (
+              <SongNode key={sp.id} sp={sp} open={open} progress={progress} onOpen={onOpen} />
+            ))}
+          </ol>
+        </>
+      )}
     </section>
   )
 }
@@ -209,7 +253,7 @@ export function LessonMap({
   onPlanExtra,
   songs = [],
   onSong,
-  onSongLesson,
+  songParts = [],
   onToday,
   onHeat,
   onSkills,
@@ -225,8 +269,8 @@ export function LessonMap({
   /** The player's own songs, shown as a row on the map; a tap opens the song in Learn a song. */
   songs?: { id: string; title: string; done: number; total: number; full: boolean }[]
   onSong?: (id: string) => void
-  /** A part of the song as a lesson on the runway (a trial: the first part with notes). */
-  onSongLesson?: (id: string) => void
+  /** The parts of those songs as lessons, each placed in a course week. */
+  songParts?: MapSongPart[]
   progress: Progress
   onOpen: (id: string) => void
   onHeat: () => void
@@ -353,7 +397,7 @@ export function LessonMap({
               <h3 id="ls-songs">
                 <span>Your songs</span>
               </h3>
-              <span className="ls-world-skill">Real songs beside the plan, one level per part. Today's session plays one of them for 5 minutes.</span>
+              <span className="ls-world-skill">The whole tab, in Learn a song. Their parts are lessons in the weeks below.</span>
             </header>
             <ol className="ls-path extra" aria-label="Your songs">
               {songs.map((sg) => (
@@ -374,18 +418,13 @@ export function LessonMap({
                       </span>
                     )}
                   </button>
-                  {onSongLesson && (
-                    <button className="ls-link ls-song-lesson" onClick={() => onSongLesson(sg.id)}>
-                      Play its first part as a lesson
-                    </button>
-                  )}
                 </li>
               ))}
             </ol>
           </section>
         )}
         {STAGES.map((s) => (
-          <StageRow key={s.id} stage={s} progress={progress} current={brake ? null : current} onOpen={onOpen} />
+          <StageRow key={s.id} stage={s} progress={progress} current={brake ? null : current} onOpen={onOpen} parts={songParts.filter((sp) => sp.stage === s.id)} />
         ))}
       </div>
 

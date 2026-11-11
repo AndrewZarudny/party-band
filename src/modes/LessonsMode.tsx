@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import '../lessons/lessons.css'
 import { engine } from '../audio/engine'
-import type { ApplyOutcome, Cosmetic, Lesson, LessonResult, LoopSpec, LoopSummary, PainLevel, Prefs, Progress, SyncOutcome, TabLevel } from '../lessons/types'
+import type { ApplyOutcome, Cosmetic, Lesson, LessonResult, LoopSpec, LoopSummary, PainLevel, Prefs, Progress, StageId, SyncOutcome, TabLevel } from '../lessons/types'
 import type { SkillStart } from '../skills/data'
 import { buildChart } from '../lessons/charts'
 import { loopSpecFor, recordLoop } from '../lessons/loop'
 import { recordHeat } from '../lessons/heat'
 import { drillSpec } from '../lessons/drill'
-import { lessonById, stageOf, validateLessons } from '../lessons/data'
-import { applyResult, dayKey, dinoStageFor, isPassed, isUnlocked, loadProgress, nextLesson, recordSkip, saveProgress } from '../lessons/progress'
+import { STAGES, lessonById, stageOf, validateLessons } from '../lessons/data'
+import { applyResult, dayKey, dinoStageFor, isPassed, isUnlocked, loadProgress, nextLesson, recordSkip, saveProgress, stageOpen } from '../lessons/progress'
 import { FULL_SPEED, bpmAt, pickFor, slowerSpeed, speedFor } from '../lessons/speed'
 import type { ExtraKind } from '../lessons/session'
 import {
@@ -48,6 +48,7 @@ import { hasUnratedTake } from '../skills/takes'
 import { listSongs } from '../music/library'
 import { levelCount, loadLevels } from '../music/songLevels'
 import { loadStats, onSkillRound } from '../skills/store'
+import type { MapSongPart } from '../lessons/ui/LessonMap'
 import { LessonMap } from '../lessons/ui/LessonMap'
 import { LessonIntro } from '../lessons/ui/LessonIntro'
 import { ResultCard } from '../lessons/ui/ResultCard'
@@ -166,7 +167,8 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
   const [skillStart, setSkillStart] = useState<SkillStart | undefined>(undefined)
   const [skillKey, setSkillKey] = useState(0)
   const [unrated, setUnrated] = useState<boolean | null>(null) // null until the take check is back
-  const [songs, setSongs] = useState<{ id: string; title: string; done: number; total: number; full: boolean }[] | null>(null) // null until the library is read
+  const [songs, setSongs] = useState<{ id: string; title: string; done: number; total: number; full: boolean }[] | null>(null)
+  const [songParts, setSongParts] = useState<MapSongPart[] | null>(null) // null until the songs are read // null until the library is read
   const [notice, setNotice] = useState<string | null>(null)
   const [pressure, setPressure] = useState(false)
   const [staleEngine] = useState(() => import.meta.env.DEV && !engineHasLessons())
@@ -228,12 +230,32 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // The player's own songs, for the session's Song block; the plan waits for the list.
+  // The player's own songs: the list for the map, and every part of them built as a lesson and placed in a course
+  // week (easier parts, fewer notes a beat, in earlier weeks). The plan waits for this.
   useEffect(() => {
     let live = true
-    listSongs()
-      .then((all) => live && setSongs(all.map((x) => ({ id: x.id, title: x.title, ...levelCount(loadLevels(x.id)) })).sort((a, b) => a.title.localeCompare(b.title))))
-      .catch(() => live && setSongs([]))
+    void (async () => {
+      try {
+        const all = await listSongs()
+        const { songLessons } = await import('../lessons/songLesson')
+        const built = all.flatMap((x) => {
+          const r = songLessons(x)
+          return 'parts' in r ? r.parts : []
+        })
+        const weeks = STAGES.filter((st) => st.weeks).map((st) => st.id)
+        const per = Math.max(1, Math.ceil(built.length / weeks.length))
+        const placed = [...built]
+          .sort((a, b) => a.density - b.density)
+          .map((sp, i) => ({ id: sp.id, song: sp.song, part: sp.part, stage: weeks[Math.min(weeks.length - 1, Math.floor(i / per))] as number }))
+        if (!live) return
+        setSongParts(placed)
+        setSongs(all.map((x) => ({ id: x.id, title: x.title, ...levelCount(loadLevels(x.id)) })).sort((a, b) => a.title.localeCompare(b.title)))
+      } catch {
+        if (!live) return
+        setSongParts([])
+        setSongs([])
+      }
+    })()
     return () => {
       live = false
     }
@@ -313,11 +335,13 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
 
   // Today's session plan (made once per practice day) and today's session day, when the home or plan screen shows.
   useEffect(() => {
-    if ((screen !== 'home' && screen !== 'today') || unrated === null || songs === null) return
+    if ((screen !== 'home' && screen !== 'today') || unrated === null || songParts === null) return
     const now = new Date()
     let p = progress
     let changed = false
-    const made = withTodayPlan(p, now, { unratedTake: unrated, stats: loadStats(), songs })
+    // Song parts whose week is open, in map order.
+    const openParts = songParts.filter((sp) => stageOpen(p, sp.stage as StageId)).map((sp) => sp.id)
+    const made = withTodayPlan(p, now, { unratedTake: unrated, stats: loadStats(), songParts: openParts })
     if (made) {
       p = made
       changed = true
@@ -329,7 +353,7 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
       if (sd.weekMet) setNotice(WEEK_NOTE)
     }
     if (changed) updateProgress(p)
-  }, [screen, progress, unrated, songs, updateProgress])
+  }, [screen, progress, unrated, songParts, updateProgress])
 
   // Skill rounds count for the plan's skill blocks (with the round's practice time) and toward today's session.
   useEffect(() => {
@@ -585,22 +609,6 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
     openStep(p.plan.steps.length - 1, 'home', p)
   }
 
-  /** A part of one of the player's songs on the lesson runway (a trial: the first part with notes). */
-  const openSongLesson = (songId: string) => {
-    void (async () => {
-      try {
-        const entry = (await listSongs()).find((x) => x.id === songId)
-        if (!entry) return setNotice("That song isn't in your library any more.")
-        const { songPartLesson } = await import('../lessons/songLesson')
-        const made = songPartLesson(entry)
-        if ('error' in made) return setNotice(made.error)
-        open(made.lesson.id)
-      } catch {
-        setNotice("Couldn't make a lesson from that song.")
-      }
-    })()
-  }
-
   const pocket = (s: SkillStart) => {
     leaveBlock()
     updateProgress(markPocket(progress, new Date()))
@@ -825,7 +833,7 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
         onPlanExtra={extra}
         songs={songs ?? []}
         onSong={onOpenSong}
-        onSongLesson={openSongLesson}
+        songParts={songParts ?? []}
         onToday={() => setScreen('today')}
         onHeat={() => setScreen('heat')}
         onSkills={() => {

@@ -227,7 +227,7 @@ function normalizeStep(raw: unknown): SessionStep | null {
   const x = obj(raw)
   const kind = STEP_KINDS.find((k) => k === x?.kind)
   if (!x || !kind) return null
-  const lessonId = typeof x.lessonId === 'string' && lessonById(x.lessonId) ? x.lessonId : null
+  const lessonId = typeof x.lessonId === 'string' && (lessonById(x.lessonId) || x.lessonId.startsWith('song:')) ? x.lessonId : null
   const sk = obj(x.skill)
   const skill = sk && typeof sk.game === 'string' && SKILL_GAMES.includes(sk.game) ? (sk as unknown as SessionStep['skill']) : undefined
   const sg = obj(x.song)

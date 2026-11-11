@@ -38,8 +38,8 @@ export const SONG_MIN = 5
 export interface PlanCtx {
   unratedTake: boolean
   stats: SkillStats
-  /** The player's own songs (Learn a song): with any, the session gets a Song block on top of its plan. */
-  songs?: { id: string; title: string }[]
+  /** Lesson ids of the player's song parts whose week is open, in map order: with any, the session gets a Song block on top of its plan. */
+  songParts?: string[]
 }
 
 /** Minutes per step (research section 4). Every list sums to the session length. */
@@ -393,11 +393,13 @@ export function makeSessionPlan(p: Progress, now: Date, ctx: PlanCtx): SessionPl
   }
   // A real song before the jam, when the player has any: added on top of the plan (nothing gives up its minutes),
   // a different song each session.
-  const songs = ctx.songs ?? []
+  const songParts = (ctx.songParts ?? []).filter((id) => !!lessonById(id) && !used.has(id))
   const ji = steps.findIndex((x) => x.kind === 'jam')
-  if (songs.length && ji >= 0) {
-    const song = songs[s % songs.length]
-    steps.splice(ji, 0, { ...skillStep('song', undefined, 'One of your songs, in Learn a song: it opens on the next part to pass. Come back to Lessons when the time is up.', SONG_MIN), song: { id: song.id, title: song.title } })
+  if (songParts.length && ji >= 0) {
+    // The next part not passed yet; with all passed, the one played longest ago.
+    const fresh = songParts.find((id) => !isPassed(p, id))
+    const id = fresh ?? [...songParts].sort((a, b) => (p.lessons[a]?.lastPlayed ?? 0) - (p.lessons[b]?.lastPlayed ?? 0))[0]
+    steps.splice(ji, 0, lessonStep(p, 'song', { id, why: fresh ? 'A part of one of your songs. It starts slow; clean runs earn the tempo.' : 'A song part you know: keep it fresh.' }, SONG_MIN))
   }
   // Spare minutes (no cold item, no warm-up) go to blocked reps of the new item, else changes or ear;
   // with none of those the session is simply shorter.
@@ -446,7 +448,7 @@ export function clockText(sec: number): string {
 /** What a step is called on the session card and on buttons. */
 export function stepTitle(s: SessionStep): string {
   if (s.drill) return drillTitle(s.drill)
-  if (s.lessonId) return lessonById(s.lessonId)?.title ?? s.lessonId
+  if (s.lessonId) return lessonById(s.lessonId)?.title ?? (s.lessonId.startsWith('song:') ? 'A part of your song' : s.lessonId)
   if (s.kind === 'mix') return `${s.items?.length ?? 0} lessons in turn`
   if (s.song) return s.song.title
   if (s.kind === 'listenback') return 'Your last jam take'
@@ -465,7 +467,7 @@ const BLOCK_HINT: Record<StepKind, string> = {
   mix: 'On to the next one in the mix.',
   changes: 'Another round.',
   ear: 'Another round.',
-  song: 'Back to the song.',
+  song: 'Play it again until the time is up.',
   jam: 'Jam on.',
 }
 

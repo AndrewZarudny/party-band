@@ -2193,8 +2193,9 @@
   }
 }
 
-.lessons .ls-song-lesson {
+/* A song part's node: the part's name, and the song under it in small type. */
+.lessons .ls-node-song {
   display: block;
-  margin: 4px auto 0;
-  font-size: var(--fs-ui);
+  font-size: var(--fs-xs);
+  color: var(--muted);
 }
