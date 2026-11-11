@@ -25,6 +25,7 @@ const RHYTHM = 6 // lane index of the rhythm lane
 const HOLD_MS = 50
 const SWEEP_MS = 560
 const CELEBRATE_MS = 850
+const STAGE_ORDER = [2, 1, 3, 0, 4] // stage lights come on from the middle out
 
 /** How a judged pill is drawn this frame. */
 export interface PillXf {
@@ -72,6 +73,8 @@ export class RunwayFx {
   private m1 = new Float32Array(7)
   private m3 = new Float32Array(7)
   private roarOn = false
+  /** 0–1: how warmed up the stage is. Every hit lifts it, a miss or wrong note drops it; the stage lights follow. */
+  private heat = 0
   private coolAt = -1e9
   private sweepAt = -1e9
   private sweepK = 0
@@ -234,6 +237,7 @@ export class RunwayFx {
     const c = this.colors
     if (!c) return
     const r = this.roarLevel
+    this.stage(g, w, h)
     if (r > 0.01) {
       if (!this.wash || this.washH !== h) {
         this.wash = g.createLinearGradient(0, h, 0, 0)
@@ -295,6 +299,9 @@ export class RunwayFx {
     const r = h.hit ? R_HIT : v === 'wrong' ? R_WRONG : v === 'miss' ? R_MISS : 0
     this.judgedAt[h.eventId] = this.now
     this.react[h.eventId] = r
+    // The stage warms up hit by hit (about a dozen clean ones to full) and loses a light on a slip.
+    if (r === R_HIT) this.heat = Math.min(1, this.heat + (v === 'perfect' ? 0.09 : v === 'good' ? 0.07 : 0.04))
+    else if (r) this.heat = Math.max(0, this.heat - 0.2)
     if (r !== R_HIT) return
     const q = v === 'perfect' ? 1 : v === 'good' ? 0.7 : 0.45
     const col = v === 'perfect' ? C_TARGET : v === 'good' ? C_TEXT : C_NEXT
@@ -342,6 +349,8 @@ export class RunwayFx {
 
   private celebrate() {
     this.celebrateAt = this.now
+    // the finish: every stage light on
+    this.heat = 1
     if (this.still) return
     for (let s = 0; s < 6; s++) {
       this.amp[s] = 3.5
@@ -353,6 +362,47 @@ export class RunwayFx {
       const y = this.laneY(Math.floor(Math.random() * 6))
       this.parts.spawn(x, y, (Math.random() - 0.5) * 120, -(60 + Math.random() * 140), 0.7 + Math.random() * 0.5, 2.8 + Math.random() * 2, SHAPE_PICK, i % 3 ? C_TARGET : C_ACCENT, LAYER_FRONT, 260, 1.2)
     }
+  }
+
+  /**
+   * Stage lights behind the lanes: beams come on one by one as the stage warms up (middle first), sway slowly,
+   * and breathe with the beat. Kept faint so the fret numbers stay the brightest thing. Reduced motion: no sway, no breathing.
+   */
+  private stage(g: CanvasRenderingContext2D, w: number, h: number) {
+    const heat = this.heat
+    if (heat < 0.04) return
+    const t = this.still ? 0 : this.now / 1000
+    // the closing sweep turns the lights up full for a moment
+    const kc = (this.now - this.celebrateAt) / CELEBRATE_MS
+    const finale = kc >= 0 && kc < 1 ? 1.6 * (1 - kc) : 0
+    const lift = (this.still ? 0.8 : 0.65 + 0.35 * this.pulse) + finale
+    for (let k = 0; k < 5; k++) {
+      const on = Math.min(1, heat * 5 - k)
+      if (on <= 0) break
+      const i = STAGE_ORDER[k]
+      const x0 = w * (0.14 + 0.18 * i)
+      const x1 = x0 + Math.sin(t * (0.33 + 0.06 * i) + i * 1.7) * w * 0.06
+      g.fillStyle = this.palette[i % 3 === 0 ? C_ACCENT : i % 3 === 1 ? C_CHORD : C_TARGET]
+      // three nested cones give the beam a soft edge
+      for (let j = 1; j <= 3; j++) {
+        const spread = w * 0.035 * j
+        g.globalAlpha = on * 0.045 * lift
+        g.beginPath()
+        g.moveTo(x0 - 3, 0)
+        g.lineTo(x0 + 3, 0)
+        g.lineTo(x1 + spread, h)
+        g.lineTo(x1 - spread, h)
+        g.closePath()
+        g.fill()
+      }
+    }
+    // the stage floor glows on the beat
+    if (!this.still) {
+      g.globalAlpha = heat * 0.16 * this.pulse
+      g.fillStyle = this.palette[C_ACCENT]
+      g.fillRect(0, h - 5, w, 5)
+    }
+    g.globalAlpha = 1
   }
 
   /** A band of light that runs left to right along the strings. */

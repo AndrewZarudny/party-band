@@ -25,7 +25,7 @@ export const LIVE_KEYS = ['practice-log']
 export const isLiveKey = (k: string): boolean => LIVE_KEYS.includes(k)
 
 // One key per song or song part.
-export const SYNC_PREFIXES = ['conv:', 'song-tone:', 'tone:', 'original-tone:']
+export const SYNC_PREFIXES = ['conv:', 'song-tone:', 'tone:', 'original-tone:', 'song-levels:']
 
 // Never sent to the server (the server refuses them too).
 export const FORBIDDEN = ['fretwise-account', 'fretwise-sync', 'lessons-account', 't3k-tokens']

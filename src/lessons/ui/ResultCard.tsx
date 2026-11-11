@@ -212,10 +212,21 @@ export function ResultCard({
   onHome,
   onResync,
   onLoop,
+  session = null,
 }: {
   lesson: Lesson
   result: LessonResult
   outcome: ApplyOutcome
+  /**
+   * The run belongs to a block of today's session: the one main button is the block's next move.
+   * While the block has minutes left that is playing again (onAgain); once it is done, the next block.
+   */
+  session?: {
+    running: boolean
+    againLabel: string // "Again", "Jam on", "Next in the mix: Spider Walk"
+    nextLabel: string // "Next: One-minute changes", "Finish the session", "Back to today"
+    onNext: () => void
+  } | null
   /** This lesson's manual speed, null on Auto. */
   pick: number | null
   /** Seconds to rest before the next rep; null = no rest prompt. */
@@ -467,14 +478,39 @@ export function ResultCard({
       )}
 
       <div className="ls-actions">
-        {onNext && (
-          <button ref={primary} className="ls-btn primary" onClick={onNext}>
-            Next lesson
-          </button>
+        {session ? (
+          // A session block: play again while it has minutes left, then on to the next block. One main button either way.
+          session.running ? (
+            <>
+              <button ref={primary} className="ls-btn primary" onClick={onAgain}>
+                {session.againLabel}
+              </button>
+              <button className="ls-btn" onClick={session.onNext}>
+                {session.nextLabel}
+              </button>
+            </>
+          ) : (
+            <>
+              <button ref={primary} className="ls-btn primary" onClick={session.onNext}>
+                {session.nextLabel}
+              </button>
+              <button className="ls-btn" onClick={onAgain}>
+                Again
+              </button>
+            </>
+          )
+        ) : (
+          <>
+            {onNext && (
+              <button ref={primary} className="ls-btn primary" onClick={onNext}>
+                Next lesson
+              </button>
+            )}
+            <button ref={onNext ? undefined : primary} className={`ls-btn ${onNext ? '' : 'primary'}`} onClick={onAgain}>
+              Again
+            </button>
+          </>
         )}
-        <button ref={onNext ? undefined : primary} className={`ls-btn ${onNext ? '' : 'primary'}`} onClick={onAgain}>
-          Again
-        </button>
         {lesson.type !== 'sync' && result.speed > MIN_SPEED && (
           <button className="ls-btn" onClick={onSlower}>
             Slower practice

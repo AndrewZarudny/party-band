@@ -448,14 +448,15 @@ export type TabLevel = 'full' | 'faded' | 'hidden'
 export type PainLevel = 'none' | 'mild' | 'sharp'
 export type SessionMin = 20 | 30
 export type WeekShape = 'A' | 'B' | 'C' | 'D'
-export type StepKind = 'warmup' | 'listenback' | 'cold' | 'new' | 'mix' | 'changes' | 'ear' | 'jam'
+export type StepKind = 'warmup' | 'listenback' | 'cold' | 'new' | 'mix' | 'changes' | 'ear' | 'song' | 'jam'
 
 export interface SessionStep {
   kind: StepKind
   lessonId: string | null // null for skill steps
   skill?: SkillStart // changes, ear, listenback (record), pocket games
-  items?: string[] // 'mix': lessons played in turn, one run each
-  played?: string[] // 'mix': items played so far in this step
+  song?: { id: string; title: string } // 'song': one of the player's own songs, played in Learn a song
+  items?: string[] // 'mix': lessons played in turn, round and round until the block's minutes are played
+  played?: string[] // 'mix': every run so far in this step, in order (an item can be in it more than once)
   consolidate?: boolean // 'new' in a C session: last session's new item again, blocked
   brake?: boolean // 'new' under the review brake: a struggling item, blocked, instead of a new lesson
   min: number
@@ -463,9 +464,12 @@ export interface SessionStep {
   why: string
   from: { best: number; stars: Stars; speed: number; loops?: number }
   drill?: string // a trouble-spot drill (heat cell key)
-  score?: number // set once, by the run that ticked the step (cold: the first try)
+  score?: number // set once, by the block's first run (cold: the first try; mix and skills: the best run)
   best?: number // the best later run of this lesson today (not cold, not drill)
   speed?: number
+  sec?: number // practice seconds played in this block so far: a block runs until its minutes are played
+  runs?: number // runs, loops or rounds finished in this block
+  extra?: boolean // added after the session, to fill the day's minutes ("Keep going")
 }
 
 /** Today's session: made once per practice day. */

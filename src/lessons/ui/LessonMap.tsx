@@ -1,8 +1,12 @@
-import { useState } from 'react'
+import { useState, useSyncExternalStore } from 'react'
+import { getPracticeSnapshot, subscribePractice } from '../../practice/log'
+import { practiceDaySec } from '../../practice/data'
+import { useDailyGoal } from '../../practice/goal'
 import type { PainLevel, Progress, SessionPlan, StageDef, Stars } from '../types'
 import type { SkillStart } from '../../skills/data'
 import { STAGES, checkpointOf, lessonById, weeksLabel } from '../data'
 import { DINO_STAGES, dinoStageFor, eggCracked, isPassed, isUnlocked, levelFor, nextLesson, stageOpen, starsInStage } from '../progress'
+import type { ExtraKind } from '../session'
 import { knownChords, planDone, pocketOpen } from '../session'
 import { REVIEW_BRAKE, standingLabel, standingOf, strugglingList } from '../review'
 import { FULL_SPEED, pct } from '../speed'
@@ -202,6 +206,9 @@ export function LessonMap({
   onPlanStep,
   onPlanSwap,
   onPlanSkip,
+  onPlanExtra,
+  songs = [],
+  onSong,
   onToday,
   onHeat,
   onSkills,
@@ -213,6 +220,10 @@ export function LessonMap({
   onSeenWeekly,
   notice,
 }: {
+  onPlanExtra: (kind: ExtraKind, leftSec: number) => void
+  /** The player's own songs, shown as a row on the map; a tap opens the song in Learn a song. */
+  songs?: { id: string; title: string; done: number; total: number; full: boolean }[]
+  onSong?: (id: string) => void
   progress: Progress
   onOpen: (id: string) => void
   onHeat: () => void
@@ -250,6 +261,11 @@ export function LessonMap({
   const setDone = showSet && planDone(plan)
   // The session already plays the current lesson next: no second link to it.
   const inSetTodo = !!plan && plan.steps.some((s) => s.lessonId === current && !s.drill && s.state === 'todo')
+  // Session done but the day's minutes aren't: the session card offers one more block, so Continue stays a quiet link.
+  const snap = useSyncExternalStore(subscribePractice, getPracticeSnapshot)
+  const goal = useDailyGoal()
+  const goalIn = !plan || goal * 60 - practiceDaySec(snap, plan.day) < 90
+  const quietContinue = showSet && (!setDone || !goalIn)
 
   return (
     <div className="ls-home">
@@ -300,7 +316,7 @@ export function LessonMap({
         </div>
       )}
 
-      {currentLesson && (!showSet || setDone) && (
+      {currentLesson && !quietContinue && (
         <div className="ls-continue">
           <div>
             <p className="ls-continue-label">Continue: {currentLesson.title}</p>
@@ -313,12 +329,12 @@ export function LessonMap({
       )}
 
       {showSet && (
-        <TodayCard progress={progress} plan={plan} onStep={onPlanStep} onSwap={onPlanSwap} onSkip={onPlanSkip} onToday={onToday} onPain={onPain} onPressure={onPressure} />
+        <TodayCard progress={progress} plan={plan} onStep={onPlanStep} onSwap={onPlanSwap} onSkip={onPlanSkip} onToday={onToday} onPain={onPain} onPressure={onPressure} onExtra={onPlanExtra} />
       )}
 
       {showSet && <PocketCard open={pocketOpen(progress, now)} pair={pair} onPick={onPocket} />}
 
-      {currentLesson && showSet && !setDone && !inSetTodo && (
+      {currentLesson && quietContinue && !inSetTodo && (
         <p className="ls-continue-also">
           or continue with:{' '}
           <button className="ls-link" onClick={() => onOpen(currentLesson.id)}>
@@ -328,6 +344,38 @@ export function LessonMap({
       )}
 
       <div className="ls-worlds">
+        {songs.length > 0 && onSong && (
+          <section className="ls-world open extras" aria-labelledby="ls-songs">
+            <header className="ls-world-head">
+              <h3 id="ls-songs">
+                <span>Your songs</span>
+              </h3>
+              <span className="ls-world-skill">Real songs beside the plan, one level per part. Today's session plays one of them for 5 minutes.</span>
+            </header>
+            <ol className="ls-path extra" aria-label="Your songs">
+              {songs.map((sg) => (
+                <li key={sg.id} className="ls-fret">
+                  <button
+                    className={`ls-node ${sg.full ? 'done' : 'open'}`}
+                    onClick={() => onSong(sg.id)}
+                    aria-label={`${sg.title}: ${sg.full ? 'whole song passed' : sg.total ? `${sg.done} of ${sg.total} parts passed` : 'not started'}, open in Learn a song`}
+                  >
+                    <span className="ls-node-pick">
+                      <PickMark />
+                      <span className="ls-node-mark ls-num">{sg.total ? sg.done : ''}</span>
+                    </span>
+                    <span className="ls-node-title">{sg.title}</span>
+                    {sg.total > 0 && (
+                      <span className="ls-node-tag ls-num" aria-hidden>
+                        {sg.full ? 'whole song' : `${sg.done}/${sg.total} parts`}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
         {STAGES.map((s) => (
           <StageRow key={s.id} stage={s} progress={progress} current={brake ? null : current} onOpen={onOpen} />
         ))}

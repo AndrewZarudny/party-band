@@ -1,9 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import type { LessonRecord, LoopSummary, Progress, SessionDay, SessionMin, SessionPlan, StepKind, WeekShape } from '../types'
+import type { Lesson, LessonRecord, LoopSummary, Progress, SessionDay, SessionMin, SessionPlan, StepKind, WeekShape } from '../types'
 import type { SkillEntry } from '../../skills/data'
 import { emptyStats } from '../../skills/data'
 import {
   TEMPLATES,
+  blockLine,
+  clockText,
+  extraOptions,
+  jamPasses,
+  mixNext,
+  passSec,
+  planAddTime,
+  planPlayedSec,
+  stepLeftSec,
+  stepStarted,
+  withExtraStep,
   ctxDefault,
   knownChords,
   makeSessionPlan,
@@ -29,6 +40,8 @@ import {
 import { importProgress, newProgress, nextLesson } from '../progress'
 import { firstReview } from '../review'
 import { dayNum } from '../heat'
+import { buildChart, jamChart } from '../charts'
+import { lessonById } from '../data'
 import { at, oldMapSave, rec, result } from './fixtures'
 
 const NOW = at('2026-11-04') // a Wednesday; the week starts on Monday 2026-11-02
@@ -224,7 +237,7 @@ describe('mix and skills', () => {
     p.lessons['w1-03'].review = firstReview(0) // cold today
     const mix = plan(p).plan.steps.find((s) => s.kind === 'mix')!
     expect(mix.items).toEqual(['w1-05', 'w1-02', 'w1-04'])
-    expect(mix.why).toMatch(/^[^:]+, .+, .+\. One run each, in turn\.$/)
+    expect(mix.why).toMatch(/^[^:]+, .+, .+\. One run each, in turn, then round again\.$/)
     expect(mix.played).toEqual([])
   })
 
@@ -268,7 +281,7 @@ describe('ticking steps', () => {
     expect(steps.map((s) => s.kind)).toEqual(['warmup', 'new', 'changes', 'ear', 'jam'] satisfies StepKind[])
     let finished = 0
     for (const s of steps) {
-      const r = s.lessonId ? planAfterRun(p, s.lessonId, result({ lessonId: s.lessonId, score: 80 }), NOW) : planAfterSkill(p, entry(s.skill!.game === 'find' ? 'find' : 'ear'), NOW)
+      const r = s.lessonId ? planAfterRun(p, s.lessonId, result({ lessonId: s.lessonId, score: 80 }), NOW, { sec: s.min * 60 }) : planAfterSkill(p, entry(s.skill!.game === 'find' ? 'find' : 'ear'), NOW, s.min * 60)
       finished += r.finished ? 1 : 0
       p = r.progress
     }
@@ -278,21 +291,21 @@ describe('ticking steps', () => {
     expect(sd.progress.sessions.log[0]).toMatchObject({ day: '2026-11-04', set: true, counted: true, min: 30, shape: 'A' })
   })
 
-  it('a mix step is done after one run of 2 items; a rating ticks listen back; a changes pair must match', () => {
+  it('a mix step is done once its minutes are played over 2 items; a rating ticks listen back; a changes pair must match', () => {
     const b = base([day('2026-11-02')])
     let p: Progress = plan(b, NOW, { unratedTake: true, stats: { ...emptyStats() } })
     const mi = p.plan!.steps.findIndex((s) => s.kind === 'mix')
     const items = p.plan!.steps[mi].items!
-    p = planAfterRun(p, items[0], result({ lessonId: items[0] }), NOW).progress
+    p = planAfterRun(p, items[0], result({ lessonId: items[0] }), NOW, { sec: 600 }).progress
     expect(p.plan!.steps[mi]).toMatchObject({ state: 'todo', played: [items[0]] })
-    p = planAfterRun(p, items[1], result({ lessonId: items[1] }), NOW).progress
+    p = planAfterRun(p, items[1], result({ lessonId: items[1] }), NOW, { sec: 30 }).progress
     expect(p.plan!.steps[mi].state).toBe('done')
     expect(planAfterSkill(p, entry('rate', 4), NOW).progress.plan!.steps.find((s) => s.kind === 'listenback')!.state).toBe('done')
     const q = { ...base(), lessons: { ...base().lessons, 'w3-09': passed() } }
     const qp = plan(q)
     const ci = qp.plan.steps.findIndex((s) => s.kind === 'changes')
     expect(planAfterSkill(qp, entry('changes', 30, 'D-E'), NOW).progress.plan!.steps[ci].state).toBe('todo')
-    expect(planAfterSkill(qp, entry('changes', 30, qp.plan.steps[ci].skill?.game === 'changes' ? qp.plan.steps[ci].skill.pair : ''), NOW).progress.plan!.steps[ci].state).toBe('done')
+    expect(planAfterSkill(qp, entry('changes', 30, qp.plan.steps[ci].skill?.game === 'changes' ? qp.plan.steps[ci].skill.pair : ''), NOW, 600).progress.plan!.steps[ci].state).toBe('done')
   })
 
   it('a drill loop ticks only the drill step', () => {
@@ -302,7 +315,7 @@ describe('ticking steps', () => {
     const q = plan(p)
     expect(q.plan.steps[0]).toMatchObject({ kind: 'warmup', drill: 'n:2.7', lessonId: 'w1-03' })
     const s = { passes: [{ speed: 0.85, acc: 0.5, clean: false }, { speed: 0.9, acc: 0.95, clean: true }], clean: 1, topSpeed: 0.9 } as LoopSummary
-    expect(planAfterLoop(q, 'n:2.7', s, NOW).progress.plan!.steps[0]).toMatchObject({ state: 'done', score: 95, speed: 0.9 })
+    expect(planAfterLoop(q, 'n:2.7', s, NOW, 600).progress.plan!.steps[0]).toMatchObject({ state: 'done', score: 95, speed: 0.9 })
     expect(planAfterRun(q, 'w1-03', result({ lessonId: 'w1-03' }), NOW).progress.plan!.steps[0].state).toBe('todo')
   })
 
@@ -311,7 +324,7 @@ describe('ticking steps', () => {
     const cell = (n: number, bad: number, wrong: number) => ({ n, bad, wrong, early: 0, late: 0, err: 0, d, l: 'w1-03' })
     const q = plan({ ...base(), heat: { v: 1 as const, cells: { 'n:2.7': cell(30, 18, 15), 'n:1.3': cell(20, 1, 0) } } })
     const loop = (acc: number) => ({ passes: [{ speed: 0.9, acc, clean: acc > 0.9 }], clean: acc > 0.9 ? 1 : 0, topSpeed: 0.9 }) as LoopSummary
-    const first = planAfterLoop(q, 'n:2.7', loop(0.6), NOW).progress
+    const first = planAfterLoop(q, 'n:2.7', loop(0.6), NOW, 600).progress
     const better = planAfterLoop(first, 'n:2.7', loop(0.88), NOW)
     expect(better.finished).toBe(false)
     expect(better.progress.plan!.steps[0]).toMatchObject({ state: 'done', score: 60, best: 88 })
@@ -410,12 +423,12 @@ describe('session card scores: labelled, first try or best today', () => {
     const ci = steps.findIndex((s) => s.kind === 'cold')
     const ji = steps.findIndex((s) => s.kind === 'jam')
     const jam = steps[ji].lessonId!
-    p = planAfterRun(p, 'w1-03', result({ lessonId: 'w1-03', score: 22 }), NOW).progress
+    p = planAfterRun(p, 'w1-03', result({ lessonId: 'w1-03', score: 22 }), NOW, { sec: 600 }).progress
     p = planAfterRun(p, 'w1-03', result({ lessonId: 'w1-03', score: 90 }), NOW).progress
     expect(p.plan!.steps[ci]).toMatchObject({ state: 'done', score: 22 })
     expect(p.plan!.steps[ci].best).toBeUndefined()
     expect(stepScore(p, p.plan!.steps[ci])).toEqual({ label: 'cold', value: 22, ever: 85 })
-    p = planAfterRun(p, jam, result({ lessonId: jam, score: 60 }), NOW).progress
+    p = planAfterRun(p, jam, result({ lessonId: jam, score: 60 }), NOW, { sec: 3600 }).progress
     p = planAfterRun(p, jam, result({ lessonId: jam, score: 72 }), NOW).progress
     p = planAfterRun(p, jam, result({ lessonId: jam, score: 50 }), NOW).progress
     expect(p.plan!.steps[ji]).toMatchObject({ score: 60, best: 72 })
@@ -448,5 +461,110 @@ describe('session card scores: labelled, first try or best today', () => {
     expect(stepSource(step('warmup', 'w5-01'))).toBeNull()
     expect(stepSource(step('warmup', 'w1-03', { drill: 'n:2.7' }))).toBeNull()
     expect(stepSource(step('jam', 'w8-01'))).toBeNull()
+  })
+})
+
+describe('blocks run on the clock', () => {
+  const run = (p: Progress, id: string, c = {}, score = 80) => planAfterRun(p, id, result({ lessonId: id, score }), NOW, c)
+
+  it('one run does not end a block; it ends within 20 s of its minutes', () => {
+    const p: Progress = plan(base())
+    const w = p.plan!.steps[0]
+    expect(w).toMatchObject({ kind: 'warmup', min: 2 })
+    let t = run(p, w.lessonId!, { sec: 30 })
+    expect(t).toMatchObject({ finished: false, step: 0 })
+    expect(t.progress.plan!.steps[0]).toMatchObject({ state: 'todo', sec: 30, runs: 1, score: 80 })
+    expect(stepStarted(t.progress.plan!.steps[0])).toBe(true)
+    expect(stepLeftSec(t.progress.plan!.steps[0])).toBe(90)
+    t = run(t.progress, w.lessonId!, { sec: 30 }, 90)
+    expect(t.progress.plan!.steps[0]).toMatchObject({ state: 'todo', sec: 60, runs: 2, score: 80, best: 90 })
+    // the rest between reps counts too, and closes the block once something was played
+    t = planAddTime(t.progress, 0, 40, NOW)
+    expect(t.progress.plan!.steps[0]).toMatchObject({ state: 'done', sec: 100 })
+    expect(planDone(t.progress.plan!)).toBe(false)
+    expect(planPlayedSec(t.progress.plan!)).toBe(100)
+    // time alone never closes a block nothing was played in
+    expect(planAddTime(p, 0, 500, NOW).progress.plan!.steps[0]).toMatchObject({ state: 'todo', sec: 500 })
+  })
+
+  it('a clean cold start ends its block at once; a slipped one stays open for reps with the tab', () => {
+    const p0 = base([day('2026-11-02')])
+    p0.lessons['w1-03'].review = firstReview(0)
+    const p = plan(p0)
+    const ci = p.plan.steps.findIndex((s) => s.kind === 'cold')
+    expect(run(p, 'w1-03', { sec: 25, coldClean: true }).progress.plan!.steps[ci].state).toBe('done')
+    const slipped = run(p, 'w1-03', { sec: 25 }, 22).progress
+    expect(slipped.plan!.steps[ci]).toMatchObject({ state: 'todo', score: 22 })
+    const again = run(slipped, 'w1-03', { sec: 25 }, 90).progress.plan!.steps[ci]
+    expect(again).toMatchObject({ state: 'todo', score: 22, runs: 2 })
+    expect(again.best).toBeUndefined()
+  })
+
+  it('a full tempo earned ends the new block; Skip closes a started block as done; a running block keeps its lesson', () => {
+    const p = plan(base())
+    const ni = p.plan.steps.findIndex((s) => s.kind === 'new')
+    const id = p.plan.steps[ni].lessonId!
+    expect(run(p, id, { sec: 20, mastered: true }).progress.plan!.steps[ni].state).toBe('done')
+    const started = run(p, id, { sec: 20 }).progress
+    expect(swapOptions(started, ni, NOW)).toEqual([])
+    expect(skipStep(started, ni).plan!.steps[ni].state).toBe('done')
+    expect(planStarted(started, NOW)).toBe(true)
+  })
+
+  it('a mix goes round its items; a changes block takes other pairs after its first round', () => {
+    let p: Progress = plan(base([day('2026-11-02')]))
+    const mi = p.plan!.steps.findIndex((s) => s.kind === 'mix')
+    const items = p.plan!.steps[mi].items!
+    const order: string[] = []
+    for (let k = 0; k < 4; k++) {
+      const id = mixNext(p.plan!.steps[mi])!
+      order.push(id)
+      p = run(p, id, { sec: 10 }).progress
+    }
+    expect(order).toEqual([items[0], items[1], items[2], items[0]])
+    const q = plan({ ...base(), lessons: { ...base().lessons, 'w3-09': passed() } })
+    const ci = q.plan.steps.findIndex((s) => s.kind === 'changes')
+    const pair = (q.plan.steps[ci].skill as { pair: string }).pair
+    const one = planAfterSkill(q, entry('changes', 30, pair), NOW, 60).progress
+    expect(one.plan!.steps[ci]).toMatchObject({ state: 'todo', sec: 60, runs: 1 })
+    expect(planAfterSkill(one, entry('changes', 40, 'D-E'), NOW, 60).progress.plan!.steps[ci]).toMatchObject({ sec: 120, runs: 2, score: 40 })
+  })
+
+  it('a jam block is split into runs of at most 5 minutes, never under one pass', () => {
+    const shuffle = { bars: 24, bpm: 80 } as Lesson // 72 s a pass
+    expect(passSec(shuffle, 1)).toBe(72)
+    expect(jamPasses(shuffle, 1, 600)).toBe(4)
+    expect(jamPasses(shuffle, 1, 300)).toBe(4)
+    expect(jamPasses(shuffle, 1, 360)).toBe(3) // two runs of 3 minutes
+    expect(jamPasses(shuffle, 1, 30)).toBe(1)
+    expect(jamPasses(shuffle, 1, 0)).toBe(1)
+    expect(buildChart(lessonById('w8-06')!).bars).toBe(24)
+    const long = jamChart(lessonById('w8-06')!, 4)
+    expect(long).toMatchObject({ bars: 96, totalBeats: 384, lessonId: 'w8-06' })
+    expect(long.chordTimeline[12].symbol).toBe(long.chordTimeline[0].symbol)
+    // call and response jams repeat their calls
+    expect(jamChart(lessonById('w7-03')!, 2).listenBars.length).toBe(16)
+    expect(jamChart(lessonById('w1-02')!, 3).bars).toBe(lessonById('w1-02')!.bars)
+  })
+
+  it('keep going: an extra block joins the finished plan, a jam first', () => {
+    let p: Progress = plan(base())
+    for (const s of p.plan!.steps) p = s.lessonId ? run(p, s.lessonId, { sec: s.min * 60 }).progress : planAfterSkill(p, entry(s.skill!.game === 'find' ? 'find' : 'ear'), NOW, s.min * 60).progress
+    expect(planDone(p.plan!)).toBe(true)
+    const opts = extraOptions(p, NOW, ctx, 8 * 60)
+    expect(opts.map((o) => o.kind)).toEqual(['jam', 'reps', 'changes'])
+    expect(opts[0]).toMatchObject({ min: 8 })
+    expect(opts[0].label).toMatch(/^Jam: /)
+    expect(extraOptions(p, NOW, ctx, 30)[0].min).toBe(2)
+    expect(extraOptions(p, NOW, ctx, 3000)[0].min).toBe(10)
+    const more = withExtraStep(p, NOW, ctx, 'jam', 8 * 60)
+    const last = more.plan!.steps[more.plan!.steps.length - 1]
+    expect(last).toMatchObject({ kind: 'jam', min: 8, extra: true, state: 'todo' })
+    expect(stepSource(last)).toBe('Extra time')
+    expect(planDone(more.plan!)).toBe(false)
+    const saved = importProgress(JSON.stringify(run(more, last.lessonId!, { sec: 100 }).progress), NOW)!.plan!.steps
+    expect(saved[saved.length - 1]).toMatchObject({ extra: true, sec: 100, runs: 1 })
+    expect(clockText(65)).toBe('1:05')
+    expect(blockLine({ ...last, sec: 65 })).toBe('Jam: 1:05 of 8 min. Jam on.')
   })
 })

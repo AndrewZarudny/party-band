@@ -1,6 +1,19 @@
 // Small pieces every skill game shares: the header, the round summary and a progress chart.
-import { useEffect, useRef } from 'react'
+import { createContext, useContext, useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
+import { practice } from '../../account/activity'
+
+/** The round belongs to a block of today's session: the block's clock, and the one main button's next move. */
+export interface RoundSession {
+  text: string // "Changes: 1:05 of 4 min. Another round." or "Changes done."
+  running: boolean // the block has minutes left: Again is the main button
+  nextLabel: string // "Next: Call and response"
+  onNext: () => void
+}
+// eslint-disable-next-line react-refresh/only-export-components
+export const RoundSessionContext = createContext<RoundSession | null>(null)
+
+const GAP_MS = 30000 // the pause after a round that still counts as practice (lessons/session.ts GAP_SEC)
 
 export function GameHead({ title, sub, onBack, right }: { title: string; sub: string; onBack: () => void; right?: ReactNode }) {
   return (
@@ -57,6 +70,16 @@ export function RoundDone({
   children?: ReactNode
 }) {
   const head = useRef<HTMLParagraphElement>(null)
+  const session = useContext(RoundSessionContext)
+  // The short rest after a round counts as practice, like the rest between lesson runs.
+  useEffect(() => {
+    const stop = practice('lessons', true)
+    const t = window.setTimeout(() => stop?.(), GAP_MS)
+    return () => {
+      window.clearTimeout(t)
+      stop?.()
+    }
+  }, [])
   // Focus the summary, not Again: a Space tap meant for the game must not start a new round.
   useEffect(() => {
     head.current?.focus()
@@ -97,14 +120,27 @@ export function RoundDone({
       </dl>
       {s.note && <p>{s.note}</p>}
       {children}
+      {session && <p className="sk-session ls-num">{session.text}</p>}
       <div className="sk-actions">
-        <button className="ls-btn primary" onClick={onAgain}>
+        {session && !session.running && (
+          <button className="ls-btn primary" onClick={session.onNext}>
+            {session.nextLabel}
+          </button>
+        )}
+        <button className={`ls-btn ${session && !session.running ? '' : 'primary'}`} onClick={onAgain}>
           Again
         </button>
+        {session?.running && (
+          <button className="ls-btn" onClick={session.onNext}>
+            {session.nextLabel}
+          </button>
+        )}
         {actions}
-        <button className="ls-btn ghost" onClick={onBack}>
-          Back to skills
-        </button>
+        {!session && (
+          <button className="ls-btn ghost" onClick={onBack}>
+            Back to skills
+          </button>
+        )}
       </div>
     </section>
   )

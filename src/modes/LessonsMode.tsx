@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import '../lessons/lessons.css'
 import { engine } from '../audio/engine'
 import type { ApplyOutcome, Cosmetic, Lesson, LessonResult, LoopSpec, LoopSummary, PainLevel, Prefs, Progress, SyncOutcome, TabLevel } from '../lessons/types'
@@ -9,10 +9,34 @@ import { recordHeat } from '../lessons/heat'
 import { drillSpec } from '../lessons/drill'
 import { lessonById, stageOf, validateLessons } from '../lessons/data'
 import { applyResult, dayKey, dinoStageFor, isPassed, isUnlocked, loadProgress, nextLesson, recordSkip, saveProgress } from '../lessons/progress'
-import { bpmAt, pickFor, slowerSpeed, speedFor } from '../lessons/speed'
-import { REST_SEC, markPocket, planAfterLoop, planAfterRun, planAfterSkill, setPain, skipStep, stepOpensCold, swapStep, withSessionDay, withTodayPlan } from '../lessons/session'
+import { FULL_SPEED, bpmAt, pickFor, slowerSpeed, speedFor } from '../lessons/speed'
+import type { ExtraKind } from '../lessons/session'
+import {
+  GAP_SEC,
+  REST_SEC,
+  blockLine,
+  jamPasses,
+  markPocket,
+  mixNext,
+  planAddTime,
+  planAfterLoop,
+  planAfterRun,
+  planAfterSkill,
+  planAfterSong,
+  planDone,
+  setPain,
+  skipStep,
+  stepLeftSec,
+  stepOpensCold,
+  stepTitle,
+  swapStep,
+  withExtraStep,
+  withSessionDay,
+  withTodayPlan,
+} from '../lessons/session'
 import { coldRun, coldSpeedFor, reviewBrake } from '../lessons/review'
 import { isJam, tabLevelFor } from '../lessons/listen'
+import { practice } from '../account/activity'
 import { openAccountDialog, useAccount } from '../account/session'
 import { loadPrefs, savePrefs } from '../lessons/prefs'
 import { syncResult } from '../lessons/scoring'
@@ -21,6 +45,8 @@ import { connectSource, onMicInput } from '../lessons/source'
 import { getPracticeSnapshot } from '../practice/log'
 import { practiceDaySec } from '../practice/data'
 import { hasUnratedTake } from '../skills/takes'
+import { listSongs } from '../music/library'
+import { levelCount, loadLevels } from '../music/songLevels'
 import { loadStats, onSkillRound } from '../skills/store'
 import { LessonMap } from '../lessons/ui/LessonMap'
 import { LessonIntro } from '../lessons/ui/LessonIntro'
@@ -39,6 +65,8 @@ import { LoopScreen } from '../lessons/ui/LoopScreen'
 import { HeatScreen } from '../lessons/ui/HeatScreen'
 import { Dino } from '../lessons/ui/Dino'
 import { SkillsHome } from '../skills/ui/SkillsHome'
+import type { RoundSession } from '../skills/ui/Common'
+import { RoundSessionContext } from '../skills/ui/Common'
 
 type Screen =
   | 'welcome'
@@ -58,18 +86,21 @@ type Screen =
   | 'weeks'
   | 'pocket-mental'
 
-/** How the next run plays: a cold-start test, listen mode, shuffle mode, how much tab, a one-run speed. */
+/** How the next run plays: a cold-start test, listen mode, shuffle mode, how much tab, a one-run speed, a long jam. */
 interface RunMode {
   cold: boolean
   quiet: boolean
   shuffle: boolean
   tab: TabLevel
   speed: number | null // a one-run speed (cold start); null = Auto or the manual pick
+  passes: number // times through in one run: above 1 only for a session's jam block
 }
-const PLAIN: RunMode = { cold: false, quiet: false, shuffle: false, tab: 'full', speed: null }
+const PLAIN: RunMode = { cold: false, quiet: false, shuffle: false, tab: 'full', speed: null, passes: 1 }
 
 const SYNC_ID = 'w1-01'
 const WEEK_NOTE = 'Week goal met. Anything more is a bonus.'
+/** A run's block gets at most this much on top of the run's own length: the pause before it, already capped by the log. */
+const RUN_EXTRA_SEC = 90
 
 function hasSavedProgress() {
   try {
@@ -113,7 +144,10 @@ function lastSessionStart(p: Progress, now: Date): number {
 
 let validated = false
 
-export function LessonsMode({ onConnect }: { onConnect: () => void }) {
+/** A Song block that was opened in Learn a song: which plan step, and the practice clock when it opened. */
+const SONG_MARK = 'lessons-song-block'
+
+export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; onOpenSong?: (id: string) => void }) {
   const [progress, setProgress] = useState<Progress>(loadProgress)
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs)
   const [screen, setScreen] = useState<Screen>(() => lessonsStartScreen(hasSavedProgress(), progressAsked()))
@@ -126,13 +160,28 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
   const [listen, setListen] = useState(false)
   const [mode, setMode] = useState<RunMode>(PLAIN)
   const [fromNew, setFromNew] = useState<string | null>(null) // lesson opened from a 'new' step: rest between runs
-  const [last, setLast] = useState<{ result: LessonResult; outcome: ApplyOutcome; finishedSet: boolean } | null>(null)
+  // The last run's result, and the plan step (block) it counted for.
+  const [last, setLast] = useState<{ result: LessonResult; outcome: ApplyOutcome; step: number | null } | null>(null)
   const [loop, setLoop] = useState<{ spec: LoopSpec; back: Screen } | null>(null)
   const [skillStart, setSkillStart] = useState<SkillStart | undefined>(undefined)
+  const [skillKey, setSkillKey] = useState(0)
   const [unrated, setUnrated] = useState<boolean | null>(null) // null until the take check is back
+  const [songs, setSongs] = useState<{ id: string; title: string; done: number; total: number; full: boolean }[] | null>(null) // null until the library is read
   const [notice, setNotice] = useState<string | null>(null)
   const [pressure, setPressure] = useState(false)
   const [staleEngine] = useState(() => import.meta.env.DEV && !engineHasLessons())
+  // The session block being played (a step of today's plan), and the practice clock when its time was last counted.
+  const [block, setBlock] = useState<number | null>(null)
+  const mark = useRef({ sec: 0, at: 0 })
+
+  /** Practice seconds since the open block's time was last counted: never more than the wall clock allows. */
+  const readSec = useCallback(() => {
+    const wall = (Date.now() - mark.current.at) / 1000 + 1
+    return Math.max(0, Math.round(Math.min(practiceSecToday() - mark.current.sec, wall)))
+  }, [])
+  const markNow = useCallback(() => {
+    mark.current = { sec: practiceSecToday(), at: Date.now() }
+  }, [])
 
   useEffect(() => {
     if (!import.meta.env.DEV || validated) return
@@ -172,6 +221,37 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // The player's own songs, for the session's Song block; the plan waits for the list.
+  useEffect(() => {
+    let live = true
+    listSongs()
+      .then((all) => live && setSongs(all.map((x) => ({ id: x.id, title: x.title, ...levelCount(loadLevels(x.id)) })).sort((a, b) => a.title.localeCompare(b.title))))
+      .catch(() => live && setSongs([]))
+    return () => {
+      live = false
+    }
+  }, [])
+
+  // Back from Learn a song: the time played there counts for the Song block that sent the player over.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(SONG_MARK)
+      if (!raw) return
+      sessionStorage.removeItem(SONG_MARK)
+      const m = JSON.parse(raw) as { i: number; sec: number; day: string }
+      const now = new Date()
+      if (m.day !== dayKey(now)) return
+      const ticked = planAfterSong(loadProgress(), m.i, practiceSecToday() - m.sec, now)
+      if (ticked.step !== null) {
+        const sd = withSessionDay(ticked.progress, now, practiceSecToday())
+        setProgress(sd.progress)
+        saveProgress(sd.progress)
+      }
+    } catch {
+      /* no marker to read */
+    }
+  }, [])
+
   // "What's sticking" in the practice dialog: the progress screen (asked before this mounted, or while it shows).
   // Not before the Welcome is done: a new player sets up first.
   useEffect(() => {
@@ -197,19 +277,40 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
     savePrefs(p)
   }, [])
 
-  const goHome = useCallback(() => {
+  /** `p` with the practice time since the last reading counted toward the open block: the rest between reps, a stopped run. */
+  const settle = (p: Progress, now = new Date()): Progress => {
+    if (block === null) return p
+    const sec = readSec()
+    markNow()
+    return planAddTime(p, block, sec, now).progress
+  }
+
+  /** The open block is left: its time so far is counted, and nothing after this belongs to it. */
+  const leaveBlock = () => {
+    if (block === null) return
+    const p = settle(progress)
+    if (p !== progress) updateProgress(p)
+    setBlock(null)
+  }
+
+  const showHome = () => {
     setScreen('home')
     setLast(null)
     setProgressFocus(false)
-  }, [])
+  }
+
+  const goHome = () => {
+    leaveBlock()
+    showHome()
+  }
 
   // Today's session plan (made once per practice day) and today's session day, when the home or plan screen shows.
   useEffect(() => {
-    if ((screen !== 'home' && screen !== 'today') || unrated === null) return
+    if ((screen !== 'home' && screen !== 'today') || unrated === null || songs === null) return
     const now = new Date()
     let p = progress
     let changed = false
-    const made = withTodayPlan(p, now, { unratedTake: unrated, stats: loadStats() })
+    const made = withTodayPlan(p, now, { unratedTake: unrated, stats: loadStats(), songs })
     if (made) {
       p = made
       changed = true
@@ -221,24 +322,40 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
       if (sd.weekMet) setNotice(WEEK_NOTE)
     }
     if (changed) updateProgress(p)
-  }, [screen, progress, unrated, updateProgress])
+  }, [screen, progress, unrated, songs, updateProgress])
 
-  // Skill rounds tick the plan's skill steps and count toward today's session.
+  // Skill rounds count for the plan's skill blocks (with the round's practice time) and toward today's session.
   useEffect(() => {
     if (screen !== 'skills') return
     return onSkillRound((e) => {
       const now = new Date()
       // The skill game may have saved some XP: start from the stored copy.
-      const ticked = planAfterSkill(loadProgress(), e, now)
+      const ticked = planAfterSkill(loadProgress(), e, now, block !== null ? readSec() : 0)
+      // Only a round that counted for a block uses up the time: the ear game reports two entries for one round.
+      if (ticked.step !== null && block !== null) markNow()
       const sd = withSessionDay(ticked.progress, now, practiceSecToday())
       if (sd.weekMet) setNotice(WEEK_NOTE)
       updateProgress(sd.progress)
     })
-  }, [screen, updateProgress])
+  }, [screen, block, readSec, markNow, updateProgress])
 
-  const open = (id: string, o: { fromNew?: boolean } = {}) => {
+  // The rest between reps is practice too: the first seconds on the result card count toward the day and the block
+  // (plan section 4 puts the 20-30 s pauses inside the block's minutes). Walking away adds no more than that.
+  useEffect(() => {
+    if (screen !== 'results') return
+    const stop = practice('lessons', true)
+    const t = window.setTimeout(() => stop?.(), GAP_SEC * 1000)
+    return () => {
+      window.clearTimeout(t)
+      stop?.()
+    }
+  }, [screen, last])
+
+  /** A lesson's start screen. `keep`: it belongs to the open session block; anything else leaves the block. */
+  const open = (id: string, o: { fromNew?: boolean; keep?: boolean } = {}) => {
     const l = lessonById(id)
     if (!l) return
+    if (!o.keep) leaveBlock()
     setLessonId(id)
     setMode(PLAIN)
     setNotice(null)
@@ -265,11 +382,8 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
     if (!lesson) return
     const quiet = !!o?.quiet
     const tab: TabLevel = quiet ? (isJam(lesson) ? 'hidden' : tabLevelFor(progress.lessons[lesson.id])) : 'full'
-    startRun({ cold: false, quiet, shuffle: !!o?.shuffle, tab, speed: null })
+    startRun({ cold: false, quiet, shuffle: !!o?.shuffle, tab, speed: null, passes: 1 })
   }
-
-  // Again from the result card: the same choices, but never cold again and back on Auto speed.
-  const again = () => startRun({ ...mode, cold: false, speed: null })
 
   // "Listen first": the same play screen, demo playback with no judging.
   const playDemo = () => {
@@ -282,8 +396,96 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
   // The speed the current lesson's next run plays at (a cold start's speed, Auto, or this lesson's manual pick).
   const runSpeed = lesson ? (mode.speed ?? speedFor(lesson, progress.lessons[lesson.id], prefs)) : 1
 
+  const startLoop = (spec: LoopSpec, back: Screen) => {
+    setLoop({ spec, back })
+    setRunKey((k) => k + 1)
+    setScreen('loop')
+  }
+
+  const openDrill = (key: string, back: Screen, p: Progress = progress) => {
+    const spec = drillSpec(p, key, new Date(), p.plan?.steps.find((s) => s.drill === key)?.lessonId ?? undefined)
+    if (spec) startLoop(spec, back)
+  }
+
+  const openSkill = (s: SkillStart) => {
+    if (s.game === 'mental') return setScreen('pocket-mental')
+    setSkillStart(s)
+    setSkillKey((k) => k + 1)
+    setScreen('skills')
+  }
+
+  /**
+   * A step of today's plan, as a block: its practice time is counted from here on. Cold steps go through the
+   * Cold start card, jams play in listen mode for what is left of their minutes, skills open their game.
+   * `from`: the progress to start from, when the caller has changed it and not saved yet.
+   */
+  const openStep = (i: number, back: Screen, from: Progress = progress) => {
+    // Coming from another block: its time first.
+    const p = block !== null && block !== i ? settle(from) : from
+    if (p !== progress) updateProgress(p)
+    const step = p.plan?.steps[i]
+    if (!step) return
+    // A done or skipped step still opens, as plain practice: no block.
+    const live = step.state === 'todo'
+    setBlock(live ? i : null)
+    markNow()
+    if (step.drill) return openDrill(step.drill, back, p)
+    if (step.kind === 'mix') {
+      const id = mixNext(step)
+      if (id) open(id, { keep: true })
+      return
+    }
+    if (step.song) {
+      // Played in Learn a song: note the clock, so the time there counts for this block on the way back.
+      try {
+        sessionStorage.setItem(SONG_MARK, JSON.stringify({ i, sec: practiceSecToday(), day: dayKey(new Date()) }))
+      } catch {
+        /* storage unavailable: the block is closed by hand */
+      }
+      setBlock(null)
+      onOpenSong?.(step.song.id)
+      return
+    }
+    if (!step.lessonId) {
+      if (step.skill) openSkill(step.skill)
+      return
+    }
+    const id = step.lessonId
+    const l = lessonById(id)
+    if (!l) return
+    // A review-first step on an item due its cold test takes the test first, then its blocked reps (with rests).
+    if (stepOpensCold(p, step, new Date())) {
+      setLessonId(id)
+      setFromNew(step.brake ? id : null)
+      setScreen('cold')
+      return
+    }
+    if (step.kind === 'jam' && l.type === 'improv') {
+      setLessonId(id)
+      setFromNew(null)
+      const passes = live ? jamPasses(l, speedFor(l, p.lessons[id], prefs), stepLeftSec(step)) : 1
+      startRun({ cold: false, quiet: true, shuffle: false, tab: 'hidden', speed: null, passes })
+      return
+    }
+    open(id, { fromNew: step.kind === 'new', keep: true })
+  }
+
+  // Again from the result card: the same choices, but never cold again and back on Auto speed.
+  // Inside a session block: a mix moves on to its next item, a jam plays for what is left of its minutes.
+  const again = () => {
+    const p = settle(progress)
+    if (p !== progress) updateProgress(p)
+    const step = block !== null ? p.plan?.steps[block] : undefined
+    const live = step?.state === 'todo'
+    if (block !== null && step && live && step.kind === 'mix') return openStep(block, 'home', p)
+    const passes = lesson && step && live && step.kind === 'jam' ? jamPasses(lesson, speedFor(lesson, p.lessons[lesson.id], prefs), stepLeftSec(step)) : 1
+    startRun({ ...mode, cold: false, speed: null, passes })
+  }
+
   const playSlower = (from: number) => {
     if (!lesson) return
+    const p = settle(progress)
+    if (p !== progress) updateProgress(p)
     updatePrefs({ ...prefs, speedPick: { lessonId: lesson.id, speed: slowerSpeed(from) } })
     startRun({ ...mode, cold: false, speed: null })
   }
@@ -295,11 +497,19 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
     // Mistake heat from this run's judged events (not sync or improv runs).
     const heated = r.results && (l.type === 'notes' || l.type === 'chords' || l.type === 'rhythm') ? recordHeat(progress, l, buildChart(l), r.results, { sourceId: l.id, calibrated: r.calibrated === true, now }) : progress
     const outcome = applyResult(heated, l, r, now, { age: prefs.age, cold })
-    const planned = planAfterRun(outcome.progress, l.id, r, now)
+    // The run's practice time for its block: the log's seconds since the last reading (the rest before the run is in
+    // them), and never less than the run itself, so a lesson opened from the map counts for its block too.
+    const runSec = Math.round(Math.max(0, r.playedSec) + ((l.countInBeats ?? 4) * 60) / Math.max(1, r.bpm))
+    const sec = block !== null ? Math.min(Math.max(readSec(), runSec), runSec + RUN_EXTRA_SEC) : runSec
+    markNow()
+    // A full tempo earned today (a clean first run plus two more): the new block has done its job.
+    const mastered = l.type !== 'improv' && !!outcome.speed?.earned && outcome.speed.played >= FULL_SPEED - 1e-9
+    const planned = planAfterRun(outcome.progress, l.id, r, now, { sec, coldClean: outcome.cold?.clean === true, mastered })
+    setBlock(planned.step)
     const sd = withSessionDay(planned.progress, now, practiceSecToday())
     if (sd.weekMet) setNotice(WEEK_NOTE)
     updateProgress(sd.progress)
-    setLast({ result: r, outcome: { ...outcome, progress: sd.progress }, finishedSet: planned.finished })
+    setLast({ result: r, outcome: { ...outcome, progress: sd.progress }, step: planned.step })
     setScreen('results')
   }
 
@@ -309,27 +519,24 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
     setScreen('sync')
   }
 
-  const startLoop = (spec: LoopSpec, back: Screen) => {
-    setLoop({ spec, back })
-    setRunKey((k) => k + 1)
-    setScreen('loop')
-  }
-
-  const openDrill = (key: string, back: Screen) => {
-    const spec = drillSpec(progress, key, new Date(), progress.plan?.steps.find((s) => s.drill === key)?.lessonId ?? undefined)
-    if (spec) startLoop(spec, back)
-  }
-
   // A loop never gives XP or stars: it records heat, the loop count and (drills) today's drill step.
+  // Its practice time goes to the open block: the drill's own step, or the block whose hard bars were looped.
   const endLoop = (s: LoopSummary | null, next: 'full' | 'back') => {
     const cur = loop
     setLoop(null)
     if (!cur) return goHome()
     const now = new Date()
+    const sec = block !== null ? readSec() : 0
+    if (block !== null) markNow()
+    let p = progress
     if (s && s.results.length) {
-      let p = recordHeat(progress, cur.spec.lesson, s.chart, s.results, { sourceId: cur.spec.sourceId, calibrated: s.calibrated, now, loop: true })
+      p = recordHeat(p, cur.spec.lesson, s.chart, s.results, { sourceId: cur.spec.sourceId, calibrated: s.calibrated, now, loop: true })
       p = recordLoop(p, cur.spec.sourceId, s, now)
-      if (cur.spec.drillKey && s.clean > 0) p = planAfterLoop(p, cur.spec.drillKey, s, now).progress
+    }
+    const drilled = s && cur.spec.drillKey ? planAfterLoop(p, cur.spec.drillKey, s, now, sec) : null
+    if (drilled && drilled.step !== null) p = drilled.progress
+    else if (block !== null) p = planAddTime(p, block, sec, now).progress
+    if (p !== progress) {
       const sd = withSessionDay(p, now, practiceSecToday())
       if (sd.weekMet) setNotice(WEEK_NOTE)
       updateProgress(sd.progress)
@@ -341,49 +548,38 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
       return
     }
     if (cur.back === 'results' && !last) return goHome()
+    // Back on the home or session screen the block is closed; opening its row again carries on.
+    if (cur.back === 'home' || cur.back === 'today') setBlock(null)
     setScreen(cur.back)
   }
 
-  const openSkill = (s: SkillStart) => {
-    if (s.game === 'mental') return setScreen('pocket-mental')
-    setSkillStart(s)
-    setScreen('skills')
+  /**
+   * From a block's result (or a skill round): on to the next block. A block with minutes left is closed first:
+   * it was played, so it is done. With no block left, back to today's session.
+   */
+  const moveOn = (i: number) => {
+    const now = new Date()
+    let p = settle(progress, now)
+    if (p.plan?.steps[i]?.state === 'todo') p = skipStep(p, i)
+    const ni = p.plan ? p.plan.steps.findIndex((s) => s.state === 'todo') : -1
+    if (ni >= 0) return openStep(ni, 'home', p)
+    const sd = withSessionDay(p, now, practiceSecToday())
+    if (sd.weekMet) setNotice(WEEK_NOTE)
+    if (sd.progress !== progress) updateProgress(sd.progress)
+    setBlock(null)
+    setSkillStart(undefined)
+    showHome()
   }
 
-  // A step of today's plan: cold steps go through the Cold start card, jams play in listen mode, skills open their game.
-  const openStep = (i: number, back: Screen) => {
-    const step = progress.plan?.steps[i]
-    if (!step) return
-    if (step.drill) return openDrill(step.drill, back)
-    if (step.kind === 'mix') {
-      const id = step.items?.find((x) => !step.played?.includes(x)) ?? step.items?.[0]
-      if (id) open(id)
-      return
-    }
-    if (!step.lessonId) {
-      if (step.skill) openSkill(step.skill)
-      return
-    }
-    const id = step.lessonId
-    const l = lessonById(id)
-    if (!l) return
-    // A review-first step on an item due its cold test takes the test first, then its blocked reps (with rests).
-    if (stepOpensCold(progress, step, new Date())) {
-      setLessonId(id)
-      setFromNew(step.brake ? id : null)
-      setScreen('cold')
-      return
-    }
-    if (step.kind === 'jam' && l.type === 'improv') {
-      setLessonId(id)
-      setFromNew(null)
-      startRun({ cold: false, quiet: true, shuffle: false, tab: 'hidden', speed: null })
-      return
-    }
-    open(id, { fromNew: step.kind === 'new' })
+  /** One more block once the session is done, toward the day's minutes: added to the plan and started at once. */
+  const extra = (kind: ExtraKind, leftSec: number) => {
+    const p = withExtraStep(progress, new Date(), { unratedTake: false, stats: loadStats() }, kind, leftSec)
+    if (p === progress || !p.plan) return
+    openStep(p.plan.steps.length - 1, 'home', p)
   }
 
   const pocket = (s: SkillStart) => {
+    leaveBlock()
     updateProgress(markPocket(progress, new Date()))
     openSkill(s)
   }
@@ -412,6 +608,21 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
   const keyboard = prefs.keyboard || !engine.running
   const stage = dinoStageFor(progress)
   const cosmetics: Cosmetic[] = progress.cosmetics
+
+  // What the main button does next in the block at plan step i: for the result card and the skill games' round summary.
+  const blockNext = (i: number) => {
+    const plan = progress.plan
+    const st = plan?.steps[i]
+    if (!plan || !st) return null
+    const running = st.state === 'todo'
+    const after = plan.steps.find((s, j) => s.state === 'todo' && j !== i)
+    return {
+      step: st,
+      running,
+      nextLabel: after ? `Next: ${stepTitle(after)}` : running ? 'Finish the session' : 'Back to today',
+      onNext: () => moveOn(i),
+    }
+  }
 
   let body
   if (screen === 'welcome') {
@@ -451,8 +662,11 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
         title={lesson.title}
         bpm={bpmAt(lesson, speed)}
         speed={speed}
-        onStart={() => startRun({ cold: true, quiet: false, shuffle: false, tab: 'hidden', speed })}
-        onBack={() => setScreen('today')}
+        onStart={() => startRun({ cold: true, quiet: false, shuffle: false, tab: 'hidden', speed, passes: 1 })}
+        onBack={() => {
+          leaveBlock()
+          setScreen('today')
+        }}
       />
     )
   } else if (screen === 'play' && lesson) {
@@ -469,9 +683,16 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
         quiet={mode.quiet}
         shuffle={mode.shuffle}
         cold={mode.cold}
+        passes={mode.passes}
         onPrefs={updatePrefs}
         onEnd={(r) => finish(lesson, r)}
-        onQuit={() => setScreen(mode.cold ? 'today' : 'intro')}
+        onQuit={() => {
+          // A run that was stopped still used the block's time.
+          const p = settle(progress)
+          if (p !== progress) updateProgress(p)
+          if (mode.cold) setBlock(null)
+          setScreen(mode.cold ? 'today' : 'intro')
+        }}
         onSlower={() => playSlower(runSpeed)}
         onConnect={onConnect}
       />
@@ -481,16 +702,28 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
   } else if (screen === 'heat') {
     body = <HeatScreen progress={progress} onDrill={(key) => openDrill(key, 'heat')} onBack={goHome} />
   } else if (screen === 'results' && lesson && last) {
-    const next = nextAfter(last.outcome.progress, lesson.id)
+    // A run that counted for a session block: the card's one main button is the block's next move.
+    const bn = last.step !== null && lesson.type !== 'sync' ? blockNext(last.step) : null
+    const next = bn ? null : nextAfter(last.outcome.progress, lesson.id)
+    const mixId = bn?.step.kind === 'mix' ? mixNext(bn.step) : null
+    const session = bn
+      ? {
+          running: bn.running,
+          againLabel: mixId ? `Next in the mix: ${lessonById(mixId)?.title ?? mixId}` : bn.step.kind === 'jam' ? 'Jam on' : 'Again',
+          nextLabel: bn.nextLabel,
+          onNext: bn.onNext,
+        }
+      : null
     body = (
       <>
-        <PlanStrip progress={last.outcome.progress} lessonId={lesson.id} finished={last.finishedSet} onStep={(i) => openStep(i, 'results')} />
+        {last.step !== null && bn && <PlanStrip progress={progress} step={last.step} />}
         <ResultCard
           lesson={lesson}
           result={last.result}
           outcome={last.outcome}
           pick={pickFor(prefs, lesson.id)}
-          rest={fromNew === lesson.id && lesson.type !== 'sync' ? REST_SEC : null}
+          rest={fromNew === lesson.id && lesson.type !== 'sync' && (!bn || bn.running) ? REST_SEC : null}
+          session={session}
           onNext={next ? () => open(next) : null}
           onAgain={() => (lesson.type === 'sync' ? open(lesson.id) : again())}
           onSlower={() => (lesson.type === 'sync' ? open(lesson.id) : playSlower(last.result.speed))}
@@ -509,17 +742,32 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
         onSkip={(i) => updateProgress(skipStep(progress, i))}
         onPain={pain}
         onPressure={() => setPressure(true)}
+        onExtra={extra}
         onBack={goHome}
       />
     )
   } else if (screen === 'skills') {
     // Skill games may add a little XP to the saved progress: read it again on the way back.
     const back = () => {
-      setProgress(loadProgress())
+      const stored = loadProgress()
+      const p = settle(stored)
+      if (p !== stored) updateProgress(p)
+      else setProgress(stored)
+      setBlock(null)
       setSkillStart(undefined)
-      goHome()
+      showHome()
     }
-    body = <SkillsHome keyboard={keyboard} onConnect={onConnect} onBack={back} start={skillStart} />
+    // A skill block of today's session: the round summary shows the block's clock and its next move.
+    const bn = block !== null ? blockNext(block) : null
+    const round: RoundSession | null =
+      bn && bn.step.skill && bn.step.kind !== 'listenback'
+        ? { text: progress.plan && planDone(progress.plan) ? 'Session done.' : blockLine(bn.step), running: bn.running, nextLabel: bn.nextLabel, onNext: bn.onNext }
+        : null
+    body = (
+      <RoundSessionContext.Provider value={round}>
+        <SkillsHome key={`skills-${skillKey}`} keyboard={keyboard} onConnect={onConnect} onBack={back} start={skillStart} />
+      </RoundSessionContext.Provider>
+    )
   } else if (screen === 'pocket-mental') {
     body = <MentalCard progress={progress} onBack={goHome} />
   } else if (screen === 'progress') {
@@ -551,10 +799,15 @@ export function LessonsMode({ onConnect }: { onConnect: () => void }) {
         onPlanStep={(i) => openStep(i, 'home')}
         onPlanSwap={(i) => updateProgress(swapStep(progress, i, new Date()))}
         onPlanSkip={(i) => updateProgress(skipStep(progress, i))}
+        onPlanExtra={extra}
+        songs={songs ?? []}
+        onSong={onOpenSong}
         onToday={() => setScreen('today')}
         onHeat={() => setScreen('heat')}
         onSkills={() => {
+          leaveBlock()
           setSkillStart(undefined)
+          setSkillKey((k) => k + 1)
           setScreen('skills')
         }}
         onProgress={() => setScreen('progress')}

@@ -19,6 +19,9 @@ import { STANDARD_TUNING, midiName, nearestPosition, pc } from '../music/theory'
 import type { BeatLike } from '../music/tunings'
 import { TUNINGS, describeTuning, isUniformShift, refinger, setSongTuning, tuningLabel } from '../music/tunings'
 import { holdReload, practice } from '../account/activity'
+import type { SongLevels } from '../music/songLevels'
+import { MIN_NOTES, PASS_PCT, PASS_SPEED, levelPassed, loadLevels, nextLevel, saveLevels, songSections, withPass } from '../music/songLevels'
+import { hasSavedProgress, loadProgress, saveProgress } from '../lessons/progress'
 
 interface Conversion {
   to: number[] // low → high
@@ -28,9 +31,18 @@ interface Conversion {
 const convKey = (artist: string, title: string) => `conv:${artist.toLowerCase()}|${title.toLowerCase()}`
 function loadConversion(artist: string, title: string): Conversion | null {
   try {
-    return JSON.parse(localStorage.getItem(convKey(artist, title)) ?? 'null') as Conversion | null
+    const v = JSON.parse(localStorage.getItem(convKey(artist, title)) ?? 'null') as Conversion | 'orig' | null
+    return v === 'orig' ? null : v
   } catch {
     return null
+  }
+}
+/** The player picked the song's own tuning: it is not converted to standard by itself. */
+function keptOriginal(artist: string, title: string): boolean {
+  try {
+    return localStorage.getItem(convKey(artist, title)) === '"orig"'
+  } catch {
+    return false
   }
 }
 
@@ -55,6 +67,24 @@ function convertTrack(track: Track, conv: Conversion): string {
     r.dropped ? `${r.dropped} doubled note${r.dropped > 1 ? 's' : ''} removed from chords` : '',
   ].filter(Boolean)
   return `Re-fingered for ${name}; it sounds like the recording.${extra.length ? ` ${extra.join(', ')}.` : ''}${isUniformShift(from, conv.to) ? ' Tip: "Keep the fingering" is usually easier for this change.' : ''}`
+}
+
+/**
+ * Artist and title from a tab's file name, for tabs that don't carry them: "Artist - Title (ver 3 by someone).gp5"
+ * becomes Artist / Title. Version tags, "(guitar pro)" and underscores are dropped. Null when the name has no " - ".
+ */
+function namesFromFile(fileName: string): { artist: string; title: string } | null {
+  const base = fileName
+    .replace(/\.[^.]+$/, '')
+    .replace(/_/g, ' ')
+    .replace(/\s*[([](ver|version|guitar pro|gp\d?|tab)[^)\]]*[)\]]/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const cut = base.indexOf(' - ')
+  if (cut <= 0) return null
+  const artist = base.slice(0, cut).trim()
+  const title = base.slice(cut + 3).trim()
+  return artist && title ? { artist, title } : null
 }
 
 const ACCEPT = '.gp,.gp3,.gp4,.gp5,.gpx,.gp7,.gp8,.musicxml,.mxl,.xml,.cap'
@@ -87,6 +117,8 @@ function playableBeats(track: Track): Beat[] {
 
 const isGuitar = (t: Track) => t.staves[0]?.isStringed && !t.isPercussion && (/guit|gtr/i.test(t.name) || (t.playbackInfo.program >= 24 && t.playbackInfo.program <= 31))
 
+let songsFolderRead = false // the project's songs folder was read on this page load
+
 export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel: (label: string) => void; onImported?: () => void; onEditTone: () => void }) {
   const hostRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -117,6 +149,15 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
   const [waitMode, setWaitMode] = useState(false)
   const [beat, setBeat] = useState<Beat | null>(null)
   const [hits, setHits] = useState({ hit: 0, miss: 0 })
+  // Song levels: the section being played for a pass ('full' = the whole song), and what is passed so far.
+  const [level, setLevel] = useState<number | 'full' | null>(null)
+  const [levels, setLevels] = useState<SongLevels | null>(null)
+  const [levelNote, setLevelNote] = useState('')
+  const levelRef = useRef<number | 'full' | null>(null)
+  const hitsRef = useRef(hits)
+  hitsRef.current = hits
+  const finishRef = useRef<() => void>(() => {})
+  const autoLevel = useRef(false) // opened from the Lessons session: start on the next level not passed yet
   const [beatHit, setBeatHit] = useState(false)
   const [trail, setTrail] = useState<{ midi: number; t: number }[]>([])
   const [dragOver, setDragOver] = useState(false)
@@ -214,6 +255,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
     api.soundFontLoad.on((e) => setLoadPct(Math.round((e.loaded / Math.max(1, e.total)) * 100)))
     api.playerReady.on(() => setReady(true))
     api.playerStateChanged.on((e) => setPlaying(e.state === alphaTab.synth.PlayerState.Playing))
+    api.playerFinished.on(() => finishRef.current())
     api.scoreLoaded.on((s) => {
       // renderScore() re-announces the same score; only react to genuinely new loads.
       if (s === lastScore.current) return
@@ -244,6 +286,79 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
 
   const track = score?.tracks[trackIdx] ?? null
 
+  // The song as levels: one per marked section of the tab, then the whole song.
+  const sections = useMemo(() => (score ? songSections(score.masterBars.map((mb) => mb.section?.text ?? null)) : []), [score])
+
+  /** Plays one level for a pass: only that section, from its first bar, with the count of right notes started again. */
+  const startLevel = useCallback(
+    (lv: number | 'full' | null) => {
+      const api = apiRef.current
+      if (!api || !score) return
+      api.stop()
+      const s = typeof lv === 'number' ? sections[lv] : undefined
+      if (s) {
+        const a = score.masterBars[s.from]
+        const b = score.masterBars[s.to]
+        api.playbackRange = { startTick: a.start, endTick: b.start + b.calculateDuration() }
+        api.tickPosition = a.start
+      } else api.playbackRange = null
+      api.isLooping = false
+      levelRef.current = lv
+      setLevel(lv)
+      setHits({ hit: 0, miss: 0 })
+      setLevelNote('')
+    },
+    [score, sections],
+  )
+
+  // A new song: its saved levels, and no level running (or, sent over by the Lessons session, the next one to pass).
+  useEffect(() => {
+    const id = entryRef.current?.id
+    const saved = score && id ? loadLevels(id) : null
+    setLevels(saved)
+    levelRef.current = null
+    setLevel(null)
+    setLevelNote('')
+    if (score && autoLevel.current) {
+      autoLevel.current = false
+      startLevel(nextLevel(saved, sections.length) ?? 'full')
+    }
+  }, [score, sections, startLevel])
+
+  // The player reached the end of the level: passed or not, and why.
+  finishRef.current = () => {
+    const lv = levelRef.current
+    const id = entryRef.current?.id
+    if (lv === null || !id || !track) return
+    const { hit, miss } = hitsRef.current
+    const total = hit + miss
+    const pct = total ? Math.round((100 * hit) / total) : 0
+    const name = lv === 'full' ? 'The whole song' : (sections[lv]?.name ?? 'This part')
+    if (!levelPassed(hit, miss, speed)) {
+      setLevelNote(
+        total < MIN_NOTES
+          ? `${name}: no notes heard. Connect the guitar and play along.`
+          : speed < PASS_SPEED
+            ? `${name}: ${pct}% of the notes at ${speed}% speed. A pass needs ${PASS_SPEED}% speed or faster.`
+            : `${name}: ${pct}% of the notes. ${PASS_PCT}% passes it. Slow it down and go again.`,
+      )
+      return
+    }
+    const before = loadLevels(id)
+    const same = before?.track === track.name ? before : null
+    const first = lv === 'full' ? !same?.full : !same?.passed[String(lv)]
+    const next = withPass(before, track.name, sections.length, lv, { pct, speed })
+    saveLevels(id, next)
+    setLevels(next)
+    // A first pass gives the dino a little XP, like a first pass of a lesson.
+    if (first && hasSavedProgress()) {
+      const p = loadProgress()
+      saveProgress({ ...p, xp: p.xp + (lv === 'full' ? 150 : 40) })
+    }
+    const after = nextLevel(next, sections.length)
+    setLevelNote(`${name} passed: ${pct}% of the notes at ${speed}% speed.${lv === 'full' ? '' : after === null ? ' Every part is passed: now the whole song.' : ` Next: ${sections[after].name}.`}`)
+  }
+
   // Render the chosen track and pick its tone.
   useEffect(() => {
     const api = apiRef.current
@@ -251,7 +366,16 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
     const { artist, title } = songMeta.current
     const tuningNow = () => [...(track.staves[0]?.tuning ?? [])].reverse()
     if (!converted.current.has(track)) setOrigTuning(tuningNow().length ? tuningNow() : STANDARD_TUNING)
-    if (conversion && track.staves[0]?.isStringed && !converted.current.has(track)) {
+    // A six-string part in another tuning opens converted to standard, so the guitar never needs retuning:
+    // the same fingering for a plain shift (E flat standard), re-fingered at pitch otherwise (drop tunings).
+    let conv = conversion
+    const tn = tuningNow()
+    if (!conv && !converted.current.has(track) && track.staves[0]?.isStringed && tn.length === 6 && tn.some((n, i) => n !== STANDARD_TUNING[i]) && !keptOriginal(artist, title)) {
+      conv = { to: STANDARD_TUNING, mode: isUniformShift(tn, STANDARD_TUNING) ? 'shapes' : 'pitch' }
+      setConversion(conv)
+    }
+    if (conv && track.staves[0]?.isStringed && !converted.current.has(track)) {
+      const conversion = conv
       converted.current.add(track)
       setConvInfo(convertTrack(track, conversion))
       api.renderScore(score, [trackIdx])
@@ -309,7 +433,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
     const { artist, title } = songMeta.current
     try {
       if (c) localStorage.setItem(convKey(artist, title), JSON.stringify(c))
-      else localStorage.removeItem(convKey(artist, title))
+      else localStorage.setItem(convKey(artist, title), '"orig"')
     } catch {
       /* storage unavailable */
     }
@@ -341,10 +465,11 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
           const settings = new alphaTab.Settings()
           const s = alphaTab.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(data), settings)
           const base = file.name.replace(/\.[^.]+$/, '')
+          const named = namesFromFile(file.name)
           const entry: SongEntry = {
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            title: s.title || fallback?.title || base,
-            artist: s.artist || fallback?.artist || 'Unknown artist',
+            title: s.title || fallback?.title || named?.title || base,
+            artist: s.artist || fallback?.artist || named?.artist || 'Unknown artist',
             fileName: file.name,
             addedAt: Date.now(),
             data,
@@ -396,6 +521,83 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
     }
     return () => es.close()
   }, [importFiles, onImported])
+
+  // Tab files in the project's songs folder join the library once (by file name), without opening them.
+  useEffect(() => {
+    let live = true
+    // Once per page load: in development React runs this effect twice, and two runs at once imported every file twice.
+    if (songsFolderRead) return
+    songsFolderRead = true
+    const fromFile = namesFromFile
+    void (async () => {
+      try {
+        const { files } = (await (await fetch('/api/songs/list')).json()) as { files: string[] }
+        // Tidy what an earlier double import left: one copy per file, named from the file when the tab had no names.
+        const seen = new Set<string>()
+        let tidied = 0
+        for (const e of (await listSongs()).sort((a, b) => a.addedAt - b.addedAt)) {
+          // Any song that was saved under its raw file name gets a clean artist and title.
+          const inFolder = files.includes(e.fileName)
+          if (!inFolder) {
+            const n = fromFile(e.fileName)
+            if (n && e.artist === 'Unknown artist') {
+              await saveSong({ ...e, ...n })
+              tidied++
+            }
+            continue
+          }
+          if (seen.has(e.fileName)) {
+            await deleteSong(e.id)
+            tidied++
+            continue
+          }
+          seen.add(e.fileName)
+          const n = fromFile(e.fileName)
+          if (n && e.artist === 'Unknown artist') {
+            await saveSong({ ...e, ...n })
+            tidied++
+          }
+        }
+        if (tidied && live) refreshLibrary()
+        const have = seen
+        let added = 0
+        for (const name of files) {
+          if (have.has(name)) continue
+          const res = await fetch(`/api/downloads/file?from=songs&name=${encodeURIComponent(name)}`)
+          if (!res.ok) continue
+          const data = await res.arrayBuffer()
+          try {
+            const s = alphaTab.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(data), new alphaTab.Settings())
+            const fromName = namesFromFile(name) ?? { artist: 'Unknown artist', title: name.replace(/\.[^.]+$/, '') }
+            await saveSong({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, title: s.title || fromName.title, artist: s.artist || fromName.artist, fileName: name, addedAt: Date.now(), data })
+            added++
+          } catch {
+            /* not a tab alphaTab can read */
+          }
+        }
+        if (added && live) refreshLibrary()
+      } catch {
+        /* no dev server API: nothing to import */
+      }
+    })()
+    return () => {
+      live = false
+    }
+  }, [refreshLibrary])
+
+  // A Song block of the Lessons session asks for one song by id.
+  useEffect(() => {
+    const onOpen = (ev: Event) => {
+      const id = (ev as CustomEvent<string>).detail
+      autoLevel.current = true
+      void listSongs().then((all) => {
+        const e = all.find((x) => x.id === id)
+        if (e) loadEntry(e)
+      })
+    }
+    window.addEventListener('fretwise-open-song', onOpen)
+    return () => window.removeEventListener('fretwise-open-song', onOpen)
+  }, [loadEntry])
 
   applyToneRef.current = applyToneAtBar
 
@@ -571,8 +773,8 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
         {score ? (
           <div className="song-bar">
             <div className="song-name">
-              <b>{score.title || songMeta.current.title}</b>
-              <span>{score.artist}</span>
+              <b title={score.title || songMeta.current.title}>{score.title || songMeta.current.title}</b>
+              <span>{score.artist || songMeta.current.artist}</span>
             </div>
             <select value={trackIdx} onChange={(e) => setTrackIdx(Number(e.target.value))} title="Track to learn">
               {guitarTracks.map((t, i) => (
@@ -617,6 +819,32 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
               a tone picked for the song.
             </p>
             {!ready && loadPct > 0 && loadPct < 100 && <p className="hint">Loading instrument sounds… {loadPct}%</p>}
+          </div>
+        )}
+        {score && sections.length > 0 && (
+          <div className="song-levels" role="group" aria-label="Song levels">
+            <span className="song-levels-h">Levels</span>
+            {sections.map((s, i) => {
+              const done = levels?.track === track?.name && !!levels?.passed[String(i)]
+              return (
+                <button key={i} className={`btn small${level === i ? ' on' : ''}${done ? ' done' : ''}`} disabled={!ready} onClick={() => startLevel(i)} aria-pressed={level === i} title={`Bars ${s.from + 1}–${s.to + 1}${done ? ', passed' : ''}`}>
+                  {done ? '✓ ' : ''}
+                  {s.name}
+                </button>
+              )
+            })}
+            <button className={`btn small${level === 'full' ? ' on' : ''}${levels?.track === track?.name && levels?.full ? ' done' : ''}`} disabled={!ready} onClick={() => startLevel('full')} aria-pressed={level === 'full'}>
+              {levels?.track === track?.name && levels?.full ? '✓ ' : ''}
+              Whole song
+            </button>
+            {level !== null && (
+              <button className="link" onClick={() => startLevel(null)}>
+                free play
+              </button>
+            )}
+            <span className="song-levels-note" role="status">
+              {levelNote || (level !== null ? `Press Play. ${PASS_PCT}% of the notes at ${PASS_SPEED}% speed or faster passes it.` : 'Pick a part to play it for a pass.')}
+            </span>
           </div>
         )}
         {error && <div className="error">{error}</div>}

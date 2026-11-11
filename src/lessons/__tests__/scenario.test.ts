@@ -49,7 +49,7 @@ function run(p: Progress, id: string, now: Date, make: (l: Lesson, s: number, n:
   const cold = coldRun(p, id, now, { fromCard, shuffle: false })
   const r = make(l, speed ?? autoSpeed(l, p.lessons[id]), now)
   const o = applyResult(p, l, r, now, { age: null, cold })
-  return { progress: planAfterRun(o.progress, id, r, now).progress, outcome: o, cold }
+  return { progress: planAfterRun(o.progress, id, r, now, { sec: 3600 }).progress, outcome: o, cold }
 }
 
 /** An old save: daily streak, a daily XP goal, a v1 day plan and day-based review boxes. */
@@ -120,7 +120,7 @@ describe('a week with an old save', () => {
         } else if (step.skill) {
           const g = step.skill.game
           const e: SkillEntry = { id: `${step.kind}-${now.getTime()}`, game: g === 'record' ? 'rate' : g === 'mental' ? 'find' : g, at: now.getTime(), score: 30, ...(step.skill.game === 'changes' && step.skill.pair ? { detail: step.skill.pair } : {}) }
-          p = planAfterSkill(p, e, now).progress
+          p = planAfterSkill(p, e, now, 3600).progress
         }
       }
       expect(p.plan!.steps.every((s) => s.state !== 'todo')).toBe(true)

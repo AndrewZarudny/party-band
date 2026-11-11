@@ -273,6 +273,38 @@ export class LessonRun {
     return true
   }
 
+  /**
+   * Jams: end right now with a result for the bars played so far, instead of stopping with nothing.
+   * False (and nothing happens) unless a jam is playing and at least `minBeats` of it were played.
+   */
+  endNow(minBeats: number): boolean {
+    if (this.state !== 'playing' || !this.clock || !this.spotter) return false
+    const now = this.now()
+    const bars = Math.floor(this.clock.beatAt(now) / 4)
+    if (bars * 4 < minBeats || bars * 4 >= this.lastBeat) return false
+    this.endBeat = bars * 4
+    this.band?.stop()
+    this.end(now)
+    return true
+  }
+
+  /** The chart up to where the run ended early (whole bars), so a shortened jam is scored on what was played. */
+  private playedChart(): Chart {
+    const c = this.chart
+    if (this.lastBeat >= c.totalBeats) return c
+    const bars = Math.max(1, Math.floor(this.lastBeat / 4))
+    const cut: Chart = {
+      ...c,
+      bars,
+      totalBeats: bars * 4,
+      calls: c.calls.filter((x) => x.beat < bars * 4),
+      listenBars: c.listenBars.filter((b) => b < bars),
+      chordTimeline: c.chordTimeline.slice(0, bars),
+    }
+    if (c.improvBars) cut.improvBars = c.improvBars.filter((x) => x.bar < bars)
+    return cut
+  }
+
   // ---- internals ----
 
   private setState(s: RunState) {
@@ -426,10 +458,11 @@ export class LessonRun {
       const summary = this.judge ? this.judge.finish() : null
       this.chain.end(now)
       if (this.spotter) this.processImprov(Infinity)
-      const improv = lesson.improv && this.spotter ? analyseImprov(lesson.improv, this.chart, this.improvNotes, this.spotter.hits, this.swing) : null
+      const chart = this.spotter ? this.playedChart() : this.chart
+      const improv = lesson.improv && this.spotter ? analyseImprov(lesson.improv, chart, this.improvNotes, this.spotter.hits, this.swing) : null
       result = buildResult({
         lesson,
-        chart: this.chart,
+        chart,
         summary,
         improv,
         chain: this.chain,

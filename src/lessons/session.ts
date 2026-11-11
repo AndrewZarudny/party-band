@@ -1,14 +1,15 @@
 // Today's session (research section 4): a 20 or 30 minute template shaped by the week (A/B/C/D),
 // cold-start tests first, new material blocked, then mixed in once it has an earned tempo, and a jam to finish.
+// Each step is a block that runs until its minutes are played, on the same clock as the daily practice goal.
 // One plan per practice day in progress.plan. Every function is pure and returns new objects.
-import type { LessonResult, LoopSummary, PainLevel, Progress, SessionDay, SessionMin, SessionPlan, SessionStep, StepKind, WeekShape } from './types'
+import type { Lesson, LessonResult, LoopSummary, PainLevel, Progress, SessionDay, SessionMin, SessionPlan, SessionStep, StepKind, WeekShape } from './types'
 import type { SkillEntry, SkillStats } from '../skills/data'
 import { bestKey, emptyStats } from '../skills/data'
 import { CHANGE_CHORDS, weakestPair } from '../skills/chords'
 import { ORDER, PLAN_PATH, lessonById, stageOf, weeksLabel } from './data'
 import { dayKey, daysAway, isPassed, isUnlocked, nextLesson, trimLog } from './progress'
-import { autoSpeed, bpmAt, earnedTop } from './speed'
-import { heatReady, spotLabel, topSpots } from './heat'
+import { FULL_SPEED, autoSpeed, bpmAt, earnedTop } from './speed'
+import { drillTitle, heatReady, spotLabel, topSpots } from './heat'
 import { SESSION_MIN_SEC, coldSpeedFor, isCold, isReviewItem, reviewBrake, sessionNow, sessionOf, strugglingList, weekKey, weekStatus } from './review'
 
 export const WARMUPS = ['w1-02', 'w2-01', 'w5-01', 'w5-03']
@@ -21,13 +22,24 @@ export const KIND_LABEL: Record<StepKind, string> = {
   mix: 'Mixed',
   changes: 'Changes',
   ear: 'By ear',
+  song: 'Song',
   jam: 'Jam',
 }
 export const REST_SEC = 25 // heuristic (research 20–30 s): rest between runs of a new item
+/** A block is done once it is within this of its minutes: a run never ends on the second. Heuristic. */
+export const BLOCK_SLACK_SEC = 20
+/** The longest single jam run; a longer jam block is split into runs of equal length. Heuristic: about one song. */
+export const JAM_RUN_SEC = 300
+/** After a run or a round, this much of the pause still counts as practice: the rest between reps (section 4 puts it inside the block). */
+export const GAP_SEC = 30
+/** Minutes of the Song block, on top of the session's own minutes. Heuristic. */
+export const SONG_MIN = 5
 
 export interface PlanCtx {
   unratedTake: boolean
   stats: SkillStats
+  /** The player's own songs (Learn a song): with any, the session gets a Song block on top of its plan. */
+  songs?: { id: string; title: string }[]
 }
 
 /** Minutes per step (research section 4). Every list sums to the session length. */
@@ -208,12 +220,18 @@ function mixList(p: Progress, s: number, used: Set<string>, now: Date): string[]
   }).sort((a, b) => (p.lessons[b].firstS ?? -1) - (p.lessons[a].firstS ?? -1) || (p.lessons[b].passedAt ?? 0) - (p.lessons[a].passedAt ?? 0))
 }
 
-/** Items a mix step needs played before it is done: 2 in a short step, else all of them. */
-const mixNeed = (step: SessionStep) => Math.min(step.items?.length ?? 0, step.min <= 5 ? 2 : (step.items?.length ?? 0))
+/** Different items a mix step needs before its minutes can end it: one item alone is not a mix. */
+const mixNeed = (step: SessionStep) => Math.min(step.items?.length ?? 0, 2)
+
+/** The mix item to play next: in turn, round and round. */
+export function mixNext(step: SessionStep): string | null {
+  const items = step.items ?? []
+  return items.length ? items[(step.played?.length ?? 0) % items.length] : null
+}
 
 function mixWhy(items: string[]): string {
   const [a, b, c] = items.map((id) => lessonById(id)?.title ?? id)
-  return `${a}, ${b}${c ? `, ${c}` : ''}. One run each, in turn.`
+  return `${a}, ${b}${c ? `, ${c}` : ''}. One run each, in turn, then round again.`
 }
 
 /** Jams: free jams not played last session (least recently played first), else the furthest open jam, else First Jam. */
@@ -373,6 +391,14 @@ export function makeSessionPlan(p: Progress, now: Date, ctx: PlanCtx): SessionPl
       steps[i] = skillStep('changes', c.skill, c.why, st.min)
     }
   }
+  // A real song before the jam, when the player has any: added on top of the plan (nothing gives up its minutes),
+  // a different song each session.
+  const songs = ctx.songs ?? []
+  const ji = steps.findIndex((x) => x.kind === 'jam')
+  if (songs.length && ji >= 0) {
+    const song = songs[s % songs.length]
+    steps.splice(ji, 0, { ...skillStep('song', undefined, 'One of your songs, in Learn a song: it opens on the next part to pass. Come back to Lessons when the time is up.', SONG_MIN), song: { id: song.id, title: song.title } })
+  }
   // Spare minutes (no cold item, no warm-up) go to blocked reps of the new item, else changes or ear;
   // with none of those the session is simply shorter.
   if (spare > 0) {
@@ -382,9 +408,80 @@ export function makeSessionPlan(p: Progress, now: Date, ctx: PlanCtx): SessionPl
   return plan(steps)
 }
 
+// ---- blocks on the clock ----
+// A step is a block: it runs until its minutes are played (plan section 4), not until one run is over.
+// The seconds are the practice log's (the clock behind the top bar's goal ring); LessonsMode hands them in.
+
+export const stepSec = (s: SessionStep): number => s.sec ?? 0
+/** Seconds left in the block: 0 once its minutes are played. */
+export const stepLeftSec = (s: SessionStep): number => Math.max(0, s.min * 60 - stepSec(s))
+/** Played, not done yet: the block is running. */
+export const stepStarted = (s: SessionStep): boolean => s.state === 'todo' && ((s.runs ?? 0) > 0 || stepSec(s) > 0)
+/** Listen back ends with the rating and Tap In with its one run; every other step runs on the clock. */
+const timed = (s: SessionStep) => s.kind !== 'listenback' && !(s.lessonId !== null && isSync(s.lessonId))
+const timeUp = (s: SessionStep) => stepSec(s) >= s.min * 60 - BLOCK_SLACK_SEC
+const addSec = (s: SessionStep, sec: number) => {
+  const add = Math.max(0, Math.round(sec))
+  if (add) s.sec = stepSec(s) + add
+}
+
+/** Seconds of one pass through a lesson at `speed`, the count-in left out. */
+export const passSec = (lesson: Lesson, speed: number): number => (lesson.bars * 4 * 60) / Math.max(1, bpmAt(lesson, speed))
+
+/**
+ * How many times through a jam plays in one run of a block with `leftSec` to go: the block is split into
+ * runs of equal length, none over JAM_RUN_SEC, and a run is never under one pass.
+ */
+export function jamPasses(lesson: Lesson, speed: number, leftSec: number): number {
+  const runs = Math.max(1, Math.ceil(leftSec / JAM_RUN_SEC))
+  return Math.max(1, Math.min(64, Math.round(leftSec / runs / passSec(lesson, speed))))
+}
+
+/** "1:05" */
+export function clockText(sec: number): string {
+  const s = Math.max(0, Math.floor(sec))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+/** What a step is called on the session card and on buttons. */
+export function stepTitle(s: SessionStep): string {
+  if (s.drill) return drillTitle(s.drill)
+  if (s.lessonId) return lessonById(s.lessonId)?.title ?? s.lessonId
+  if (s.kind === 'mix') return `${s.items?.length ?? 0} lessons in turn`
+  if (s.song) return s.song.title
+  if (s.kind === 'listenback') return 'Your last jam take'
+  if (s.skill?.game === 'changes') return s.skill.pair ? `One-minute changes: ${s.skill.pair}` : 'One-minute changes'
+  if (s.skill?.game === 'find') return 'Fretboard notes'
+  if (s.skill?.game === 'ear') return 'Call and response'
+  return KIND_LABEL[s.kind]
+}
+
+/** While a block runs: what to do with the rest of its minutes. */
+const BLOCK_HINT: Record<StepKind, string> = {
+  warmup: 'Play it again until the time is up.',
+  listenback: '',
+  cold: 'Now with the tab: play it again and fix what slipped.',
+  new: 'Rest, then play it again.',
+  mix: 'On to the next one in the mix.',
+  changes: 'Another round.',
+  ear: 'Another round.',
+  song: 'Back to the song.',
+  jam: 'Jam on.',
+}
+
+/** A block's clock in words: "Warm-up: 1:20 of 2 min. Play it again until the time is up." or "Warm-up done." */
+export function blockLine(s: SessionStep): string {
+  const kind = KIND_LABEL[s.kind]
+  if (s.state === 'done') return `${kind} done.`
+  if (s.state === 'skipped') return `${kind} skipped.`
+  return `${kind}: ${clockText(stepSec(s))} of ${s.min} min. ${BLOCK_HINT[s.kind]}`.trim()
+}
+
 /** A plan made before the brake came on, with a new lesson in it and nothing played yet: made again. */
 const brakeStale = (p: Progress, plan: SessionPlan) =>
-  !plan.steps.some((s) => s.state === 'done') && plan.steps.some((s) => s.kind === 'new' && !s.consolidate && s.lessonId !== null && !isSync(s.lessonId)) && reviewBrake(p)
+  !plan.steps.some((s) => s.state === 'done' || stepStarted(s)) &&
+  plan.steps.some((s) => s.kind === 'new' && !s.consolidate && s.lessonId !== null && !isSync(s.lessonId)) &&
+  reviewBrake(p)
 
 /** Progress with today's plan, or null when today's v2 plan is already stored (no save needed). */
 export function withTodayPlan(p: Progress, now: Date, ctx: PlanCtx): Progress | null {
@@ -416,29 +513,45 @@ export function planMinutes(plan: SessionPlan): number {
   return plan.steps.reduce((a, s) => a + (s.state === 'skipped' ? 0 : s.min), 0)
 }
 
-type Ticked = { progress: Progress; finished: boolean }
+/** Practice seconds played in the plan's blocks so far (skipped steps left out). */
+export function planPlayedSec(plan: SessionPlan): number {
+  return plan.steps.reduce((a, s) => a + (s.state === 'skipped' ? 0 : stepSec(s)), 0)
+}
 
-/** Marks `step` (inside `next`) done and keeps its best score. */
-function finishStep(next: Progress, step: SessionStep, score: number, speed: number): Ticked {
+export interface Ticked {
+  progress: Progress
+  finished: boolean // this tick finished the session
+  step: number | null // the plan step it counted for
+}
+
+/** What a finished run brings to its block, beyond its score. */
+export interface RunCredit {
+  sec?: number // practice seconds the run adds to the block
+  coldClean?: boolean // it was the item's cold-start test, and clean: nothing to fix, so the block is over
+  mastered?: boolean // it earned the lesson's full tempo: more reps today would only pad the minutes
+}
+
+/** Closes step i (inside `next`) when `done`, and says whether that finished the session. */
+function tick(next: Progress, i: number, done: boolean): Ticked {
   const plan = next.plan as SessionPlan
   const wasDone = planDone(plan)
-  step.state = 'done'
-  if (step.score === undefined || score >= step.score) {
-    step.score = score
-    step.speed = speed
-  }
-  return { progress: next, finished: !wasDone && planDone(plan) }
+  if (done) plan.steps[i].state = 'done'
+  return { progress: next, finished: done && !wasDone && planDone(plan), step: i }
 }
 
 const todayPlan = (p: Progress, now: Date) => (p.plan && p.plan.v === 2 && p.plan.day === dayKey(now) ? p.plan : null)
 
-/** Ticks the step for this run: a lesson step of that lesson, or one item of a mix step. */
-export function planAfterRun(p: Progress, lessonId: string, r: LessonResult, now: Date): Ticked {
-  const same = { progress: p, finished: false }
+/**
+ * Counts a run for its block: a lesson step of that lesson, or the mix step that holds it. The block keeps
+ * going, run after run, until its minutes are played. Two things end it sooner, so minutes are never padded:
+ * a clean cold-start test (a cold block), and a full tempo earned (a new block).
+ */
+export function planAfterRun(p: Progress, lessonId: string, r: LessonResult, now: Date, c: RunCredit = {}): Ticked {
+  const same: Ticked = { progress: p, finished: false, step: null }
   const plan = todayPlan(p, now)
   if (!plan) return same
   // Tap In done: drop the setup plan, the home screen makes the real one.
-  if (setupOnly(plan) && syncDone(p)) return { progress: { ...p, plan: null }, finished: false }
+  if (setupOnly(plan) && syncDone(p)) return { progress: { ...p, plan: null }, finished: false, step: null }
   const next = clone(p)
   const steps = (next.plan as SessionPlan).steps
   // A later run of a done step's lesson raises today's best; the first score and a cold score never change.
@@ -451,46 +564,108 @@ export function planAfterRun(p: Progress, lessonId: string, r: LessonResult, now
       raised = true
     }
   }
-  const step = steps.find((s) => s.state === 'todo' && s.lessonId === lessonId && !s.drill)
-  if (step) return finishStep(next, step, r.score, r.speed)
-  const mix = steps.find((s) => s.state === 'todo' && s.kind === 'mix' && s.items?.includes(lessonId) && !s.played?.includes(lessonId))
-  if (!mix) return raised ? { progress: next, finished: false } : same
+  const i = steps.findIndex((s) => s.state === 'todo' && s.lessonId === lessonId && !s.drill)
+  if (i >= 0) {
+    const step = steps[i]
+    step.runs = (step.runs ?? 0) + 1
+    addSec(step, c.sec ?? 0)
+    if (step.score === undefined) {
+      step.score = r.score
+      step.speed = r.speed
+    } else if (step.kind !== 'cold') step.best = Math.max(step.best ?? step.score, r.score)
+    const done = !timed(step) || timeUp(step) || (step.kind === 'cold' && !!c.coldClean) || (step.kind === 'new' && !!c.mastered)
+    return tick(next, i, done)
+  }
+  const m = steps.findIndex((s) => s.state === 'todo' && s.kind === 'mix' && !!s.items?.includes(lessonId))
+  if (m < 0) return raised ? { progress: next, finished: false, step: null } : same
+  const mix = steps[m]
   mix.played = [...(mix.played ?? []), lessonId]
-  if (mix.played.length < mixNeed(mix)) return { progress: next, finished: false }
-  return finishStep(next, mix, r.score, r.speed)
+  mix.runs = (mix.runs ?? 0) + 1
+  addSec(mix, c.sec ?? 0)
+  if (mix.score === undefined || r.score >= mix.score) {
+    mix.score = r.score
+    mix.speed = r.speed
+  }
+  return tick(next, m, timeUp(mix) && new Set(mix.played).size >= mixNeed(mix))
 }
 
-/** A drill loop ticks today's drill step: score = its best pass. */
-export function planAfterLoop(p: Progress, drillKey: string, s: LoopSummary, now: Date): Ticked {
-  const same = { progress: p, finished: false }
+/** A drill loop counts for today's drill step: score = its best pass, and the loop's seconds go to the block. */
+export function planAfterLoop(p: Progress, drillKey: string, s: LoopSummary, now: Date, sec = 0): Ticked {
+  const same: Ticked = { progress: p, finished: false, step: null }
   if (!todayPlan(p, now) || !s.passes.length) return same
   const next = clone(p)
   const steps = (next.plan as SessionPlan).steps
   const score = Math.round(100 * Math.max(...s.passes.map((x) => x.acc)))
   const speed = s.topSpeed || s.passes[s.passes.length - 1].speed
-  const step = steps.find((x) => x.drill === drillKey && x.state === 'todo')
-  if (step) return finishStep(next, step, score, speed)
+  const i = steps.findIndex((x) => x.drill === drillKey && x.state === 'todo')
+  if (i >= 0) {
+    const step = steps[i]
+    step.runs = (step.runs ?? 0) + 1
+    addSec(step, sec)
+    if (step.score === undefined) {
+      step.score = score
+      step.speed = speed
+    } else if (score > Math.max(step.score, step.best ?? 0)) step.best = score
+    return tick(next, i, timeUp(step))
+  }
   // A later loop of a done drill raises today's best, like a later run of a lesson.
   const done = steps.find((x) => x.drill === drillKey && x.state === 'done' && x.score !== undefined)
   if (!done || score <= Math.max(done.score ?? 0, done.best ?? 0)) return same
   done.best = score
-  return { progress: next, finished: false }
+  return { progress: next, finished: false, step: null }
 }
 
-/** A skill round ticks the first todo skill step of its game (a rating ticks Listen back). */
-export function planAfterSkill(p: Progress, e: SkillEntry, now: Date): Ticked {
-  const same = { progress: p, finished: false }
+/**
+ * A skill round counts for the first todo skill step of its game (a rating ends Listen back).
+ * A changes block starts on its pair; later rounds in the same block may move on to another pair.
+ */
+export function planAfterSkill(p: Progress, e: SkillEntry, now: Date, sec = 0): Ticked {
+  const same: Ticked = { progress: p, finished: false, step: null }
   if (!todayPlan(p, now)) return same
   const next = clone(p)
-  const step = (next.plan as SessionPlan).steps.find((s) => {
+  const steps = (next.plan as SessionPlan).steps
+  const i = steps.findIndex((s) => {
     if (s.state !== 'todo' || !s.skill) return false
     if (e.game === 'rate') return s.kind === 'listenback'
     if (s.kind === 'listenback') return false
     if (s.skill.game !== e.game) return false
-    return s.skill.game !== 'changes' || !s.skill.pair || s.skill.pair === e.detail
+    return s.skill.game !== 'changes' || !s.skill.pair || s.skill.pair === e.detail || (s.runs ?? 0) > 0
   })
-  if (!step) return same
-  return finishStep(next, step, e.score, 1)
+  if (i < 0) return same
+  const step = steps[i]
+  step.runs = (step.runs ?? 0) + 1
+  addSec(step, sec)
+  if (step.score === undefined || e.score >= step.score) {
+    step.score = e.score
+    step.speed = 1
+  }
+  return tick(next, i, !timed(step) || timeUp(step))
+}
+
+/** Back from Learn a song: the seconds played there count for the Song block at step i. */
+export function planAfterSong(p: Progress, i: number, sec: number, now: Date): Ticked {
+  const same: Ticked = { progress: p, finished: false, step: null }
+  const step = todayPlan(p, now)?.steps[i]
+  if (!step || step.state !== 'todo' || step.kind !== 'song' || Math.round(sec) <= 0) return same
+  const next = clone(p)
+  const s = (next.plan as SessionPlan).steps[i]
+  s.runs = (s.runs ?? 0) + 1
+  addSec(s, sec)
+  return tick(next, i, timeUp(s))
+}
+
+/**
+ * Practice seconds that belong to block i without a finished run: the rest between reps, a run that was stopped,
+ * a loop of the block's hard bars. Time alone ends a block only once something in it was played to the end.
+ */
+export function planAddTime(p: Progress, i: number, sec: number, now: Date): Ticked {
+  const same: Ticked = { progress: p, finished: false, step: null }
+  const step = todayPlan(p, now)?.steps[i]
+  if (!step || step.state !== 'todo' || !timed(step) || Math.round(sec) <= 0) return same
+  const next = clone(p)
+  const s = (next.plan as SessionPlan).steps[i]
+  addSec(s, sec)
+  return tick(next, i, (s.runs ?? 0) > 0 && timeUp(s) && (s.kind !== 'mix' || new Set(s.played ?? []).size >= mixNeed(s)))
 }
 
 export interface StepScore {
@@ -513,6 +688,7 @@ export function stepScore(p: Progress, step: SessionStep): StepScore | null {
  * Warm-ups, drills and jams come every session, so their place on the map is no reason.
  */
 export function stepSource(step: SessionStep): string | null {
+  if (step.extra) return 'Extra time'
   if (!step.lessonId) return null
   if (step.kind === 'cold') return 'Review, due today'
   if (step.kind !== 'new') return null
@@ -546,38 +722,119 @@ function whyFor(p: Progress, step: SessionStep, id: string): string {
   return isPassed(p, id) ? 'Go for 3 stars.' : NEW_WHY
 }
 
+/** A block that is running keeps its lesson. The jam is the exception: another jam for the rest of its minutes is fine. */
+const swappable = (step: SessionStep) => !!step.lessonId && !step.drill && (!stepStarted(step) || step.kind === 'jam')
+
 /** Other lesson ids for step i (never one another step already uses). Drill, mix and skill steps have none. */
 export function swapOptions(p: Progress, i: number, now = new Date()): string[] {
   const plan = p.plan
   const step = plan?.steps[i]
-  if (!plan || !step || !step.lessonId || step.drill) return []
+  if (!plan || !step || !swappable(step)) return []
   const others = otherIds(plan, i)
   return candidates(p, step, now).filter((id) => id !== step.lessonId && !others.has(id))
 }
 
-/** Step i with the next option of its kind, cycling; why and from are refreshed. */
+/** Step i with the next option of its kind, cycling; why and from are refreshed. A running jam keeps its minutes played. */
 export function swapStep(p: Progress, i: number, now: Date): Progress {
   const plan = p.plan
   const step = plan?.steps[i]
-  if (!plan || !step || !step.lessonId || step.drill) return p
+  if (!plan || !step || !step.lessonId || !swappable(step)) return p
   const others = otherIds(plan, i)
   const list = candidates(p, step, now).filter((id) => !others.has(id))
   const at = list.indexOf(step.lessonId)
   const id = list[(at + 1) % list.length]
   if (!id || id === step.lessonId) return p
   const next = clone(p)
-  ;(next.plan as SessionPlan).steps[i] = lessonStep(next, step.kind, { id, why: whyFor(next, step, id), consolidate: step.brake, brake: step.brake }, step.min)
+  const fresh = lessonStep(next, step.kind, { id, why: whyFor(next, step, id), consolidate: step.brake, brake: step.brake }, step.min)
+  if (step.sec) fresh.sec = step.sec
+  if (step.runs) fresh.runs = step.runs
+  if (step.extra) fresh.extra = true
+  ;(next.plan as SessionPlan).steps[i] = fresh
   return next
 }
 
-/** Todo <-> skipped. Done steps stay done. */
+/** Todo <-> skipped. A block that was started is closed instead: it was played, so it is done. Done steps stay done. */
 export function skipStep(p: Progress, i: number): Progress {
   const step = p.plan?.steps[i]
   if (!step || step.state === 'done') return p
   const next = clone(p)
   const s = (next.plan as SessionPlan).steps[i]
-  s.state = s.state === 'todo' ? 'skipped' : 'todo'
+  s.state = s.state === 'skipped' ? 'todo' : stepStarted(s) ? 'done' : 'skipped'
   return next
+}
+
+// ---- keep going: extra blocks once the session is done ----
+
+export type ExtraKind = 'jam' | 'reps' | 'changes'
+export interface ExtraOption {
+  kind: ExtraKind
+  label: string // the button: "Jam: Shuffle in E"
+  min: number
+}
+
+const EXTRA_MIN = 2
+const EXTRA_MAX = 10
+/** Minutes of an extra block when `leftSec` of the day's goal is still to play. */
+const extraMin = (leftSec: number) => Math.max(EXTRA_MIN, Math.min(EXTRA_MAX, Math.round(leftSec / 60)))
+
+/** Today's piece that is worth more reps: the new (or review-first) lesson without its full tempo, else a cold start that slipped today. */
+function repsPick(p: Progress, plan: SessionPlan): string | null {
+  const played = (s: SessionStep) => s.state !== 'skipped' && s.lessonId !== null && !isSync(s.lessonId) && !isImprov(s.lessonId)
+  const fresh = plan.steps.find((s) => s.kind === 'new' && played(s) && earnedTop(p.lessons[s.lessonId as string]) < FULL_SPEED)
+  if (fresh) return fresh.lessonId
+  const slipped = plan.steps.find((s) => s.kind === 'cold' && played(s) && (p.lessons[s.lessonId as string]?.hist ?? []).some((h) => h.cold?.d === plan.day && !h.cold.clean))
+  return slipped?.lessonId ?? null
+}
+
+/** The extra block of one kind, or null when there is nothing of that kind to play. */
+function extraStep(p: Progress, plan: SessionPlan, now: Date, ctx: PlanCtx, kind: ExtraKind, min: number): SessionStep | null {
+  let step: SessionStep | null = null
+  if (kind === 'jam') {
+    // A jam the session hasn't had yet, when there is one.
+    const used = otherIds(plan, -1)
+    const list = jamList(p, sessionNow(p, now))
+    const id = list.find((x) => !used.has(x)) ?? list[0]
+    if (id) step = lessonStep(p, 'jam', { id, why: jamWhy(p, id) }, min)
+  } else if (kind === 'reps') {
+    const id = repsPick(p, plan)
+    if (id) step = lessonStep(p, 'new', { id, consolidate: true, why: "More of today's piece, on its own. Rest 20–30 s between runs." }, min)
+  } else {
+    const c = changesStep(p, ctx)
+    step = skillStep('changes', c.skill, c.why, min)
+  }
+  if (step) step.extra = true
+  return step
+}
+
+function extraLabel(step: SessionStep): string {
+  if (step.lessonId) {
+    const title = lessonById(step.lessonId)?.title ?? step.lessonId
+    return step.kind === 'jam' ? `Jam: ${title}` : `More of ${title}`
+  }
+  if (step.skill?.game === 'changes') return step.skill.pair ? `One-minute changes: ${step.skill.pair}` : 'One-minute changes'
+  return 'Fretboard notes'
+}
+
+/**
+ * What to play once the session is done and the day's minutes are not: a jam first (it stays the wind-down),
+ * then more of today's piece, then one-minute changes. Each is one more block of the session.
+ */
+export function extraOptions(p: Progress, now: Date, ctx: PlanCtx, leftSec: number): ExtraOption[] {
+  const plan = todayPlan(p, now)
+  if (!plan) return []
+  const min = extraMin(leftSec)
+  return (['jam', 'reps', 'changes'] as const).flatMap((kind) => {
+    const step = extraStep(p, plan, now, ctx, kind, min)
+    return step ? [{ kind, label: extraLabel(step), min }] : []
+  })
+}
+
+/** Today's plan with one more block at its end; unchanged when there is no plan or nothing of that kind. */
+export function withExtraStep(p: Progress, now: Date, ctx: PlanCtx, kind: ExtraKind, leftSec: number): Progress {
+  const plan = todayPlan(p, now)
+  const step = plan ? extraStep(p, plan, now, ctx, kind, extraMin(leftSec)) : null
+  if (!plan || !step) return p
+  return { ...p, plan: { ...plan, steps: [...plan.steps, step] } }
 }
 
 /** What got better in today's done steps: best score, stars, earned tempo, loops, cold passes. Only real gains. */
@@ -651,9 +908,9 @@ export function withSessionDay(p: Progress, now: Date, practiceSec: number): { p
   return { progress: next, changed: true, counted: nd.counted, weekMet }
 }
 
-/** Today's plan was started: some step is done. */
+/** Today's plan was started: some step is done, or its block is running. */
 export function planStarted(p: Progress, now: Date): boolean {
-  return !!todayPlan(p, now)?.steps.some((s) => s.state === 'done')
+  return !!todayPlan(p, now)?.steps.some((s) => s.state === 'done' || stepStarted(s))
 }
 
 /** A new session length. Today's plan is dropped (the home screen remakes it) unless a step of it is done already. */

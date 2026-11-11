@@ -36,3 +36,6 @@ __pycache__/
 
 # Windows download marks
 *:Zone.Identifier
+
+# your own tab files (copyrighted): imported into the library, never committed
+/songs/

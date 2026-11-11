@@ -219,7 +219,7 @@ function normalizeRecord(raw: unknown, lesson: Lesson | undefined, today: string
   return rec
 }
 
-const STEP_KINDS: StepKind[] = ['warmup', 'listenback', 'cold', 'new', 'mix', 'changes', 'ear', 'jam']
+const STEP_KINDS: StepKind[] = ['warmup', 'listenback', 'cold', 'new', 'mix', 'changes', 'ear', 'song', 'jam']
 const SKILL_GAMES = ['changes', 'find', 'name', 'ear', 'clock', 'record', 'mental']
 const strList = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : undefined)
 
@@ -230,7 +230,9 @@ function normalizeStep(raw: unknown): SessionStep | null {
   const lessonId = typeof x.lessonId === 'string' && lessonById(x.lessonId) ? x.lessonId : null
   const sk = obj(x.skill)
   const skill = sk && typeof sk.game === 'string' && SKILL_GAMES.includes(sk.game) ? (sk as unknown as SessionStep['skill']) : undefined
-  if (!lessonId && !skill && kind !== 'mix') return null
+  const sg = obj(x.song)
+  const song = kind === 'song' && sg && typeof sg.id === 'string' && typeof sg.title === 'string' ? { id: sg.id, title: sg.title } : undefined
+  if (!lessonId && !skill && !song && kind !== 'mix') return null
   const from = obj(x.from)
   const step: SessionStep = {
     kind,
@@ -241,6 +243,7 @@ function normalizeStep(raw: unknown): SessionStep | null {
     from: { best: num(from?.best, 0), stars: toStars(from?.stars), speed: num(from?.speed, 1), loops: num(from?.loops, 0) },
   }
   if (skill) step.skill = skill
+  if (song) step.song = song
   const items = strList(x.items)?.filter((id) => lessonById(id))
   if (items) step.items = items
   const played = strList(x.played)
@@ -252,6 +255,10 @@ function normalizeStep(raw: unknown): SessionStep | null {
   if (typeof x.best === 'number' && isFinite(x.best)) step.best = x.best
   if (typeof x.speed === 'number') step.speed = x.speed
   if (typeof x.drill === 'string' && /^[nct]:/.test(x.drill)) step.drill = x.drill
+  // A plan saved before blocks ran on the clock has neither: its todo steps start at 0 seconds.
+  if (typeof x.sec === 'number' && isFinite(x.sec) && x.sec > 0) step.sec = Math.round(x.sec)
+  if (typeof x.runs === 'number' && isFinite(x.runs) && x.runs > 0) step.runs = Math.round(x.runs)
+  if (x.extra === true) step.extra = true
   return step
 }
 

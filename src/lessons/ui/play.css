@@ -680,3 +680,49 @@
     animation: lp-fade-out 900ms linear forwards !important;
   }
 }
+
+/* The route through the lesson: a pick rides the fret wire to the flag at the end. */
+.lp-progress {
+  overflow: visible;
+}
+.lp-rider {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 14px;
+  height: 16px;
+  margin: -17px 0 0 -7px;
+  pointer-events: none;
+}
+.lp-rider svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: var(--accent);
+}
+.lp-flag {
+  position: absolute;
+  right: -5px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin-top: -15px;
+  fill: var(--target);
+  stroke: var(--muted);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+.lp-play.is-roar .lp-rider svg {
+  fill: var(--target);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lp-play.is-roar .lp-rider {
+    animation: lp-rider-hop 480ms ease-in-out infinite;
+  }
+}
+@keyframes lp-rider-hop {
+  50% {
+    transform: translateY(-3px);
+  }
+}

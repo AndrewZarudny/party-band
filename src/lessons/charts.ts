@@ -153,6 +153,18 @@ function improvCalls(lesson: Lesson, spec: ImprovSpec, timeline: Chart['chordTim
   })
 }
 
+/**
+ * A jam played `passes` times through in one run: the same progression (the band's chords loop by bar) and the
+ * same calls again each time. Anything but an improv lesson, or one pass, is the plain chart.
+ */
+export function jamChart(lesson: Lesson, passes: number): Chart {
+  const n = Math.max(1, Math.round(passes))
+  if (n === 1 || lesson.type !== 'improv' || !lesson.improv) return buildChart(lesson)
+  const cr = lesson.improv.callResponse
+  const improv = cr ? { ...lesson.improv, callResponse: { ...cr, calls: Array.from({ length: n }, () => cr.calls).flat() } } : lesson.improv
+  return buildChart({ ...lesson, bars: lesson.bars * n, improv })
+}
+
 export function buildChart(lesson: Lesson): Chart {
   const totalBeats = lesson.bars * 4
   const chordTimeline: Chart['chordTimeline'] = []

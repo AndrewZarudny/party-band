@@ -2943,3 +2943,42 @@ code {
     transition: none;
   }
 }
+
+/* Song levels: one button per section of the tab, then the whole song. */
+.song-levels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.song-levels-h {
+  font-weight: 700;
+  margin-right: 4px;
+}
+.song-levels .btn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.song-levels .btn.done {
+  border-color: var(--target);
+}
+.song-levels-note {
+  flex: 1 1 260px;
+  color: var(--muted);
+  font-size: 0.9em;
+}
+
+/* Long song names never push the controls around: one line, cut with an ellipsis. */
+.song-bar .song-name {
+  min-width: 0;
+  max-width: 28ch;
+}
+.song-bar .song-name b,
+.song-bar .song-name span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

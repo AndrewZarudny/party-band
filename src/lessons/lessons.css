@@ -2103,6 +2103,47 @@
   padding-left: 18px;
   font-size: var(--fs-ui);
 }
+/* A running block's clock in its row, the day's minutes once the session is done, and the extra blocks on offer. */
+.lessons .ls-set-row.started .ls-set-min {
+  color: var(--ls-set-ink);
+  font-weight: 700;
+}
+.lessons .ls-set-day {
+  margin: 4px 0 0;
+  font-weight: 700;
+}
+.lessons .ls-set-more {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+.lessons .ls-set-more-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+/* The block's minutes as a length of fret wire under the strip's line. */
+.lessons .ls-set-meter {
+  flex: 1 1 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--ls-set-rule);
+  overflow: hidden;
+}
+.lessons .ls-set-meter > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: transform 400ms var(--ls-out);
+}
+.lessons .ls-set-strip-n {
+  color: var(--ls-set-muted);
+}
+.lessons .sk-session {
+  margin: 10px 0 0;
+  font-weight: 600;
+}
 .lessons .ls-set.strip {
   display: flex;
   flex-wrap: wrap;

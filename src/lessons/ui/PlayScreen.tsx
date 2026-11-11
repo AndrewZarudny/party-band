@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChartEvent, ChordEv, Cosmetic, DinoMood, Lesson, LessonResult, NoteEv, Prefs, RunState, Speed, TabLevel, Verdict } from '../types'
 import { LessonRun, autoplayFromUrl } from '../run'
+import { jamChart } from '../charts'
 import { MIN_SPEED } from '../speed'
 import { VERDICT_LABEL } from '../scoring'
 import { chordPcs, scalePcsOf } from '../improv'
@@ -103,6 +104,7 @@ export function PlayScreen({
   quiet = false,
   shuffle = false,
   cold = false,
+  passes = 1,
 }: {
   lesson: Lesson
   prefs: Prefs
@@ -125,6 +127,8 @@ export function PlayScreen({
   shuffle?: boolean
   /** A cold-start test: first try, no warm-up. */
   cold?: boolean
+  /** A jam block of today's session: the jam plays this many times through in one run. */
+  passes?: number
 }) {
   const [peek, setPeek] = useState(false)
   const peekedRef = useRef(false)
@@ -146,13 +150,14 @@ export function PlayScreen({
   const [improv, setImprov] = useState<{ chord: string; chips: { beat: number; midi: number; kind: 'chord' | 'scale' | 'out' }[] }>({ chord: '', chips: [] })
 
   // Latest props for callbacks that live as long as a run.
-  const live = useRef({ lesson, prefs, listen, onEnd, onPrefs, speed, tab, quiet, shuffle })
+  const live = useRef({ lesson, prefs, listen, onEnd, onPrefs, speed, tab, quiet, shuffle, passes })
   useEffect(() => {
-    live.current = { lesson, prefs, listen, onEnd, onPrefs, speed, tab, quiet, shuffle }
+    live.current = { lesson, prefs, listen, onEnd, onPrefs, speed, tab, quiet, shuffle, passes }
   })
 
   const dinoRef = useRef<HTMLDivElement>(null)
   const progressRef = useRef<HTMLElement>(null)
+  const riderRef = useRef<HTMLSpanElement>(null)
   const bendRef = useRef<HTMLDivElement>(null)
   const bendFillRef = useRef<HTMLElement>(null)
   const cardRef = useRef<HTMLDivElement>(null)
@@ -187,6 +192,8 @@ export function PlayScreen({
       autoplay: autoplayFromUrl(),
       shuffle: live.current.shuffle,
       bandLevel: live.current.quiet ? QUIET_BAND : 1,
+      // A session's jam block: several times through in one run (never the demo playback).
+      chart: !isListen && live.current.passes > 1 ? jamChart(lesson, live.current.passes) : undefined,
     })
     let cancelled = false
     let misses = 0
@@ -296,6 +303,8 @@ export function PlayScreen({
     const active = () => run.state === 'countin' || run.state === 'playing' || run.state === 'idle'
     const pause = () => {
       if (!active()) return
+      // A long jam with one time through behind it ends with its result, instead of throwing minutes of playing away.
+      if (run.chart.bars > run.lesson.bars && run.endNow(run.lesson.bars * 4)) return
       run.stop()
       setOverlay('paused')
     }
@@ -340,7 +349,10 @@ export function PlayScreen({
     const tick = (now: number) => {
       if (run.state === 'countin' || run.state === 'playing') {
         const b = run.visualBeat(live.current.prefs.visualNudgeMs)
-        if (progressRef.current) progressRef.current.style.transform = `scaleX(${Math.max(0, Math.min(1, b / total))})`
+        const share = Math.max(0, Math.min(1, b / total))
+        if (progressRef.current) progressRef.current.style.transform = `scaleX(${share})`
+        // the pick rides the route to the flag at the end
+        if (riderRef.current) riderRef.current.style.left = `${share * 100}%`
         // listen mode has no judge to move "next" along: follow the clock (one render per note)
         if (live.current.listen && Number.isFinite(b)) {
           const n = nextAtBeat(run.chart, b)
@@ -396,6 +408,9 @@ export function PlayScreen({
 
   const chart = run?.chart
   const bars = chart?.bars ?? lesson.bars
+  // A long jam: how many times through, and about how long (the progress bar then has one notch per time through).
+  const times = chart && chart.bars > lesson.bars ? Math.round(chart.bars / lesson.bars) : 1
+  const jamMin = run && times > 1 ? Math.max(1, Math.round((chart?.totalBeats ?? 0) / run.bpm)) : 0
 
   // Finger and pick guides: worked out once per run, shown by the pref (Auto = early worlds)
   const fingering = useMemo(() => (run ? fingeringFor(run.lesson, run.chart) : null), [run])
@@ -459,6 +474,7 @@ export function PlayScreen({
   const roarFill = Math.min(1, hud.chain / ROAR_AT)
   const pauseNow = () => {
     if (!playing || !run) return
+    if (run.chart.bars > run.lesson.bars && run.endNow(run.lesson.bars * 4)) return
     run.stop()
     setOverlay('paused')
   }
@@ -471,8 +487,17 @@ export function PlayScreen({
         </button>
         <div className="lp-title">
           <h2>{lesson.title}</h2>
-          <div className="lp-progress" style={{ ['--bars' as string]: bars }} aria-hidden="true">
+          <div className="lp-progress" style={{ ['--bars' as string]: times > 1 ? times : bars }} aria-hidden="true">
             <i ref={progressRef} />
+            <span className="lp-rider" ref={riderRef}>
+              <svg viewBox="0 0 40 44">
+                <path d="M20 41C13 34 3 23 3 13.5 3 6 10.5 2.5 20 2.5S37 6 37 13.5C37 23 27 34 20 41Z" />
+              </svg>
+            </span>
+            <svg className="lp-flag" viewBox="0 0 16 16">
+              <path d="M4 15V1" />
+              <path d="M4 2h9l-2.5 3L13 8H4Z" />
+            </svg>
           </div>
         </div>
         {!listen && !quiet && (
@@ -495,8 +520,13 @@ export function PlayScreen({
       <div className="lp-stage">
         {run && <Runway run={run} zoom={prefs.zoom} nudgeMs={prefs.visualNudgeMs} guides={guides} tab={shownTab} quiet={quiet && !listen} />}
         {listen && playing && <span className="lp-listen-tag">{guides ? 'Just watch: the numbers show which finger.' : 'Just watch and listen.'}</span>}
-        {!listen && (quiet || cold || shuffle) && (
+        {!listen && (quiet || cold || shuffle || times > 1) && (
           <div className="lp-mode-tags">
+            {times > 1 && (
+              <span className="lp-mode-tag ls-num">
+                {times} times through, about {jamMin} min
+              </span>
+            )}
             {cold && playing && <span className="lp-mode-tag cold">Cold start: first try, no warm-up.</span>}
             {quiet && <span className="lp-mode-tag">Listen mode: play by ear, the summary comes at the end.</span>}
             {shuffle && <span className="lp-mode-tag">Shuffle: practice only.</span>}

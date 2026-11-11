@@ -115,7 +115,13 @@ export default function App() {
         )}
         {mode === 'lessons' && (
           <div className="mode-wrap">
-            <LessonsMode onConnect={() => setPanel(true)} />
+            <LessonsMode
+              onConnect={() => setPanel(true)}
+              onOpenSong={(id) => {
+                pick('song')
+                window.dispatchEvent(new CustomEvent('fretwise-open-song', { detail: id }))
+              }}
+            />
           </div>
         )}
       </main>

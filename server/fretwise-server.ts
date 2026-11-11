@@ -14,6 +14,8 @@ import { accountsReady, closeAccounts, handleAccounts } from './accounts'
 
 const GP_EXT = /\.(gp|gp3|gp4|gp5|gpx|gp7|gp8|musicxml|mxl|nam|zip)$/i
 const DOWNLOADS = path.join(os.homedir(), 'Downloads')
+/** The project's own songs folder (git-ignored): tab files put there join the library too. */
+const SONGS = path.join(process.cwd(), 'songs')
 
 export interface FoundTab {
   title: string
@@ -634,11 +636,17 @@ export function fretwiseServer(): Plugin {
         })
       })
 
+      // The tab files in the project's songs folder (names only).
+      server.middlewares.use('/api/songs/list', (_req, res) => {
+        fs.readdir(SONGS, (err, names) => json(res, 200, { files: err ? [] : names.filter((n) => /\.(gp|gp3|gp4|gp5|gpx|gp7|gp8)$/i.test(n)).slice(0, 100) }))
+      })
+
       // Serves a file from ~/Downloads by bare name only (no paths), and only tab files.
       server.middlewares.use('/api/downloads/file', (req, res) => {
         const name = new URL(req.url ?? '', 'http://x').searchParams.get('name') ?? ''
         if (!name || name !== path.basename(name) || !GP_EXT.test(name)) return json(res, 400, { error: 'Bad file name' })
-        fs.readFile(path.join(DOWNLOADS, name), (err, data) => {
+        const dir = new URL(req.url ?? '', 'http://x').searchParams.get('from') === 'songs' ? SONGS : DOWNLOADS
+        fs.readFile(path.join(dir, name), (err, data) => {
           if (err) return json(res, 404, { error: 'Not found' })
           res.setHeader('Content-Type', 'application/octet-stream')
           res.end(data)

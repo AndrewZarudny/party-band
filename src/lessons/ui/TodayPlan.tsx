@@ -1,9 +1,33 @@
 // Today's session: a gig setlist taped to the amp. Card on the home screen, a full screen, and a strip on results.
-import { useEffect, useState } from 'react'
+// Each row is a block that runs until its minutes are played; once the session is done, extra blocks fill the day's goal.
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { PainLevel, Progress, SessionPlan, SessionStep } from '../types'
 import { lessonById } from '../data'
-import { KIND_LABEL, SHAPE_LABEL, improvements, lastPain, nextStepIndex, planDone, planMinutes, stepScore, stepSource, swapOptions, todayDay } from '../session'
-import { drillTitle } from '../heat'
+import type { ExtraKind } from '../session'
+import {
+  KIND_LABEL,
+  SHAPE_LABEL,
+  blockLine,
+  clockText,
+  extraOptions,
+  improvements,
+  lastPain,
+  nextStepIndex,
+  planDone,
+  planMinutes,
+  planPlayedSec,
+  stepScore,
+  stepSec,
+  stepSource,
+  stepStarted,
+  stepTitle,
+  swapOptions,
+  todayDay,
+} from '../session'
+import { getPracticeSnapshot, subscribePractice } from '../../practice/log'
+import { practiceDaySec } from '../../practice/data'
+import { reachedGoal, useDailyGoal, wholeMin } from '../../practice/goal'
+import { loadStats } from '../../skills/store'
 import { PickMark } from './LessonMap'
 import { PainCheck, PainNote, WeekDots } from './SessionCards'
 
@@ -24,22 +48,20 @@ function useFreshDone(plan: SessionPlan | null): Set<string> {
 
 const title = (id: string) => lessonById(id)?.title ?? id
 
+/** Under this much of the day's goal left, the goal counts as reached: no extra block for a minute. */
+const EXTRA_FROM_SEC = 90
+
+/** Practice seconds in the plan's practice day (4 am to 4 am), live: the clock the blocks and the goal ring run on. */
+function usePlanDaySec(day: string): number {
+  const snap = useSyncExternalStore(subscribePractice, getPracticeSnapshot)
+  return practiceDaySec(snap, day)
+}
+
 /** Sharp pain flagged today: the session stops here (research: a hard rule). */
 const pausedToday = (progress: Progress, now: Date) => todayDay(progress, now)?.pain === 'sharp'
 
 function Paused() {
   return <p className="ls-set-quiet">Session paused for today. Rest your hand.</p>
-}
-
-function stepTitle(s: SessionStep): string {
-  if (s.drill) return drillTitle(s.drill)
-  if (s.lessonId) return title(s.lessonId)
-  if (s.kind === 'mix') return `${s.items?.length ?? 0} lessons in turn`
-  if (s.kind === 'listenback') return 'Your last jam take'
-  if (s.skill?.game === 'changes') return s.skill.pair ? `One-minute changes: ${s.skill.pair}` : 'One-minute changes'
-  if (s.skill?.game === 'find') return 'Fretboard notes'
-  if (s.skill?.game === 'ear') return 'Call and response'
-  return KIND_LABEL[s.kind]
 }
 
 function SetRows({
@@ -66,13 +88,15 @@ function SetRows({
         const name = stepTitle(s)
         const kind = KIND_LABEL[s.kind]
         const done = s.state === 'done'
+        const started = stepStarted(s)
         const sc = stepScore(progress, s)
         const src = stepSource(s)
         const said = sc && [sc.label === 'cold' ? `first try ${Math.round(sc.value)} percent` : `today's best ${Math.round(sc.value)} percent`, sc.ever !== null ? `best ever ${Math.round(sc.ever)} percent` : null]
-        const label = [name, kind.toLowerCase(), src, s.state === 'todo' ? null : s.state, ...(said ?? []), s.why || null].filter(Boolean).join(', ')
+        const clock = started ? `${clockText(stepSec(s))} of ${s.min} minutes played` : null
+        const label = [name, kind.toLowerCase(), src, s.state === 'todo' ? clock : s.state, ...(said ?? []), s.why || null].filter(Boolean).join(', ')
         const pop = fresh.has(stepKey(plan, s, i))
         return (
-          <li key={stepKey(plan, s, i)} className={`ls-set-row ${s.state} ${i === next ? 'next' : ''} ${pop ? 'pop' : ''}`}>
+          <li key={stepKey(plan, s, i)} className={`ls-set-row ${s.state} ${i === next ? 'next' : ''} ${started ? 'started' : ''} ${pop ? 'pop' : ''}`}>
             <span className="ls-set-n ls-num" aria-hidden>
               {done && <PickMark className="ls-set-pick" />}
               <span>{i + 1}</span>
@@ -95,8 +119,12 @@ function SetRows({
                       Swap
                     </button>
                   )}
-                  <button className="ls-btn ghost small" onClick={() => onSkip(i)} aria-label={s.state === 'todo' ? `Skip ${name}` : `Bring back ${name}`}>
-                    {s.state === 'todo' ? 'Skip' : 'Bring back'}
+                  <button
+                    className="ls-btn ghost small"
+                    onClick={() => onSkip(i)}
+                    aria-label={started ? `Finish ${name} now` : s.state === 'todo' ? `Skip ${name}` : `Bring back ${name}`}
+                  >
+                    {started ? 'Done' : s.state === 'todo' ? 'Skip' : 'Bring back'}
                   </button>
                 </span>
               )}
@@ -107,6 +135,10 @@ function SetRows({
                   <span className="ls-set-score-k">{sc.label}</span> {Math.round(sc.value)}%
                 </span>
                 {sc.ever !== null && <span className="ls-set-ever">best {Math.round(sc.ever)}%</span>}
+              </span>
+            ) : started ? (
+              <span className="ls-set-min ls-set-clock ls-num" aria-hidden>
+                {clockText(stepSec(s))} / {s.min} min
               </span>
             ) : (
               <span className="ls-set-min ls-num">{s.min} min</span>
@@ -131,12 +163,13 @@ function ScoreKey({ progress, plan }: { progress: Progress; plan: SessionPlan })
 }
 
 function SetHead({ progress, plan, now }: { progress: Progress; plan: SessionPlan; now: Date }) {
+  const played = planPlayedSec(plan)
   return (
     <header className="ls-set-head">
       <h2 className="ls-set-h">
         Session {plan.shape} · {plan.min} min: {plan.steps.some((s) => s.brake) ? 'Review first' : SHAPE_LABEL[plan.shape]}
       </h2>
-      <span className="ls-set-total ls-num">about {planMinutes(plan)} min</span>
+      <span className="ls-set-total ls-num">{played >= 60 ? `${wholeMin(played)} of about ${planMinutes(plan)} min` : `about ${planMinutes(plan)} min`}</span>
       <WeekDots progress={progress} now={now} />
       <PainNote pain={lastPain(progress, now)} />
     </header>
@@ -151,20 +184,49 @@ function TodayPain({ progress, now, done, onPain, onPressure }: { progress: Prog
   return <PainCheck answer={day?.pain ?? null} onPain={(p) => (p ? onPain(p) : setSkipped(true))} onPressure={onPressure} />
 }
 
-function SetDone({ progress, plan, max }: { progress: Progress; plan: SessionPlan; max?: number }) {
+/**
+ * The session is done: what got better, the day's minutes against the goal, and, while the goal isn't reached,
+ * one more block to keep going with (a jam first). Sharp pain today: no more blocks.
+ */
+function SetDone({ progress, plan, max, paused, onExtra }: { progress: Progress; plan: SessionPlan; max?: number; paused: boolean; onExtra: (kind: ExtraKind, leftSec: number) => void }) {
+  const [now] = useState(() => new Date())
+  const [stats] = useState(loadStats)
   const lines = improvements(progress, plan)
   const shown = max === undefined ? lines : lines.slice(0, max)
+  const today = usePlanDaySec(plan.day)
+  const goal = useDailyGoal()
+  const left = goal * 60 - today
+  const more = !paused && left >= EXTRA_FROM_SEC ? extraOptions(progress, now, { unratedTake: false, stats }, left) : []
   return (
-    <div className="ls-set-done" role="status">
-      <p className="ls-set-done-h">Session done.</p>
-      {shown.length ? (
-        <ul className="ls-set-better">
-          {shown.map((l) => (
-            <li key={l}>{l}</li>
-          ))}
-        </ul>
-      ) : (
-        <p className="ls-set-quiet">Same numbers as before. Showing up counts too.</p>
+    <div className="ls-set-done">
+      <div role="status">
+        <p className="ls-set-done-h">Session done.</p>
+        {shown.length ? (
+          <ul className="ls-set-better">
+            {shown.map((l) => (
+              <li key={l}>{l}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="ls-set-quiet">Same numbers as before. Showing up counts too.</p>
+        )}
+        <p className="ls-set-day ls-num">
+          {reachedGoal(today, goal) || left < EXTRA_FROM_SEC ? `${wholeMin(today)} min played today: your daily goal is in.` : `${wholeMin(today)} of ${goal} min played today.`}
+        </p>
+      </div>
+      {more.length > 0 && (
+        <div className="ls-set-more">
+          <p className="ls-set-quiet">
+            About <span className="ls-num">{more[0].min}</span> more minutes reach your goal. Keep going with one of these, or stop here.
+          </p>
+          <div className="ls-set-more-acts">
+            {more.map((o, i) => (
+              <button key={o.kind} className={`ls-btn ${i === 0 ? 'primary' : 'ghost'}`} onClick={() => onExtra(o.kind, left)}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )
@@ -177,10 +239,12 @@ interface PlanProps {
   onSkip: (i: number) => void
   onPain: (p: PainLevel) => void
   onPressure: () => void
+  /** One more block after the session, toward the day's minutes. */
+  onExtra: (kind: ExtraKind, leftSec: number) => void
 }
 
 /** The setlist card on the home screen. */
-export function TodayCard({ progress, plan, onStep, onSwap, onSkip, onToday, onPain, onPressure }: PlanProps & { plan: SessionPlan; onToday: () => void }) {
+export function TodayCard({ progress, plan, onStep, onSwap, onSkip, onToday, onPain, onPressure, onExtra }: PlanProps & { plan: SessionPlan; onToday: () => void }) {
   const [now] = useState(() => new Date())
   const fresh = useFreshDone(plan)
   const done = planDone(plan)
@@ -192,7 +256,7 @@ export function TodayCard({ progress, plan, onStep, onSwap, onSkip, onToday, onP
     <section className="ls-set card" aria-label="Today's session">
       <SetHead progress={progress} plan={plan} now={now} />
       {done ? (
-        <SetDone progress={progress} plan={plan} max={3} />
+        <SetDone progress={progress} plan={plan} max={3} paused={paused} onExtra={onExtra} />
       ) : (
         <>
           <SetRows progress={progress} plan={plan} fresh={fresh} onStep={onStep} onSwap={onSwap} onSkip={onSkip} paused={paused} />
@@ -206,7 +270,7 @@ export function TodayCard({ progress, plan, onStep, onSwap, onSkip, onToday, onP
             <Paused />
           ) : next ? (
             <button className="ls-btn primary" onClick={() => onStep(ni)} autoFocus>
-              Play: {stepTitle(next)}
+              {stepStarted(next) ? 'Keep going' : 'Play'}: {stepTitle(next)}
             </button>
           ) : (
             <p className="ls-set-quiet">Bring a step back to finish the session.</p>
@@ -220,7 +284,7 @@ export function TodayCard({ progress, plan, onStep, onSwap, onSkip, onToday, onP
 }
 
 /** The whole session on its own screen, with every improvement and the why line on each row. */
-export function TodayScreen({ progress, onStep, onSwap, onSkip, onPain, onPressure, onBack }: PlanProps & { onBack: () => void }) {
+export function TodayScreen({ progress, onStep, onSwap, onSkip, onPain, onPressure, onExtra, onBack }: PlanProps & { onBack: () => void }) {
   const [now] = useState(() => new Date())
   const plan = progress.plan
   const fresh = useFreshDone(plan)
@@ -252,17 +316,18 @@ export function TodayScreen({ progress, onStep, onSwap, onSkip, onPain, onPressu
             <SetHead progress={progress} plan={plan} now={now} />
             <p className="ls-set-intro">
               Cold starts first, before any warm-up of that piece.{' '}
-              {plan.steps.some((s) => s.brake) ? 'Review on its own' : 'New material on its own'}, then mixed with the rest. A jam to finish. Swap or skip anything.
+              {plan.steps.some((s) => s.brake) ? 'Review on its own' : 'New material on its own'}, then mixed with the rest. A jam to finish. Each block runs
+              for its minutes: play it again until the time is up, or move on when you've had enough. Swap or skip anything.
             </p>
             <SetRows progress={progress} plan={plan} fresh={fresh} onStep={onStep} onSwap={onSwap} onSkip={onSkip} paused={paused} />
             <ScoreKey progress={progress} plan={plan} />
-            {done && <SetDone progress={progress} plan={plan} />}
+            {done && <SetDone progress={progress} plan={plan} paused={paused} onExtra={onExtra} />}
             <TodayPain progress={progress} now={now} done={done} onPain={onPain} onPressure={onPressure} />
             {paused && !done && <Paused />}
             {next && !paused && (
               <div className="ls-set-foot">
                 <button className="ls-btn primary" onClick={() => onStep(ni)} autoFocus>
-                  Play: {stepTitle(next)}
+                  {stepStarted(next) ? 'Keep going' : 'Play'}: {stepTitle(next)}
                 </button>
               </div>
             )}
@@ -275,35 +340,34 @@ export function TodayScreen({ progress, onStep, onSwap, onSkip, onPain, onPressu
   )
 }
 
-/** One line above the result card when the run's lesson is in today's session. */
-export function PlanStrip({ progress, lessonId, finished, onStep }: { progress: Progress; lessonId: string; finished: boolean; onStep: (i: number) => void }) {
+/** Above the result card when the run belongs to a block of today's session: the block's clock, and where the session stands. */
+export function PlanStrip({ progress, step }: { progress: Progress; step: number }) {
   const plan = progress.plan
-  if (!plan || !plan.steps.some((s) => (s.lessonId === lessonId && !s.drill) || s.items?.includes(lessonId))) return null
-  const kept = plan.steps.filter((s) => s.state !== 'skipped')
-  const doneN = kept.filter((s) => s.state === 'done').length
-  const ni = nextStepIndex(plan)
-  const next = pausedToday(progress, new Date()) ? undefined : plan.steps[ni]
+  const s = plan?.steps[step]
+  if (!plan || !s) return null
+  const kept = plan.steps.filter((x) => x.state !== 'skipped')
+  const doneN = kept.filter((x) => x.state === 'done').length
+  const share = s.state === 'todo' ? Math.min(1, stepSec(s) / Math.max(1, s.min * 60)) : 1
 
   return (
     <div className="ls-set strip" role="status">
-      {finished ? (
+      {planDone(plan) ? (
         <p>
           <b>Session done.</b>
         </p>
       ) : (
         <p>
-          Today's session:{' '}
-          <b className="ls-num">
-            {doneN} of {kept.length}
-          </b>{' '}
-          done.
+          <span className="ls-num">{blockLine(s)}</span>{' '}
+          {s.state !== 'todo' && (
+            <span className="ls-set-strip-n ls-num">
+              {doneN} of {kept.length} blocks played.
+            </span>
+          )}
         </p>
       )}
-      {next && (
-        <button className="ls-btn ghost small" onClick={() => onStep(ni)}>
-          Next: {stepTitle(next)}
-        </button>
-      )}
+      <div className="ls-set-meter" aria-hidden>
+        <span style={{ transform: `scaleX(${share})` }} />
+      </div>
     </div>
   )
 }
