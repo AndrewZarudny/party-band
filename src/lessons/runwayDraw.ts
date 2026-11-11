@@ -328,7 +328,9 @@ export function drawRunway(
     g.fillStyle = c.muted
     g.font = `600 11px ${FONT}`
     g.textAlign = 'left'
-    g.fillText('Listen', Math.max(x0 + 8, GUTTER + 8), TOP - 9)
+    // The bar's chord name sits at the same spot: one label for both, so they never print over each other.
+    const chord = chart.chordTimeline[bar]?.symbol
+    g.fillText(chord ? `${chord} · Listen` : 'Listen', Math.max(x0 + 8, GUTTER + 8), TOP - 9)
     g.textAlign = 'center'
   }
 
@@ -365,7 +367,8 @@ export function drawRunway(
   g.font = `600 12px ${FONT}`
   g.textAlign = 'left'
   for (const cb of chart.chordTimeline) {
-    if (!cb.symbol || cb.beat + 4 < bFrom || cb.beat > bTo) continue
+    // a listen bar's chord is part of its "Listen" label above
+    if (!cb.symbol || cb.beat + 4 < bFrom || cb.beat > bTo || chart.listenBars.includes(Math.round(cb.beat / 4))) continue
     g.fillStyle = c.muted
     g.fillText(cb.symbol, Math.max(X(cb.beat) + 7, GUTTER + 6), TOP - 9)
   }
