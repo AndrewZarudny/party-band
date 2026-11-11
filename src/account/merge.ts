@@ -51,7 +51,7 @@ const doneSteps = (x: unknown) => {
   return Array.isArray(s) ? s.filter((t) => t && typeof t === 'object' && (t as Item).state === 'done').length : 0
 }
 
-/** Today's session plan from two copies (v2 plans only): the later day wins; on the same day the one with more done steps. */
+/** Today's session plan from two copies (v2 plans only): the later day wins; on the same day the one with more done steps, then more seconds played. */
 function mergePlan(a: unknown, b: unknown): unknown {
   const v2 = (x: unknown) => (x && typeof x === 'object' && (x as Item).v === 2 ? x : null)
   const pa = v2(a)
@@ -60,7 +60,12 @@ function mergePlan(a: unknown, b: unknown): unknown {
   const db = dayOf(pb)
   if (!da && !db) return null
   if (da !== db) return da > db ? pa : pb
-  const win = { ...((doneSteps(pa) >= doneSteps(pb) ? pa : pb) as Item) }
+  const played = (x: unknown) => {
+    const s = x && typeof x === 'object' ? (x as Item).steps : null
+    return Array.isArray(s) ? s.reduce((n: number, t) => n + (t && typeof t === 'object' ? num((t as Item).sec) : 0), 0) : 0
+  }
+  const aWins = doneSteps(pa) !== doneSteps(pb) ? doneSteps(pa) > doneSteps(pb) : played(pa) >= played(pb)
+  const win = { ...((aWins ? pa : pb) as Item) }
   delete win.bonus
   return win
 }

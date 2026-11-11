@@ -459,7 +459,9 @@ export class LessonRun {
       this.chain.end(now)
       if (this.spotter) this.processImprov(Infinity)
       const chart = this.spotter ? this.playedChart() : this.chart
-      const improv = lesson.improv && this.spotter ? analyseImprov(lesson.improv, chart, this.improvNotes, this.spotter.hits, this.swing) : null
+      // A jam several times through must have that many times the notes: the lesson's minimum is for one pass.
+      const times = Math.max(1, Math.round(chart.bars / Math.max(1, lesson.bars)))
+      const improv = lesson.improv && this.spotter ? analyseImprov({ ...lesson.improv, minNotes: lesson.improv.minNotes * times }, chart, this.improvNotes, this.spotter.hits, this.swing) : null
       result = buildResult({
         lesson,
         chart,
