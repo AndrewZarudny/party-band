@@ -155,6 +155,9 @@ export function SettingsPanel({
         <Row label="Show fretboard">
           <Switch on={prefs.showFretboard} set={(v) => onPrefs({ ...prefs, showFretboard: v })} label="Show fretboard" />
         </Row>
+        <Row label="Jam ideas" note="In a jam, a short phrase to try over the chord the band is on. Only an idea: it is never scored.">
+          <Switch on={prefs.jamIdeas} set={(v) => onPrefs({ ...prefs, jamIdeas: v })} label="Jam ideas" />
+        </Row>
         <Row label="Finger guides" note={`Finger numbers, pick strokes and hand moves while you play. Auto shows them everywhere except the call-and-response and jam lessons. Key G in a lesson`}>
           <div className="ls-seg" role="radiogroup" aria-label="Finger guides">
             {GUIDES.map(([g, label]) => (

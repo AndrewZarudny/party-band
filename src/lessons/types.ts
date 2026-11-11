@@ -689,6 +689,7 @@ export interface Prefs {
   age: number | null // optional, only for fun timing comparisons
   guides: 'auto' | 'on' | 'off' // finger and pick guides in play; auto = by world
   seenBasics: boolean // the Technique basics sheet has opened once
+  jamIdeas: boolean // jams show a phrase to try over the chord
 }
 
 export type RunState = 'idle' | 'countin' | 'playing' | 'ended' | 'stopped'

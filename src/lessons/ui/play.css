@@ -739,3 +739,87 @@
 .lp-chord-hint small {
   font-size: 0.92em;
 }
+
+/* Jam ideas: a phrase to try over the chord, as small six-line tabs. Suggestions, so they sit quieter than the runway. */
+.lp-ideas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px 14px;
+  margin: 10px 2px 0;
+}
+.lp-idea {
+  margin: 0;
+  padding: 8px 12px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.lp-idea.next {
+  border: 1px dashed var(--line);
+  opacity: 0.8;
+}
+.lp-idea figcaption {
+  margin-bottom: 4px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--muted);
+}
+.lp-idea-tab {
+  font-family: var(--font-mono);
+  font-size: var(--fs-body);
+}
+.lp-idea-line {
+  display: flex;
+  align-items: center;
+  height: 18px;
+  background: linear-gradient(var(--line), var(--line)) center / 100% 1px no-repeat;
+}
+.lp-idea-name {
+  width: 18px;
+  color: var(--muted);
+  background: var(--panel);
+}
+.lp-idea-cell {
+  width: 30px;
+  text-align: center;
+}
+.lp-idea-cell.has {
+  font-weight: 700;
+  color: var(--text);
+}
+.lp-idea.next .lp-idea-tab {
+  font-size: var(--fs-sm);
+}
+.lp-idea.next .lp-idea-line {
+  height: 15px;
+}
+.lp-idea.next .lp-idea-cell {
+  width: 22px;
+}
+.lp-ideas-side {
+  flex: 1 1 200px;
+  max-width: 34ch;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lp-ideas-side p {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+.lp-ideas-side div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+/* The player's turn in an answer jam: the idea steps back so the ears lead. */
+.lp-ideas.dim .lp-idea {
+  opacity: 0.45;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .lp-idea {
+    transition: opacity 240ms ease-out;
+  }
+}

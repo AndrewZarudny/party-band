@@ -19,6 +19,7 @@ export const DEFAULT_PREFS: Prefs = {
   age: null,
   guides: 'auto',
   seenBasics: false,
+  jamIdeas: true,
 }
 
 const ZOOMS: Prefs['zoom'][] = [0.75, 1, 1.25]
@@ -55,6 +56,7 @@ function normalize(raw: unknown): Prefs {
     age: typeof o.age === 'number' && isFinite(o.age) && o.age >= 3 && o.age <= 120 ? Math.round(o.age) : null,
     guides: GUIDES.find((g) => g === o.guides) ?? d.guides,
     seenBasics: bool(o.seenBasics, d.seenBasics),
+    jamIdeas: bool(o.jamIdeas, d.jamIdeas),
   }
 }
 

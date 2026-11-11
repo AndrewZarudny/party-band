@@ -20,6 +20,9 @@ import { FINGER_NAME, fingeringFor, guidesOn } from '../fingering'
 import { guideMarkers, nextAtBeat } from '../guides'
 import { holdReload, practice } from '../../account/activity'
 import { QUIET_BAND } from '../listen'
+import type { Idea } from '../ideas'
+import { ideaSegments, ideasFor, makeIdea, segmentAt } from '../ideas'
+import { JamIdeas } from './JamIdeas'
 import './play.css'
 import './listen.css'
 
@@ -150,6 +153,8 @@ export function PlayScreen({
   const [improv, setImprov] = useState<{ chord: string; chips: { beat: number; midi: number; kind: 'chord' | 'scale' | 'out' }[] }>({ chord: '', chips: [] })
 
   // Latest props for callbacks that live as long as a run.
+  // Jam ideas: a phrase to try over the chord, a new one every few bars (made in the frame loop, kept here for "New idea").
+  const [ideas, setIdeas] = useState<{ cur: Idea | null; next: Idea | null; dim: boolean }>({ cur: null, next: null, dim: false })
   const live = useRef({ lesson, prefs, listen, onEnd, onPrefs, speed, tab, quiet, shuffle, passes })
   useEffect(() => {
     live.current = { lesson, prefs, listen, onEnd, onPrefs, speed, tab, quiet, shuffle, passes }
@@ -346,6 +351,13 @@ export function PlayScreen({
     let lastChord = ''
     let lastCount = -1
     let lastNext: ChartEvent | null | undefined
+    const ideaSpec = ideasFor(run.lesson)
+    const segs = ideaSpec ? ideaSegments(run.chart) : []
+    // answer jams: the idea is for reading while the band plays its call, and steps back on the player's turn
+    const calls = new Set(run.chart.listenBars)
+    let lastSeg = -1
+    let lastDim = false
+    let ahead: Idea | null = null
     const tick = (now: number) => {
       if (run.state === 'countin' || run.state === 'playing') {
         const b = run.visualBeat(live.current.prefs.visualNudgeMs)
@@ -375,6 +387,21 @@ export function PlayScreen({
             lastChord = chord
             lastCount = count
             setImprov({ chord, chips: run.played.slice(-12) })
+          }
+          if (ideaSpec && segs.length) {
+            const seg = segmentAt(segs, bar)
+            const dim = calls.size > 0 && !calls.has(bar)
+            if (seg !== lastSeg) {
+              // the idea shown as "Next" becomes the one to try, so what was read ahead is what arrives
+              const cur = seg === lastSeg + 1 && ahead ? ahead : makeIdea(ideaSpec, segs[seg].chord)
+              ahead = seg + 1 < segs.length ? makeIdea(ideaSpec, segs[seg + 1].chord) : null
+              lastSeg = seg
+              lastDim = dim
+              setIdeas({ cur, next: ahead, dim })
+            } else if (dim !== lastDim) {
+              lastDim = dim
+              setIdeas((s) => ({ ...s, dim }))
+            }
           }
         }
       }
@@ -476,6 +503,11 @@ export function PlayScreen({
     }
     return { chord: improv.chord, spots }
   }, [lesson, improv.chord])
+
+  const ideaSpec = ideasFor(lesson)
+  const newIdea = () => {
+    if (ideaSpec && ideas.cur) setIdeas({ ...ideas, cur: makeIdea(ideaSpec, ideas.cur.chord) })
+  }
 
   /** Finger numbers for a chord box, when the guides are on. */
   const chordFingers = (ev: ChordEv) => {
@@ -664,6 +696,19 @@ export function PlayScreen({
             </>
           )}
         </p>
+      )}
+
+      {!listen && ideaSpec && ideas.cur && (
+        prefs.jamIdeas ? (
+          <JamIdeas cur={ideas.cur} next={ideas.next} dim={ideas.dim} onNew={newIdea} onHide={() => onPrefs({ ...prefs, jamIdeas: false })} />
+        ) : (
+          <div className="lp-tabbar">
+            <button type="button" className="lp-peek" onClick={() => onPrefs({ ...prefs, jamIdeas: true })}>
+              Show ideas
+            </button>
+            <span className="lp-tabbar-note">Ideas hidden: this jam is from your own head.</span>
+          </div>
+        )
       )}
 
       {!listen && !quiet && (
