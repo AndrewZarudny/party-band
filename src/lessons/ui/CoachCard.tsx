@@ -46,7 +46,7 @@ export function CoachCard({ progress, moment }: { progress: Progress; moment: Co
   if (off) {
     return (
       <p className="ls-coach-off ls-muted">
-        Claude can coach you here: add <code>ANTHROPIC_API_KEY=...</code> to <code>.env.local</code> in the project and restart the app.
+        Claude can coach you here: sign in once with <code>ant auth login</code> in the terminal (or add an API key to <code>.env.local</code>), then restart the app.
       </p>
     )
   }

@@ -106,8 +106,22 @@ export function costSummary(defaults: Record<Feature, ModelId>) {
 // ---- The call ---------------------------------------------------------------------
 
 let client: Anthropic | null = null
+/** True when `ant auth login` has stored an OAuth profile on this computer (the SDK picks it up by itself). */
+function hasLoginProfile(): boolean {
+  try {
+    const dir = process.env.ANTHROPIC_CONFIG_DIR ?? path.join(process.env.APPDATA && process.platform === 'win32' ? path.join(process.env.APPDATA, 'Anthropic') : path.join(process.env.HOME ?? '', '.config', 'anthropic'))
+    return fs.readdirSync(path.join(dir, 'credentials')).some((f) => f.endsWith('.json'))
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The Claude client, or null when this computer has no credentials. Either works: an API key in .env.local
+ * (ANTHROPIC_API_KEY), or signing in once with `ant auth login` (OAuth, no key to keep; a set key still wins).
+ */
 export function getClient() {
-  if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) return null
+  if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN && !hasLoginProfile()) return null
   client ??= new Anthropic()
   return client
 }
@@ -155,7 +169,7 @@ export async function runJson<S extends z.ZodType>(call: JsonCall<S>): Promise<J
   }
 
   const c = getClient()
-  if (!c) throw new Error('AI is off: add ANTHROPIC_API_KEY to .env.local and restart.')
+  if (!c) throw new Error('AI is off: sign in with `ant auth login`, or add ANTHROPIC_API_KEY to .env.local, and restart.')
   // Haiku uses the basic web search tool; Sonnet/Opus get the newer one with result filtering.
   const search =
     call.model === 'claude-haiku-5-5'
