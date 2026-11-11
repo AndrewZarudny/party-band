@@ -2192,3 +2192,9 @@
     display: none;
   }
 }
+
+.lessons .ls-song-lesson {
+  display: block;
+  margin: 4px auto 0;
+  font-size: var(--fs-ui);
+}

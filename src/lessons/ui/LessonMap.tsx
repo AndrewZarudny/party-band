@@ -209,6 +209,7 @@ export function LessonMap({
   onPlanExtra,
   songs = [],
   onSong,
+  onSongLesson,
   onToday,
   onHeat,
   onSkills,
@@ -224,6 +225,8 @@ export function LessonMap({
   /** The player's own songs, shown as a row on the map; a tap opens the song in Learn a song. */
   songs?: { id: string; title: string; done: number; total: number; full: boolean }[]
   onSong?: (id: string) => void
+  /** A part of the song as a lesson on the runway (a trial: the first part with notes). */
+  onSongLesson?: (id: string) => void
   progress: Progress
   onOpen: (id: string) => void
   onHeat: () => void
@@ -371,6 +374,11 @@ export function LessonMap({
                       </span>
                     )}
                   </button>
+                  {onSongLesson && (
+                    <button className="ls-link ls-song-lesson" onClick={() => onSongLesson(sg.id)}>
+                      Play its first part as a lesson
+                    </button>
+                  )}
                 </li>
               ))}
             </ol>

@@ -429,8 +429,15 @@ export const LESSONS: Lesson[] = [
     tips: ['Start simple, build up, end on A with vibrato.', 'Use one bend, one slide and one hammer-on somewhere: they earn bonus points.', 'A wrong note in a jam is just one you haven\'t resolved yet. Slide to a box note.'] },
 ]
 
+// Lessons made at run time from the player's own songs (songLesson.ts). They are found by id like any other,
+// but are not on the plan's path: nothing unlocks or schedules them.
+const MADE = new Map<string, Lesson>()
+export function registerLesson(l: Lesson): void {
+  MADE.set(l.id, l)
+}
+
 export function lessonById(id: string): Lesson | undefined {
-  return LESSONS.find((l) => l.id === id)
+  return LESSONS.find((l) => l.id === id) ?? MADE.get(id)
 }
 
 /** The 12-week plan's lessons per fortnight (research section 5), in teaching order: each stage's core minus Tap In. */

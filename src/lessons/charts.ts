@@ -165,7 +165,15 @@ export function jamChart(lesson: Lesson, passes: number): Chart {
   return buildChart({ ...lesson, bars: lesson.bars * n, improv })
 }
 
+// Charts made ahead for lessons that don't come from data.ts (a part of the player's own tab).
+const PREPARED = new Map<string, Chart>()
+export function registerChart(lessonId: string, chart: Chart): void {
+  PREPARED.set(lessonId, chart)
+}
+
 export function buildChart(lesson: Lesson): Chart {
+  const made = PREPARED.get(lesson.id)
+  if (made) return made
   const totalBeats = lesson.bars * 4
   const chordTimeline: Chart['chordTimeline'] = []
   for (let i = 0; i < lesson.bars; i++) {

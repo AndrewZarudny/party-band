@@ -585,6 +585,22 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
     openStep(p.plan.steps.length - 1, 'home', p)
   }
 
+  /** A part of one of the player's songs on the lesson runway (a trial: the first part with notes). */
+  const openSongLesson = (songId: string) => {
+    void (async () => {
+      try {
+        const entry = (await listSongs()).find((x) => x.id === songId)
+        if (!entry) return setNotice("That song isn't in your library any more.")
+        const { songPartLesson } = await import('../lessons/songLesson')
+        const made = songPartLesson(entry)
+        if ('error' in made) return setNotice(made.error)
+        open(made.lesson.id)
+      } catch {
+        setNotice("Couldn't make a lesson from that song.")
+      }
+    })()
+  }
+
   const pocket = (s: SkillStart) => {
     leaveBlock()
     updateProgress(markPocket(progress, new Date()))
@@ -809,6 +825,7 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
         onPlanExtra={extra}
         songs={songs ?? []}
         onSong={onOpenSong}
+        onSongLesson={openSongLesson}
         onToday={() => setScreen('today')}
         onHeat={() => setScreen('heat')}
         onSkills={() => {
