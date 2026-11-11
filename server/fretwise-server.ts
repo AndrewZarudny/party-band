@@ -496,7 +496,14 @@ export function fretwiseServer(): Plugin {
       // password and keep each player's songs and settings in MariaDB or .cache/, files in .cache/accounts/). Everything else
       // (AI calls on your API key, the Downloads folder, the TONE3000 relay) answers to this Mac only.
       server.middlewares.use(async (req, res, next) => {
-        if (!req.url?.startsWith('/api/')) return next()
+        // Connect matches routes without regard to case, so the check must not care about case either.
+        let apiPath = ''
+        try {
+          apiPath = new URL(req.url ?? '', 'http://x').pathname.toLowerCase()
+        } catch {
+          return json(res, 400, { error: 'Bad request' })
+        }
+        if (!apiPath.startsWith('/api/')) return next()
         try {
           if (await handleSession(req, res, server.config.server.port ?? 5173)) return
           if (await handleAccounts(req, res)) return

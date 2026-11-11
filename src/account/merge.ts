@@ -35,8 +35,13 @@ const MERGERS: Record<string, (win: Item[], other: Item[]) => unknown[]> = {
   'tone-presets': (w, o) => unionBy(w, o, byId),
 }
 
-/** Keys merged when both browsers changed them during normal sync. */
-export const isMergeKey = (k: string) => k in MERGERS || k === PRACTICE_KEY || k === SKILLS_KEY
+export const LESSONS_KEY = 'lessons-progress'
+
+/**
+ * Keys merged when both browsers changed them during normal sync. Lessons progress is one of them: sent whole,
+ * a tab left open on one device would otherwise overwrite a session played on another.
+ */
+export const isMergeKey = (k: string) => k in MERGERS || k === PRACTICE_KEY || k === SKILLS_KEY || k === LESSONS_KEY
 
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
 
@@ -249,6 +254,8 @@ export function mergeValues(k: string, win: string | null, other: string | null,
   if (k === PRACTICE_KEY) return mergePracticeRaw(win, other)
   // Skill games: history combined, the better best and the higher level kept.
   if (k === SKILLS_KEY) return mergeStatsRaw(win, other)
+  // Lessons progress: lesson by lesson, sessions and runs combined (the order of the sides doesn't matter).
+  if (k === LESSONS_KEY) return win === null || other === null ? (win ?? other) : mergeLessonsProgress(win, other)
   const merger = MERGERS[k]
   if (!merger && !(firstSignIn && k === 'song-favorites')) return null
   const w = parseList(win)

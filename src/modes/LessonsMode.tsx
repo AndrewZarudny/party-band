@@ -196,6 +196,13 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
     if (prefs.input !== 'mic') return
     engine.setAmpOn(false)
     return () => {
+      // Sent over to Learn a song by a Song block: keep listening through the mic (amp still off), so the
+      // song's parts hear the player. Coming back and leaving Lessons normally restores the cable.
+      try {
+        if (sessionStorage.getItem(SONG_MARK)) return
+      } catch {
+        /* storage unavailable: restore the cable as usual */
+      }
       if (!engine.running || !onMicInput()) {
         engine.setAmpOn(engine.hearAmp)
         return

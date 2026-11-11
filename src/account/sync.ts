@@ -1049,6 +1049,9 @@ async function firstMerge(acct: StoredAccount, progress?: Progress): Promise<voi
       // A Lessons-only account's own progress: combined lesson by lesson; its lesson settings stay.
       if (legacy && k === 'lessons-progress') v = mergeLessonsProgress(local, item.v) ?? local
       else if (mine || (legacy && k === 'lessons-prefs')) v = mergeValues(k, local, item.v) ?? local
+      // A guest's lessons progress is never folded into an account it didn't come from: the account's copy wins
+      // (the guest copy stays in the local backup), as before lessons progress became a merge key.
+      else if (k === 'lessons-progress') v = item.v
       else v = mergeValues(k, item.v, local, true) ?? item.v
       if (v !== local) rawSet(k, v)
       if (v !== item.v) dirtyKv[k] = now

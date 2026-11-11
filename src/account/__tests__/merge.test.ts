@@ -250,7 +250,15 @@ describe('mergeValues (lists)', () => {
     expect(isMergeKey(PRACTICE_KEY)).toBe(true)
     expect(isMergeKey(SKILLS_KEY)).toBe(true)
     expect(isMergeKey('band-songs')).toBe(true)
-    expect(isMergeKey('lessons-progress')).toBe(false)
+    // Lessons progress is merged too, so a tab left open elsewhere can't overwrite a session.
+    expect(isMergeKey('lessons-progress')).toBe(true)
+    const a = JSON.stringify(prog({ xp: 10, lessons: { 'w1-02': lessonRec({ plays: 2, best: 70 }) } }))
+    const b = JSON.stringify(prog({ xp: 30, lessons: { 'w1-03': lessonRec({ plays: 1, best: 80 }) } }))
+    const m = JSON.parse(mergeValues('lessons-progress', a, b)!) as Progress
+    expect(Object.keys(m.lessons).sort()).toEqual(['w1-02', 'w1-03'])
+    expect(m.xp).toBe(30)
+    expect(mergeValues('lessons-progress', a, null)).toBe(a)
+    expect(mergeValues('lessons-progress', null, b)).toBe(b)
     expect(JSON.parse(mergeValues(PRACTICE_KEY, null, null)!)).toEqual({ v: 1, devices: {} })
     expect(JSON.parse(mergeValues(SKILLS_KEY, null, null)!).v).toBe(1)
   })
