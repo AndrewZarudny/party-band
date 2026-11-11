@@ -14,6 +14,7 @@ import { weakestPair } from '../../skills/chords'
 import { loadStats } from '../../skills/store'
 import { ACHIEVEMENTS } from '../achievements'
 import { pace } from '../weeks'
+import { CoachCard } from './CoachCard'
 import { Dino } from './Dino'
 import { TodayCard } from './TodayPlan'
 import { PocketCard, WeekDots, WeeklyNote } from './SessionCards'
@@ -349,6 +350,8 @@ export function LessonMap({
           {notice}
         </p>
       )}
+
+      <CoachCard progress={progress} moment={setDone ? 'done' : 'open'} />
 
       <p className="ls-pace-line">
         <button className="ls-link" onClick={onWeeks}>

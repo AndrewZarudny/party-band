@@ -38,7 +38,7 @@ export interface Cost {
   cached: boolean // answered from the local result cache (free)
 }
 
-export type Feature = 'song-search' | 'original-tone' | 'song-setup' | 'lyrics-arrange'
+export type Feature = 'song-search' | 'original-tone' | 'song-setup' | 'lyrics-arrange' | 'coach'
 
 // ---- Local result cache and cost ledger (in .cache/, git-ignored) ----------------
 
@@ -79,7 +79,7 @@ export function costSummary(defaults: Record<Feature, ModelId>) {
   const start = new Date()
   start.setDate(1)
   start.setHours(0, 0, 0, 0)
-  const STARTING: Record<Feature, number> = { 'song-search': 0.022, 'original-tone': 0.024, 'song-setup': 0.02, 'lyrics-arrange': 0.002 } // measured on Haiku 5.5
+  const STARTING: Record<Feature, number> = { 'song-search': 0.022, 'original-tone': 0.024, 'song-setup': 0.02, 'lyrics-arrange': 0.002, coach: 0.012 } // measured on Haiku 5.5; coach: an estimate for Opus 5.5 (about 1.5K tokens in, 300 out)
   const estimate = (f: Feature) => {
     const recent = rows.filter((r) => r.feature === f && !r.cached && r.model === defaults[f]).slice(-10)
     return recent.length ? recent.reduce((s, r) => s + r.usd, 0) / recent.length : STARTING[f]
@@ -90,12 +90,14 @@ export function costSummary(defaults: Record<Feature, ModelId>) {
       'original-tone': estimate('original-tone'),
       'song-setup': estimate('song-setup'),
       'lyrics-arrange': estimate('lyrics-arrange'),
+      coach: estimate('coach'),
     },
     models: {
       'song-search': MODEL_LABEL[defaults['song-search']],
       'original-tone': MODEL_LABEL[defaults['original-tone']],
       'song-setup': MODEL_LABEL[defaults['song-setup']],
       'lyrics-arrange': MODEL_LABEL[defaults['lyrics-arrange']],
+      coach: MODEL_LABEL[defaults.coach],
     },
     monthUsd: rows.filter((r) => r.at >= start.getTime()).reduce((s, r) => s + r.usd, 0),
   }

@@ -58,7 +58,43 @@ const MODELS: Record<Feature, ModelId> = {
   'original-tone': 'claude-haiku-5-5',
   'song-setup': 'claude-haiku-5-5',
   'lyrics-arrange': 'claude-haiku-5-5',
+  coach: 'claude-opus-5-5',
 }
+const CoachSchema = z.object({ message: z.string(), next: z.string() })
+
+const COACH_SYSTEM = `You are Claude, the personal guitar coach inside Fretwise, a practice app. You write a short note to one player: an adult beginner on electric guitar who practises 20-30 minutes, 3-4 evenings a week, relaxed rock and blues, and wants to jam with a band.
+
+You are given facts from the app as JSON: where the player stands against a 12-week plan, this week's sessions, today's session blocks with scores, what got better, what is not sticking yet, recent timing, and whether this is the moment they open the app or the moment they finish a session.
+
+Write as a coach who knows this player and is on their side: warm, direct, specific, honest. Speak to them as "you". Use their name once if one is given.
+
+Rules:
+- Use only the facts given. Never invent a number, a lesson, a feeling or something you "heard": you have not heard them play, you only see the app's numbers.
+- Name one or two concrete things from the facts (a lesson by its title, a score, minutes, a tempo, the week). Generic encouragement is worthless.
+- Be honest about what is not going well, in a way that helps: say what it means and what to do. Do not pile on.
+- Scores from a "cold" first try are low by nature for a beginner; treat a low cold score as normal information, not failure.
+- If they were away for several days, welcome them back without guilt. Days off are part of the plan.
+- If hand pain was flagged, put that first and keep the advice gentle.
+- Opening note: set up today in two or three sentences. Finishing note: say what today showed in two to four sentences.
+- "next" is one short, concrete thing to do next (at most 20 words). For a finishing note it may be "rest" or something for the next session.
+- Plain words, no hype, no emoji, no exclamation marks, no headings or lists. Do not mention JSON, data or "the app says".`
+
+/** A short coach note from Claude, written from the practice facts the browser sends. */
+async function coachNote(facts: unknown) {
+  const user = JSON.stringify(facts).slice(0, 12000)
+  const { data, cost } = await runJson({
+    feature: 'coach',
+    model: MODELS.coach,
+    system: COACH_SYSTEM,
+    user,
+    schema: CoachSchema,
+    searchDomains: [],
+    maxSearches: 0,
+    cacheKey: createHash('sha1').update(user).digest('hex'),
+  })
+  return { message: data.message, next: data.next, cost }
+}
+
 const ALLOWED_MODELS: ModelId[] = ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5']
 const pickModel = (f: Feature, override?: string) => (ALLOWED_MODELS.includes(override as ModelId) ? (override as ModelId) : MODELS[f])
 
@@ -515,6 +551,19 @@ export function fretwiseServer(): Plugin {
       })
 
       server.middlewares.use('/api/ai-status', (_req, res) => json(res, 200, { ai: !!getClient(), ...costSummary(MODELS) }))
+
+      // The coach note (this computer only, like every AI call): practice facts in, two short strings out.
+      server.middlewares.use('/api/coach', async (req, res) => {
+        if (req.method !== 'POST') return json(res, 405, { error: 'POST only' })
+        if (!getClient()) return json(res, 503, { error: 'AI is off' })
+        try {
+          const { facts } = JSON.parse(await readBody(req)) as { facts?: unknown }
+          if (!facts || typeof facts !== 'object') return json(res, 400, { error: 'No facts' })
+          json(res, 200, await coachNote(facts))
+        } catch (err) {
+          json(res, 500, { error: aiError(err) })
+        }
+      })
 
       server.middlewares.use('/api/find', async (req, res) => {
         if (req.method !== 'POST') return json(res, 405, { error: 'POST only' })

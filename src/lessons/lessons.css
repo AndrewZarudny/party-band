@@ -2199,3 +2199,34 @@
   font-size: var(--fs-xs);
   color: var(--muted);
 }
+
+/* A note from the coach: a card with a gold edge, in the display face for the name. */
+.lessons .ls-coach-card {
+  margin: 14px 0 0;
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 8px 8px 0;
+  background: var(--panel);
+}
+.lessons .ls-coach-who {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: var(--fs-ui);
+  color: var(--muted);
+}
+.lessons .ls-coach-msg {
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: 1.55;
+  max-width: 70ch;
+}
+.lessons .ls-coach-next {
+  margin: 8px 0 0;
+  font-size: var(--fs-ui);
+}
+
+.lessons .ls-coach-off {
+  margin: 12px 0 0;
+  font-size: var(--fs-ui);
+}
