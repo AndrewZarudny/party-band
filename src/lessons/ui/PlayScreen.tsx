@@ -460,6 +460,23 @@ export function PlayScreen({
     return { kind: 'notes' as const, markers, maxFret: Math.max(12, top + 3), from: undefined, to: undefined, arrow: undefined }
   }, [chart, lesson, hud.next, hud.lastMidi, improv.chord, guides])
 
+  // Jams: what the chord on the runway means for the player. The notes of the chord that are in the box, each with
+  // one place to find it, so "Am" becomes "land on A, C or E" instead of a name to decode.
+  const chordHint = useMemo(() => {
+    const spec = lesson.type === 'improv' ? lesson.improv : undefined
+    if (!spec || !improv.chord) return null
+    const box = boxNotes(scalePcsOf(spec), [], spec.boxFret)
+    const tones = chordPcs(improv.chord)
+    const STRINGS = ['low E', 'A', 'D', 'G', 'B', 'high e']
+    const spots: { name: string; where: string }[] = []
+    for (const t of tones) {
+      // one spot per chord note, from the middle strings when the box has it there
+      const at = box.filter((n) => pc(n.midi) === t).sort((a, b) => Math.abs(a.string - 2.5) - Math.abs(b.string - 2.5))[0]
+      if (at) spots.push({ name: noteName(at.midi), where: `${STRINGS[at.string]} string, fret ${at.fret}` })
+    }
+    return { chord: improv.chord, spots }
+  }, [lesson, improv.chord])
+
   /** Finger numbers for a chord box, when the guides are on. */
   const chordFingers = (ev: ChordEv) => {
     const ef = guides?.events[ev.id]
@@ -626,6 +643,27 @@ export function PlayScreen({
           </button>
           <span className="lp-tabbar-note">{tab === 'hidden' ? 'Tab hidden: play it from memory.' : 'Tab faded: lean on your memory.'}</span>
         </div>
+      )}
+
+      {!listen && chordHint && (
+        <p className="lp-chord-hint" aria-live="off">
+          {chordHint.spots.length ? (
+            <>
+              The band is on <b>{chordHint.chord}</b>. Land on{' '}
+              {chordHint.spots.map((s, i) => (
+                <span key={s.name}>
+                  {i > 0 && (i === chordHint.spots.length - 1 ? ' or ' : ', ')}
+                  <b>{s.name}</b> <small>({s.where})</small>
+                </span>
+              ))}
+              . Any note of the box fits in between; these sound most at home.
+            </>
+          ) : (
+            <>
+              The band is on <b>{chordHint.chord}</b>. None of its notes are in your notes for this jam, so play the ones you have and listen for what fits.
+            </>
+          )}
+        </p>
       )}
 
       {!listen && !quiet && (
