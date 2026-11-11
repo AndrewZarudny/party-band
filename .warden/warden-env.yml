@@ -14,6 +14,8 @@ services:
       # When MARIADB_VERSION is raised, the container upgrades the existing data on start.
       - MARIADB_AUTO_UPGRADE=1
     command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci", "--max-allowed-packet=64M"]
+    # Comes back by itself whenever Docker starts (e.g. at login), like Warden's own services.
+    restart: unless-stopped
     ports:
       # This computer only, never the Wi-Fi.
       - "127.0.0.1:${FRETWISE_DB_PORT:-3316}:3306"
