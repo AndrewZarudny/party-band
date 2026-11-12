@@ -690,6 +690,7 @@ export interface Prefs {
   guides: 'auto' | 'on' | 'off' // finger and pick guides in play; auto = by world
   seenBasics: boolean // the Technique basics sheet has opened once
   jamIdeas: boolean // jams show a phrase to try over the chord
+  jamTracks: Record<string, string> // lesson id -> the backing track picked for that jam (none = the lesson's own)
   jamBandVol: number // 0.1..1: how loud the band is in a jam (1 = the lesson's own level)
 }
 

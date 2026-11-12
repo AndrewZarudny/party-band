@@ -23,6 +23,7 @@ import { QUIET_BAND } from '../listen'
 import type { Idea } from '../ideas'
 import { ideaSegments, ideasFor, makeIdea, segmentAt } from '../ideas'
 import { JamIdeas } from './JamIdeas'
+import { withTrack } from '../tracks'
 import './play.css'
 import './listen.css'
 
@@ -92,7 +93,7 @@ function FingerIcon() {
 }
 
 export function PlayScreen({
-  lesson,
+  lesson: given,
   prefs,
   speed,
   stage,
@@ -133,6 +134,9 @@ export function PlayScreen({
   /** A jam block of today's session: the jam plays this many times through in one run. */
   passes?: number
 }) {
+  // A jam plays over the backing track picked for it; everything else about the lesson stays.
+  const trackId = prefs.jamTracks[given.id]
+  const lesson = useMemo(() => withTrack(given, trackId), [given, trackId])
   const [peek, setPeek] = useState(false)
   const peekedRef = useRef(false)
   const [attempt, setAttempt] = useState(0)

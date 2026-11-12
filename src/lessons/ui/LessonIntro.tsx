@@ -27,6 +27,8 @@ import { LessonOverview } from './teach/LessonOverview'
 import { TeachPanel } from './teach/TeachPanel'
 import { useWatch } from './teach/useWatch'
 import type { WatchSpeed } from './teach/useWatch'
+import { GENRES, tracksFor, trackChords, withTrack } from '../tracks'
+import type { GenreId } from '../tracks'
 import './timing.css'
 
 /** Improv lessons: the box on the fretboard, home notes marked. */
@@ -42,6 +44,48 @@ function BoxPreview({ lesson }: { lesson: Lesson }) {
     <div className="ls-preview board">
       <Fretboard markers={markers} maxFret={Math.min(22, spec.boxFret + 8)} highlightFrom={spec.boxFret} highlightTo={spec.boxFret + 3} />
       <p className="ls-caption">The red dots are {noteName(spec.key)}, home. Every dot fits.</p>
+    </div>
+  )
+}
+
+/** Jams: the band's own track for this lesson, or one of three genres of three. */
+function TrackPicker({ lesson, prefs, onPrefs }: { lesson: Lesson; prefs: Prefs; onPrefs: (p: Prefs) => void }) {
+  const tracks = tracksFor(lesson)
+  const picked = tracks.find((t) => t.id === prefs.jamTracks[lesson.id]) ?? null
+  const [genre, setGenre] = useState<GenreId | 'own'>(picked?.genre ?? 'own')
+  if (!tracks.length || !lesson.backing) return null
+  const genres = GENRES.filter((g) => tracks.some((t) => t.genre === g.id))
+  const inGenre = tracks.filter((t) => t.genre === genre)
+  const pick = (id: string | null) => {
+    const rest = Object.fromEntries(Object.entries(prefs.jamTracks).filter(([k]) => k !== lesson.id))
+    onPrefs({ ...prefs, jamTracks: id ? { ...rest, [lesson.id]: id } : rest })
+  }
+  const ownChords = [...new Set(lesson.backing.chords)].join(' · ')
+  return (
+    <div className="ls-field ls-tracks">
+      <span className="ls-field-label">Backing track</span>
+      <Seg
+        label="Backing track: genre"
+        value={genre}
+        options={[{ v: 'own' as const, label: "Lesson's own" }, ...genres.map((g) => ({ v: g.id, label: g.label }))]}
+        onPick={(v) => {
+          setGenre(v)
+          // a genre opens on its first track, so one click is enough to change the band
+          pick(v === 'own' ? null : (tracks.find((t) => t.genre === v)?.id ?? null))
+        }}
+      />
+      {genre !== 'own' && <Seg label="Backing track" value={picked?.id ?? ''} options={inGenre.map((t) => ({ v: t.id, label: t.name }))} onPick={(v) => pick(v)} />}
+      <small className="ls-muted">
+        {picked ? (
+          <>
+            {picked.about} Chords: <span className="ls-num">{trackChords(lesson, picked)}</span>. Same notes, tempo and scoring as the lesson.
+          </>
+        ) : (
+          <>
+            {FEELS[lesson.backing.feel]?.label ?? 'Band'}. Chords: <span className="ls-num">{ownChords}</span>.
+          </>
+        )}
+      </small>
     </div>
   )
 }
@@ -79,7 +123,7 @@ function Switch({ on, set, label, note }: { on: boolean; set: (v: boolean) => vo
 }
 
 export function LessonIntro({
-  lesson,
+  lesson: given,
   progress,
   prefs,
   onPrefs,
@@ -99,6 +143,9 @@ export function LessonIntro({
   onBack: () => void
   onConnect: () => void
 }) {
+  // A jam shows the chords of the backing track picked for it (the preview, the band); the lesson is otherwise the same.
+  const pickedTrack = prefs.jamTracks[given.id]
+  const lesson = useMemo(() => withTrack(given, pickedTrack), [given, pickedTrack])
   const e = useEngineState()
   const [toneSet, setToneSet] = useState(false)
   const [shuffle, setShuffle] = useState(false)
@@ -309,6 +356,7 @@ export function LessonIntro({
             <Switch on={quiet} set={setQuiet} label="Listen mode" note="band louder, no tab, the summary at the end" />
           )}
           <Switch on={prefs.easyTiming} set={(v) => onPrefs({ ...prefs, easyTiming: v })} label="Easy timing" note="wider windows" />
+          {prefs.backingOn && <TrackPicker lesson={given} prefs={prefs} onPrefs={onPrefs} />}
           {lesson.backing && (
             <Switch on={prefs.backingOn} set={(v) => onPrefs({ ...prefs, backingOn: v })} label="Band" note={prefs.input === 'mic' ? 'Use headphones' : 'Off: click only'} />
           )}
