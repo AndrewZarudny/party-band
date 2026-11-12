@@ -113,6 +113,16 @@ export class LessonRun {
     return this.opts.shuffle && !own?.swing ? FEELS.blues : own
   }
 
+  private bandVolume(): number {
+    return Math.min(1, BAND_GAIN * (this.lesson.backing?.level ?? 1) * (this.opts.bandLevel ?? 1))
+  }
+
+  /** Band volume multiplier, also while the run plays (the jam's volume slider). */
+  setBandLevel(v: number) {
+    this.opts.bandLevel = v
+    this.band?.setVolume(this.bandVolume())
+  }
+
   async start(): Promise<void> {
     if (this.state !== 'idle') return
     const o = this.opts
@@ -160,7 +170,7 @@ export class LessonRun {
     if (backing && o.backingOn) {
       this.band = new BackingBand(ctx, ctx.destination)
       // listen mode lifts the band above its usual level; the total stays at or under unity gain
-      this.band.setVolume(Math.min(1, BAND_GAIN * (backing.level ?? 1) * (o.bandLevel ?? 1)))
+      this.band.setVolume(this.bandVolume())
     }
     this.listenBars = new Set(this.chart.listenBars)
     const chords: (Chord | null)[] = backing ? backing.chords.map((s) => parseChord(s)) : []

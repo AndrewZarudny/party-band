@@ -20,6 +20,7 @@ export const DEFAULT_PREFS: Prefs = {
   guides: 'auto',
   seenBasics: false,
   jamIdeas: true,
+  jamBandVol: 1,
 }
 
 const ZOOMS: Prefs['zoom'][] = [0.75, 1, 1.25]
@@ -57,6 +58,7 @@ function normalize(raw: unknown): Prefs {
     guides: GUIDES.find((g) => g === o.guides) ?? d.guides,
     seenBasics: bool(o.seenBasics, d.seenBasics),
     jamIdeas: bool(o.jamIdeas, d.jamIdeas),
+    jamBandVol: typeof o.jamBandVol === 'number' && isFinite(o.jamBandVol) ? Math.max(0.1, Math.min(1, o.jamBandVol)) : d.jamBandVol,
   }
 }
 

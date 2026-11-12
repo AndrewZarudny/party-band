@@ -196,7 +196,7 @@ export function PlayScreen({
       listen: isListen,
       autoplay: autoplayFromUrl(),
       shuffle: live.current.shuffle,
-      bandLevel: live.current.quiet ? QUIET_BAND : 1,
+      bandLevel: (live.current.quiet ? QUIET_BAND : 1) * (lesson.type === 'improv' ? p.jamBandVol : 1),
       // A session's jam block: several times through in one run (never the demo playback).
       chart: !isListen && live.current.passes > 1 ? jamChart(lesson, live.current.passes) : undefined,
     })
@@ -504,6 +504,13 @@ export function PlayScreen({
     return { chord: improv.chord, spots }
   }, [lesson, improv.chord])
 
+  // Jams: the band's volume follows the slider while the run plays.
+  const jamVol = lesson.type === 'improv' && !!lesson.backing && prefs.backingOn
+  const bandLevel = (quiet ? QUIET_BAND : 1) * (lesson.type === 'improv' ? prefs.jamBandVol : 1)
+  useEffect(() => {
+    run?.setBandLevel(bandLevel)
+  }, [run, bandLevel])
+
   const ideaSpec = ideasFor(lesson)
   const newIdea = () => {
     if (ideaSpec && ideas.cur) setIdeas({ ...ideas, cur: makeIdea(ideaSpec, ideas.cur.chord) })
@@ -675,6 +682,22 @@ export function PlayScreen({
           </button>
           <span className="lp-tabbar-note">{tab === 'hidden' ? 'Tab hidden: play it from memory.' : 'Tab faded: lean on your memory.'}</span>
         </div>
+      )}
+
+      {!listen && jamVol && (
+        <label className="lp-vol">
+          <span>Band volume</span>
+          <input
+            type="range"
+            min={10}
+            max={100}
+            step={5}
+            value={Math.round(prefs.jamBandVol * 100)}
+            onChange={(e) => onPrefs({ ...prefs, jamBandVol: Number(e.target.value) / 100 })}
+            aria-valuetext={`${Math.round(prefs.jamBandVol * 100)} percent`}
+          />
+          <b className="ls-num">{Math.round(prefs.jamBandVol * 100)}%</b>
+        </label>
       )}
 
       {!listen && chordHint && (

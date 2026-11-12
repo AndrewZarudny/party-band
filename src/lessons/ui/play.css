@@ -823,3 +823,23 @@
     transition: opacity 240ms ease-out;
   }
 }
+
+/* Jams: how loud the band is. */
+.lp-vol {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 2px 0;
+  font-size: var(--fs-ui);
+  color: var(--muted);
+}
+.lp-vol input {
+  flex: 0 1 220px;
+  min-width: 120px;
+  height: 28px;
+  accent-color: var(--accent);
+}
+.lp-vol b {
+  min-width: 4ch;
+  color: var(--text);
+}
