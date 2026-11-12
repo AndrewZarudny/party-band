@@ -825,13 +825,35 @@
 }
 
 /* Jams: how loud the band is. */
-.lp-vol {
+.lp-band {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 28px;
+  margin: 10px 2px 0;
+}
+.lp-vol,
+.lp-track {
+  white-space: nowrap;
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 10px 2px 0;
   font-size: var(--fs-ui);
   color: var(--muted);
+}
+.lp-track select {
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-ui);
+}
+.lp-track select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .lp-vol input {
   flex: 0 1 220px;

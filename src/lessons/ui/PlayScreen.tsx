@@ -23,7 +23,7 @@ import { QUIET_BAND } from '../listen'
 import type { Idea } from '../ideas'
 import { ideaSegments, ideasFor, makeIdea, segmentAt } from '../ideas'
 import { JamIdeas } from './JamIdeas'
-import { withTrack } from '../tracks'
+import { GENRES, tracksFor, withTrack } from '../tracks'
 import './play.css'
 import './listen.css'
 
@@ -515,6 +515,12 @@ export function PlayScreen({
     run?.setBandLevel(bandLevel)
   }, [run, bandLevel])
 
+  const jamTracks = useMemo(() => tracksFor(given), [given])
+  const pickTrack = (id: string | null) => {
+    const rest = Object.fromEntries(Object.entries(prefs.jamTracks).filter(([k]) => k !== given.id))
+    onPrefs({ ...prefs, jamTracks: id ? { ...rest, [given.id]: id } : rest })
+  }
+
   const ideaSpec = ideasFor(lesson)
   const newIdea = () => {
     if (ideaSpec && ideas.cur) setIdeas({ ...ideas, cur: makeIdea(ideaSpec, ideas.cur.chord) })
@@ -689,19 +695,42 @@ export function PlayScreen({
       )}
 
       {!listen && jamVol && (
-        <label className="lp-vol">
-          <span>Band volume</span>
-          <input
-            type="range"
-            min={10}
-            max={100}
-            step={5}
-            value={Math.round(prefs.jamBandVol * 100)}
-            onChange={(e) => onPrefs({ ...prefs, jamBandVol: Number(e.target.value) / 100 })}
-            aria-valuetext={`${Math.round(prefs.jamBandVol * 100)} percent`}
-          />
-          <b className="ls-num">{Math.round(prefs.jamBandVol * 100)}%</b>
-        </label>
+        <div className="lp-band">
+          {jamTracks.length > 0 && (
+            <label className="lp-track">
+              <span>Backing track</span>
+              {/* Picking another track starts the jam again from the top, with the new band. */}
+              <select value={trackId && jamTracks.some((t) => t.id === trackId) ? trackId : ''} onChange={(e) => pickTrack(e.target.value || null)}>
+                <option value="">Lesson's own</option>
+                {GENRES.map((g) => {
+                  const list = jamTracks.filter((t) => t.genre === g.id)
+                  return list.length ? (
+                    <optgroup key={g.id} label={g.label}>
+                      {list.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null
+                })}
+              </select>
+            </label>
+          )}
+          <label className="lp-vol">
+            <span>Band volume</span>
+            <input
+              type="range"
+              min={10}
+              max={100}
+              step={5}
+              value={Math.round(prefs.jamBandVol * 100)}
+              onChange={(e) => onPrefs({ ...prefs, jamBandVol: Number(e.target.value) / 100 })}
+              aria-valuetext={`${Math.round(prefs.jamBandVol * 100)} percent`}
+            />
+            <b className="ls-num">{Math.round(prefs.jamBandVol * 100)}%</b>
+          </label>
+        </div>
       )}
 
       {!listen && chordHint && (
