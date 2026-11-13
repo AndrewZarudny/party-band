@@ -91,10 +91,12 @@ export default function App() {
             Lessons
           </button>
         </nav>
-        <AudioStatus onOpen={() => setPanel(true)} />
-        <ThemeToggle />
-        <AiTeacher />
-        <AccountMenu />
+        <div className="topbar-right">
+          <AudioStatus onOpen={() => setPanel(true)} />
+          <ThemeToggle />
+          <AiTeacher />
+          <AccountMenu />
+        </div>
       </header>
       {e.running && e.needsResume && (
         <button className="resume-bar" onClick={() => void engine.ensureContext()}>
