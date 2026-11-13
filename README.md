@@ -11,6 +11,22 @@ npm run dev
 
 It opens at http://localhost:5173. Use **Chrome**: it supports picking the output device and gives the lowest latency.
 
+### On a Mac
+
+Double-click **Fretwise.command** in the project folder. It needs [Node.js](https://nodejs.org) 22 or newer and nothing else: no Docker and no database (accounts are kept in files in `.cache`). The first start installs the app's packages, which takes a minute. Leave the Terminal window open while you play; closing it stops Fretwise. If macOS won't open the file the first time, right-click it and choose **Open**.
+
+macOS audio is fast in the browser, so on a Mac you can play **through the app's amp** (Direct Monitor off) without the delay Windows adds.
+
+### Moving your account to another computer
+
+On the computer that has your account:
+
+```bash
+node scripts/export-account.mjs
+```
+
+It writes `fretwise-account.tgz` (your progress, settings, songs and your password's hash; git-ignored, never commit it). Copy that file into the project folder on the other computer, next to `Fretwise.command`, and start Fretwise there. It is unpacked once, only if that computer has no accounts yet. Then sign in with the same name and password and everything comes back. After that the two computers hold separate copies: what you do on one does not reach the other.
+
 ## Setup with the Scarlett Solo
 
 1. Plug the guitar into **Input 2** (the jack on the right) and press **INST**.

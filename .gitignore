@@ -39,3 +39,6 @@ __pycache__/
 
 # your own tab files (copyrighted): imported into the library, never committed
 /songs/
+
+# an exported account (scripts/export-account.mjs): your data and password hash, never committed
+fretwise-account*.tgz
