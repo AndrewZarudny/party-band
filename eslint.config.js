@@ -19,6 +19,16 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      // New in eslint-plugin-react-hooks 7 (React Compiler rules) and ESLint 10. The code predates them:
+      // shown as warnings until each finding is reviewed (refs read during render are often deliberate here).
+      'react-hooks/refs': 'warn',
+      'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/purity': 'warn',
+      'react-hooks/use-memo': 'warn',
+      'react-hooks/immutability': 'warn',
+      'react-hooks/preserve-manual-memoization': 'warn',
+      'no-useless-assignment': 'warn',
+      'preserve-caught-error': 'warn',
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },
