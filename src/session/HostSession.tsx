@@ -12,8 +12,33 @@ export function HostSession({ onMembers }: { onMembers: (m: SessionMember[] | nu
   const [error, setError] = useState('')
   const [elsewhere, setElsewhere] = useState<string | null>(null)
 
+  const start = async (takeOver = false) => {
+    setError('')
+    try {
+      const want = sessionStorage.getItem('live-session') ?? undefined
+      const r = (await (await fetch('/api/session', { method: 'POST', body: JSON.stringify({ hostId: HOST_ID, takeOver, id: want }) })).json()) as {
+        id: string
+        urls: string[]
+        error?: string
+        elsewhere?: boolean
+      }
+      if (r.error) throw new Error(r.error)
+      if (r.elsewhere) {
+        setElsewhere(r.id)
+        return
+      }
+      setElsewhere(null)
+      sessionStorage.setItem('live-session', r.id)
+      setSession(r)
+      onMembers([])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
   // Pick up a session that is already running (e.g. after reloading the page).
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- after a reload: re-claim the live session that is still running
     if (sessionStorage.getItem('live-session')) void start()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -38,30 +63,6 @@ export function HostSession({ onMembers }: { onMembers: (m: SessionMember[] | nu
     return () => es.close()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, onMembers])
-
-  const start = async (takeOver = false) => {
-    setError('')
-    try {
-      const want = sessionStorage.getItem('live-session') ?? undefined
-      const r = (await (await fetch('/api/session', { method: 'POST', body: JSON.stringify({ hostId: HOST_ID, takeOver, id: want }) })).json()) as {
-        id: string
-        urls: string[]
-        error?: string
-        elsewhere?: boolean
-      }
-      if (r.error) throw new Error(r.error)
-      if (r.elsewhere) {
-        setElsewhere(r.id)
-        return
-      }
-      setElsewhere(null)
-      sessionStorage.setItem('live-session', r.id)
-      setSession(r)
-      onMembers([])
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-  }
 
   const end = async () => {
     await fetch('/api/session/end', { method: 'POST' }).catch(() => {})

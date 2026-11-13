@@ -99,7 +99,7 @@ export function HandDemo({
     bandText: string
     chipText: string
   } | null>(null)
-  if (!st.current) {
+  if (st.current === null) {
     st.current = {
       tips: [1, 2, 3, 4].map((k) => ({ down: new Glide(0), x: new Glide(tipX(k)), y: new Glide(strY(0)) })),
       win: new Glide(1),

@@ -138,7 +138,7 @@ export class LessonRun {
     // The run's one offset: every input time and the judge clock are corrected by it.
     // calibrated = a saved calibration was used on real input; fake input (autoplay, listen) never counts,
     // so fun lines and heat never read early/late from it. The judge still gets tight windows for it.
-    let offMs = 0
+    let offMs: number
     let pitchLagMs = 35
     const exact = !!autoplay || listen // injected times are exact: no offset
     this.calibrated = false

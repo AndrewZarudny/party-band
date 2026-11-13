@@ -273,6 +273,7 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
       const ticked = planAfterSong(loadProgress(), m.i, practiceSecToday() - m.sec, now)
       if (ticked.step !== null) {
         const sd = withSessionDay(ticked.progress, now, practiceSecToday())
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- back from a song (mark in sessionStorage): count it toward today's plan once on mount
         setProgress(sd.progress)
         saveProgress(sd.progress)
       }
@@ -350,6 +351,7 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
     if (sd.changed) {
       p = sd.progress
       changed = true
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- plan upkeep when a screen opens: tell the player their week was met
       if (sd.weekMet) setNotice(WEEK_NOTE)
     }
     if (changed) updateProgress(p)
@@ -647,11 +649,12 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
     if (!plan || !st) return null
     const running = st.state === 'todo'
     const after = plan.steps.find((s, j) => s.state === 'todo' && j !== i)
+    // No onNext closure in here: moveOn reads the practice-clock ref, and this runs during render.
     return {
+      i,
       step: st,
       running,
       nextLabel: after ? `Next: ${stepTitle(after)}` : running ? 'Finish the session' : 'Back to today',
-      onNext: () => moveOn(i),
     }
   }
 
@@ -742,7 +745,7 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
           running: bn.running,
           againLabel: mixId ? `Next in the mix: ${lessonById(mixId)?.title ?? mixId}` : bn.step.kind === 'jam' ? 'Jam on' : 'Again',
           nextLabel: bn.nextLabel,
-          onNext: bn.onNext,
+          onNext: () => moveOn(bn.i),
         }
       : null
     body = (
@@ -792,7 +795,7 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
     const bn = block !== null ? blockNext(block) : null
     const round: RoundSession | null =
       bn && bn.step.skill && bn.step.kind !== 'listenback'
-        ? { text: progress.plan && planDone(progress.plan) ? 'Session done.' : blockLine(bn.step), running: bn.running, nextLabel: bn.nextLabel, onNext: bn.onNext }
+        ? { text: progress.plan && planDone(progress.plan) ? 'Session done.' : blockLine(bn.step), running: bn.running, nextLabel: bn.nextLabel, onNext: () => moveOn(bn.i) }
         : null
     body = (
       <RoundSessionContext.Provider value={round}>

@@ -76,6 +76,7 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
     p.forEach((n, i) => voice.current?.note(t0 + i * NOTE_GAP, n.midi, NOTE_GAP * 0.9))
     const ms = (0.1 + p.length * NOTE_GAP) * 1000
     setPhase('listen')
+    // eslint-disable-next-line react-hooks/purity -- runs in an async handler after an await, never during render
     listenFrom.current = performance.now() + ms + SETTLE_MS
     clearTimers()
     later(() => setPhase('answer'), ms)
@@ -148,6 +149,7 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
   }
 
   const add = (midi: number) => {
+    // eslint-disable-next-line react-hooks/purity -- runs in a note/click handler, never during render
     if (phase !== 'answer' || performance.now() < listenFrom.current) return
     const next = [...played, midi]
     setPlayed(next)

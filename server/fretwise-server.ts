@@ -611,7 +611,7 @@ export function fretwiseServer(): Plugin {
       // (AI calls on your API key, the Downloads folder, the TONE3000 relay) answers to this Mac only.
       server.middlewares.use(async (req, res, next) => {
         // Connect matches routes without regard to case, so the check must not care about case either.
-        let apiPath = ''
+        let apiPath: string
         try {
           apiPath = new URL(req.url ?? '', 'http://x').pathname.toLowerCase()
         } catch {

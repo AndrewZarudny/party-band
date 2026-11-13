@@ -1078,7 +1078,7 @@ async function serve(req: IncomingMessage, res: ServerResponse, url: string): Pr
       const salt = crypto.randomBytes(16).toString('hex')
       const u: User = { id: crypto.randomUUID(), name, nameKey: key, salt, hash: (await scrypt(pw, salt)).toString('hex'), created: Date.now() }
       // Checked again after the wait: the same name may have signed up meanwhile (the database's unique name decides there).
-      let added = false
+      let added: boolean
       try {
         added = db ? await db.addUser({ ...u, rev: 0 }) : !Object.values(store.users).some((x) => x.nameKey === key)
       } catch (err) {

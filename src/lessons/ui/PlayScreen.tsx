@@ -208,6 +208,7 @@ export function PlayScreen({
     let misses = 0
     let roarSeen = false
     peekedRef.current = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a new run (built in this effect) resets the screen's state with it
     setPeek(false)
     setRun(r)
     setRunState('idle')

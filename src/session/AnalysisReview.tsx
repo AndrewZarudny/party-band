@@ -29,7 +29,9 @@ export function AnalysisReview({ song, result, onApply, onClose }: { song: SongS
   const relative = !!heard && setupRoot !== undefined && heard.minor !== song.minor && pc(heard.root - setupRoot) === (heard.minor ? 9 : 3)
   const shift = heard && setupRoot !== undefined && heard.minor === song.minor ? pc(heard.root - setupRoot) : 0
   const [useKey, setUseKey] = useState(!!heard && !same && !relative && heard.confidence >= 0.3)
-  let bar = 0
+  // Where each form section starts, in bars of the recording.
+  const starts: number[] = []
+  song.form.forEach((_, i) => starts.push(i ? starts[i - 1] + (result.formBars[i - 1] ?? 0) : 0))
   return (
     <div className="panel-backdrop center" onClick={onClose}>
       <div className="dialog analysis" onClick={(e) => e.stopPropagation()}>
@@ -56,8 +58,8 @@ export function AnalysisReview({ song, result, onApply, onClose }: { song: SongS
             const sec = song.sections.find((s) => s.name === name)
             const was = sec ? sectionBars(sec) : 0
             const now = result.formBars[i] ?? 0
+            const bar = starts[i]
             const chords = result.barChords.slice(bar, bar + now)
-            bar += now
             return (
               <div key={i} className="an-row">
                 <span className="an-name">

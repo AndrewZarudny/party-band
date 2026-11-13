@@ -108,6 +108,7 @@ export function LyricSync(props: {
 
   // Enter taps, Backspace undoes (Space stays start/stop).
   const keys = useRef({ tap, undo })
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref for the window keydown listener
   keys.current = { tap, undo }
   useEffect(() => {
     if (!open) return

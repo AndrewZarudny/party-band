@@ -35,7 +35,13 @@ export function ToneBuilder({ t3kResult, onT3kDone }: { t3kResult: SelectResult 
   const presets = loadPresets()
   const editing = presets.find((p) => p.id === setup.presetId)
   const [name, setName] = useState(editing?.name ?? '')
-  useEffect(() => setName(editing?.name ?? ''), [editing?.id, editing?.name])
+  // Another preset (or a rename): the name field follows it.
+  const editKey = editing ? `${editing.id}\n${editing.name}` : ''
+  const [nameFor, setNameFor] = useState(editKey)
+  if (nameFor !== editKey) {
+    setNameFor(editKey)
+    setName(editing?.name ?? '')
+  }
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const [setupFor, setSetupFor] = useState<'capture' | 'ir' | null>(null)
@@ -45,6 +51,7 @@ export function ToneBuilder({ t3kResult, onT3kDone }: { t3kResult: SelectResult 
   useEffect(() => {
     // "Get original tone" handles its own round trips.
     if (!t3kResult || t3kResult.context?.plan) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- takes in the one-shot result of TONE3000's picker, then onT3kDone clears it
     if ('toneId' in t3kResult) setPicker(t3kResult.toneId)
     else if ('error' in t3kResult) setError(t3kResult.error)
     onT3kDone()

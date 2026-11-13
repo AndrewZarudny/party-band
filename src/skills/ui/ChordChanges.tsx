@@ -43,6 +43,7 @@ export function ChordChanges({ keyboard, onBack, pair: startPair }: { keyboard: 
 
   useRoundActivity(running)
   useTick(running, 250)
+  // eslint-disable-next-line react-hooks/purity -- time left in the round; useTick re-renders while it runs
   const left = running ? (endAt - performance.now()) / 1000 : ROUND_SEC
   const pair = pairKey(a, b)
 
@@ -92,6 +93,7 @@ export function ChordChanges({ keyboard, onBack, pair: startPair }: { keyboard: 
 
   useEffect(() => {
     if (!running || left > 0) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- time up (seen on a useTick render): end and save the round
     setRunning(false)
     pending.current.forEach((c) => c())
     pending.current = []

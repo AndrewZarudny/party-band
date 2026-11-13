@@ -47,6 +47,7 @@ export function ParticipantView({ code }: { code: string }) {
 
   // Coming back to the page: rejoin with the same id so the host keeps your role.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- coming back to the page: rejoin the session on mount
     if (saved) void join(saved.name, saved.instrument, saved.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -152,6 +153,7 @@ export function ParticipantView({ code }: { code: string }) {
     )
 
   const self = state?.band.find((m) => m.id === me.id)
+  // eslint-disable-next-line react-hooks/purity, react-hooks/refs -- the shared song clock: re-rendered on a timer, so the time now (plus the host's clock offset) is wanted
   const t = state ? momentOf(state, Date.now() + offset.current) : null
   const segments = state?.timeline ? songSegments(state.timeline.map((x) => ({ ...x, formIdx: x.formIdx ?? -1, chord: null as never }))) : []
   const lyricLines = state ? lyricTimeline(state, segments) : []

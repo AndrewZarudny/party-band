@@ -64,7 +64,7 @@ export function ProgressScreen({
   onOpen: (lessonId: string) => void
   focusHeading?: boolean // opened from the practice dialog: focus moves here, so the change of view is read out
 }) {
-  const stats = useMemo(loadStats, [])
+  const stats = useMemo(() => loadStats(), [])
   const heading = useRef<HTMLHeadingElement>(null)
   useEffect(() => {
     if (focusHeading) heading.current?.focus()

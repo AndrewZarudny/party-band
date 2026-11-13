@@ -24,6 +24,7 @@ export function CoachCard({ progress, moment }: { progress: Progress; moment: Co
 
   useEffect(() => {
     const kept = savedCoach(key)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a new day or moment: show its saved note (or none) before asking for a new one
     setNote(kept)
     if (kept || asked.has(key)) return
     asked.add(key)
@@ -78,6 +79,7 @@ export function RunCoach({ lesson, result, outcome, block }: { lesson: Lesson; r
 
   useEffect(() => {
     const kept = savedCoach(key)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a new run: show its saved note (or none) before asking for a new one
     setNote(kept)
     if (kept || asked.has(key)) return
     asked.add(key)

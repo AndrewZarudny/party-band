@@ -415,6 +415,7 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   // Load this song's recording, if one was added before.
   const songKey = song ? recordingId(song.title, song.artist) : ''
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a new song drops the old recording before its own one loads
     setRec(null)
     if (!songKey) return
     let cancelled = false
@@ -490,6 +491,7 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   useEffect(() => {
     if (running) {
       stop()
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restarts the running backing clock on a tempo or chord-length change
       start()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -659,11 +661,13 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
     if (setMode || !chord) return
     if (upcoming && upcoming.chord === chord.symbol) showPhrase(upcoming)
     else newPhrase(false)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- on a chord change: prepare the phrase for the next chord
     setUpcoming(nextChord ? makeFor(nextChord) : null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [safeIdx, chord?.symbol, box])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- switching the pinned set on or off starts its phrases
     if (setMode) playFromSet(0)
     else {
       newPhrase(false)

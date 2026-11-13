@@ -255,6 +255,7 @@ export function ResultCard({
 
   useEffect(() => {
     if (still) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reduced motion: open the growth card at once instead of after the tally animation
       if (grew) setGrowOpen(true)
       return
     }

@@ -45,6 +45,7 @@ export function FretGame({ mode, keyboard, onBack }: { mode: Mode; keyboard: boo
 
   useRoundActivity(running)
   useTick(running, 200)
+  // eslint-disable-next-line react-hooks/purity -- time left in the round; useTick re-renders while it runs
   const now = performance.now()
   const left = running ? (endAt - now) / 1000 : mode === 'find' ? FIND_SEC : NAME_SEC
 
@@ -138,6 +139,7 @@ export function FretGame({ mode, keyboard, onBack }: { mode: Mode; keyboard: boo
   // Time up: save the round.
   useEffect(() => {
     if (!running || left > 0) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- time up (seen on a useTick render): end and save the round
     setRunning(false)
     // Response time per string, for the progress screen (no XP).
     for (const row of fretTimeRows(times.current)) finishRound('fretTime', row.ms, String(row.string))
@@ -171,6 +173,7 @@ export function FretGame({ mode, keyboard, onBack }: { mode: Mode; keyboard: boo
   const markers: Marker[] = found.map((f) => ({ ...f.pos, kind: f.ok ? 'box' : 'upcoming' }))
   if (running && target) {
     if (mode === 'name') markers.push({ ...target, kind: 'target' })
+    // eslint-disable-next-line react-hooks/refs -- hint after HINT_SEC on the same prompt; useTick re-renders while the round runs
     else if ((now - since.current) / 1000 > HINT_SEC) markers.push({ ...target, kind: 'next', opacity: 0.4 })
   }
 

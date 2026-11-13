@@ -46,15 +46,8 @@ export function TeachPanel({
   const tips = HAND_TIPS[lesson.world]
   const first = useMemo(() => basicsFor(lesson, chart, fingering), [lesson, chart, fingering])
   const strum = useMemo(() => strums(chart), [chart])
-  const [sheet, setSheet] = useState<{ start?: BasicsId } | null>(null)
-
   // The basics open once by themselves, on the first intro ever.
-  const seen = !!prefs.seenBasics
-  useEffect(() => {
-    if (!seen) setSheet({})
-    // on mount only
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const [sheet, setSheet] = useState<{ start?: BasicsId } | null>(() => (prefs.seenBasics ? null : {}))
   const closeSheet = () => {
     setSheet(null)
     if (!prefs.seenBasics) onPrefs({ ...prefs, seenBasics: true })

@@ -27,6 +27,7 @@ export function SyncUp({ lessonMode, keyboard, onDone }: { lessonMode: boolean; 
 
   // Starts right away: the click that opened this screen lets the audio start.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- starts the sync session (audio) on mount; begin resets its state first
     begin()
     return () => session.current?.stop()
   }, [begin])

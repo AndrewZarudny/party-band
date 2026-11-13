@@ -114,6 +114,7 @@ export function OriginalTone({ onReady, needKey }: { onReady: (name: string) => 
       creator: tone.user?.username,
       license: tone.license,
       url: tone.url ?? `https://www.tone3000.com/tones/${tone.id}`,
+      // eslint-disable-next-line react-hooks/purity -- runs in a click handler after an await, never during render
       addedAt: Date.now(),
       data: await downloadModel(model),
     })

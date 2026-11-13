@@ -10,7 +10,7 @@ import './metrics.css'
 const CHIP: Record<CheckState, string> = { met: 'Met', partial: 'Getting there', open: 'Not yet' }
 
 export function PlanWeeks({ progress: p, onBack, onOpen }: { progress: Progress; onBack: () => void; onOpen: (lessonId: string) => void }) {
-  const stats = useMemo(loadStats, [])
+  const stats = useMemo(() => loadStats(), [])
   const week = planWeek(p, new Date())
   const pc = pace(p, stats, new Date())
 

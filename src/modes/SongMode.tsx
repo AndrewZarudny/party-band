@@ -133,6 +133,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
   const [score, setScore] = useState<Score | null>(null)
   const [trackIdx, setTrackIdx] = useState(0)
   const trackIdxRef = useRef(0)
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref for alphaTab callbacks, which must see the track before the next commit
   trackIdxRef.current = trackIdx
   const [ready, setReady] = useState(false)
   const [loadPct, setLoadPct] = useState(0)
@@ -177,6 +178,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
   const beatHitRef = useRef(false)
   const waitRef = useRef({ on: false, beats: [] as Beat[], i: 0 })
   const songMeta = useRef({ artist: '', title: '' })
+  const [shownSong, setShownSong] = useState({ artist: '', title: '' }) // songMeta for rendering
   const entryRef = useRef<SongEntry | null>(null)
   const lastScore = useRef<Score | null>(null)
   const pendingTrack = useRef<number | null>(null)
@@ -201,7 +203,9 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
     }
   }, [])
   const toneRef = useRef({ data: null as SongToneData | null, active: '', auto: true })
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref read by applyToneAtBar from alphaTab's playback callbacks
   toneRef.current.data = toneData
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref read by applyToneAtBar from alphaTab's playback callbacks
   toneRef.current.auto = autoTone
   /** Switches the amp to the tone for this bar (1-based) if it differs from the current one. */
   const applyToneAtBar = useCallback(
@@ -225,23 +229,6 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
   }, [])
 
   useEffect(refreshLibrary, [refreshLibrary])
-
-  // On start: reopen the last song played.
-  const reopened = useRef(false)
-  useEffect(() => {
-    if (reopened.current || !songs.length || !apiRef.current) return
-    reopened.current = true
-    let id: string | null = null
-    try {
-      id = localStorage.getItem('last-song')
-    } catch {
-      /* storage unavailable */
-    }
-    const e = songs.find((x) => x.id === id)
-    if (e) loadEntry(e)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [songs])
-
 
   // alphaTab instance lives for the whole lifetime of this mode.
   useEffect(() => {
@@ -349,6 +336,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
     const beats = Math.max(1, bar?.timeSignatureNumerator ?? 4)
     const ms = 60000 / Math.max(20, (score.tempo * speed) / 100)
     let n = 1
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the count-in shows its first beat the moment playback starts; the interval ticks the rest
     setCountBeat(1)
     const id = window.setInterval(() => {
       n++
@@ -366,6 +354,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
   }, [playing])
 
   // The player reached the end of the level: passed or not, and why.
+  // eslint-disable-next-line react-hooks/refs -- latest-value callback ref, called from alphaTab's playback-finished event
   finishRef.current = () => {
     const lv = levelRef.current
     const id = entryRef.current?.id
@@ -493,6 +482,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
   const loadEntry = useCallback((e: SongEntry) => {
     setError('')
     songMeta.current = { artist: e.artist, title: e.title }
+    setShownSong(songMeta.current)
     entryRef.current = e
     try {
       localStorage.setItem('last-song', e.id)
@@ -505,6 +495,22 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
     beatRef.current = null
     if (!apiRef.current?.load(new Uint8Array(e.data))) setError(`Couldn't read ${e.fileName}`)
   }, [])
+
+  // On start: reopen the last song played.
+  const reopened = useRef(false)
+  useEffect(() => {
+    if (reopened.current || !songs.length || !apiRef.current) return
+    reopened.current = true
+    let id: string | null = null
+    try {
+      id = localStorage.getItem('last-song')
+    } catch {
+      /* storage unavailable */
+    }
+    const e = songs.find((x) => x.id === id)
+    if (e) loadEntry(e)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songs])
 
   const importFiles = useCallback(
     async (files: FileList | File[], fallback?: { artist: string; title: string }) => {
@@ -648,6 +654,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
     return () => window.removeEventListener('fretwise-open-song', onOpen)
   }, [loadEntry])
 
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref, called from alphaTab's playback callbacks
   applyToneRef.current = applyToneAtBar
 
   /** Updates the tone data for this song part, saves it, and re-applies the active variant. */
@@ -670,6 +677,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
 
   // "Get original tone" in the 🎸 panel links its new preset to the part that's playing.
   const linkRef = useRef(linkPreset)
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref, called from the onSetup listener
   linkRef.current = linkPreset
   useEffect(
     () =>
@@ -744,16 +752,20 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
   )
 
   const now = expectedFor(beat)
+  // eslint-disable-next-line react-hooks/refs -- wait mode's position lives in waitRef (moved by note detection); every move also sets the beat state, which re-renders
   const nextBeat = waitMode ? waitRef.current.beats[waitRef.current.i + 1] ?? null : (beat?.nextBeat ?? null)
+  // eslint-disable-next-line react-hooks/refs -- derived from waitRef above, same reason
   const next = expectedFor(nextBeat && !nextBeat.isRest ? nextBeat : (nextBeat?.nextBeat ?? null))
 
   const fbTuning = track?.staves[0]?.isStringed && track.staves[0].tuning.length === 6 ? [...track.staves[0].tuning].reverse() : STANDARD_TUNING
+  const tuningKey = fbTuning.join()
   const markers = useMemo<Marker[]>(() => {
     const m: Marker[] = []
     for (const p of next.markers) m.push({ ...p, kind: 'upcoming', label: midiName(p.midi).replace(/-?\d+$/, '') })
     for (const p of now.markers) m.push({ ...p, kind: beatHit ? 'played' : 'chord', label: midiName(p.midi).replace(/-?\d+$/, '') })
     for (const p of now.markers) m.push({ ...p, kind: 'target' })
     const ref = now.markers[0]?.fret ?? 5
+    // eslint-disable-next-line react-hooks/purity -- the played-note trail fades by age: the time this is recomputed is what's wanted
     const t0 = performance.now()
     trail.forEach((n) => {
       const pos = now.markers.find((p) => p.midi === n.midi) ?? nearestPosition(n.midi, ref, fbTuning)
@@ -761,7 +773,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
     })
     return m
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [now.markers, next.markers, trail, beatHit, fbTuning.join()])
+  }, [now.markers, next.markers, trail, beatHit, tuningKey])
 
   const total = hits.hit + hits.miss
   const pct = total ? Math.round((hits.hit / total) * 100) : 0
@@ -799,7 +811,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
         )}
         <ul>
           {songs.map((s) => (
-            <li key={s.id} className={songMeta.current.title === s.title && songMeta.current.artist === s.artist ? 'active' : ''}>
+            <li key={s.id} className={shownSong.title === s.title && shownSong.artist === s.artist ? 'active' : ''}>
               <button className="song-item" onClick={() => loadEntry(s)}>
                 <span className="song-title">{s.title}</span>
                 <span className="song-artist">{s.artist}</span>
@@ -823,8 +835,8 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
         {score ? (
           <div className="song-bar">
             <div className="song-name">
-              <b title={score.title || songMeta.current.title}>{score.title || songMeta.current.title}</b>
-              <span>{score.artist || songMeta.current.artist}</span>
+              <b title={score.title || shownSong.title}>{score.title || shownSong.title}</b>
+              <span>{score.artist || shownSong.artist}</span>
             </div>
             <select value={trackIdx} onChange={(e) => setTrackIdx(Number(e.target.value))} title="Track to learn">
               {guitarTracks.map((t, i) => (

@@ -418,14 +418,14 @@ export function hasSavedProgress(): boolean {
 }
 
 export function loadProgress(): Progress {
-  let raw: string | null = null
+  let raw: string | null
   try {
     raw = localStorage.getItem(KEY)
   } catch {
     return newProgress()
   }
   if (raw === null) return newProgress()
-  let p: Progress | null = null
+  let p: Progress | null
   try {
     p = normalize(JSON.parse(raw))
   } catch {

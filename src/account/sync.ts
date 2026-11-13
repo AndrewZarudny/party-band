@@ -297,7 +297,7 @@ async function pushOnce(report?: Report): Promise<void> {
     if (stale) setAccountState({ reloadReady: true })
   }
   for (const k of keys) {
-    let v: string | null = null
+    let v: string | null
     try {
       v = localStorage.getItem(k)
     } catch {
@@ -1005,7 +1005,7 @@ async function firstMerge(acct: StoredAccount, progress?: Progress): Promise<voi
     await snapshotAll(`Guest data before signing in as ${acct.name}`)
   } catch (err) {
     console.warn('Backup failed', err)
-    throw new Error(BACKUP_FAILED)
+    throw new Error(BACKUP_FAILED, { cause: err })
   }
   const c = await api.changes(acct.token, 0)
   // Edits made here while this merge was waiting (noted with their times) beat older account copies.
@@ -1146,7 +1146,7 @@ export async function signInFlow(mode: 'signup' | 'login', name: string, passwor
         await snapshotAll(`Left by ${prevName}`)
       } catch (err) {
         console.warn('Backup failed', err)
-        throw new Error(BACKUP_FAILED)
+        throw new Error(BACKUP_FAILED, { cause: err })
       }
       await wipeLocal()
       prev = null
@@ -1232,7 +1232,7 @@ export async function signOutFlow(force = false): Promise<'confirm' | void> {
         else if (unsent(s)) await snapshotSome(`Unsent changes of ${a.name}`, unsentKeys(s), unsentRecs(s))
       } catch (err) {
         console.warn('Backup failed', err)
-        throw new Error("Couldn't save a backup of the unsent changes. You're still signed in.")
+        throw new Error("Couldn't save a backup of the unsent changes. You're still signed in.", { cause: err })
       }
     }
     window.clearTimeout(timer)

@@ -71,7 +71,7 @@ export async function startApp(o: { dir?: string; db?: string } = {}): Promise<A
     }
     const res = await fetch(base + route, { method, headers, body })
     const text = await res.text()
-    let json: Json = {}
+    let json: Json
     try {
       json = text ? (JSON.parse(text) as Json) : {}
     } catch {

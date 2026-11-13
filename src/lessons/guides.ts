@@ -25,8 +25,8 @@ export function guideMarkers(chart: Chart, f: ChartFingering, nextId: number | n
   const next: Marker[] = []
   const ghosts: Marker[] = []
   const used = new Set<number>()
-  let pos: number | null = null
-  let shift: Shift | null = null
+  let pos: number | null
+  let shift: Shift | null
 
   if (ev.kind === 'note' && ef.kind === 'note') {
     if (ev.hidden) return empty

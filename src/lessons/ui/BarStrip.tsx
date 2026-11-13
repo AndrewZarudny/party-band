@@ -35,7 +35,7 @@ export function BarStrip({ acc, listen, hard, onLoop }: { acc: (number | null)[]
     const btns = Array.from(listRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])
     if (!btns.length) return
     const i = btns.indexOf(document.activeElement as HTMLButtonElement)
-    let j = i
+    let j: number
     if (e.key === 'Home') j = 0
     else if (e.key === 'End') j = btns.length - 1
     else if (e.key === 'ArrowLeft') j = i < 0 ? 0 : Math.max(0, i - 1)

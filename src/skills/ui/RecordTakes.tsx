@@ -89,9 +89,11 @@ export function RecordTakes({ keyboard, onBack, band }: { keyboard: boolean; onB
     setBusy(false)
   }
 
+  // eslint-disable-next-line react-hooks/refs -- recording length from the recorder; useTick re-renders while recording
   const secs = rec.current?.seconds ?? 0
   // The longest take: stop on its own.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- stop at the longest take length (checked on each useTick render)
     if (recording && secs >= MAX_SEC) void stop()
   })
 
@@ -111,6 +113,7 @@ export function RecordTakes({ keyboard, onBack, band }: { keyboard: boolean; onB
         title="Record yourself"
         sub={`Record a take, listen back, write a note. The last ${KEEP} stay in this browser.`}
         onBack={onBack}
+        // eslint-disable-next-line react-hooks/refs -- secs comes from the recorder ref; useTick re-renders while recording
         right={recording ? <Timer left={MAX_SEC - secs} total={MAX_SEC} /> : undefined}
       />
       <div className="sk-pick-row">
@@ -133,6 +136,7 @@ export function RecordTakes({ keyboard, onBack, band }: { keyboard: boolean; onB
           </button>
         ) : (
           <button className="ls-btn primary big" onClick={() => void stop()}>
+            {/* eslint-disable-next-line react-hooks/refs -- secs comes from the recorder ref; useTick re-renders while recording */}
             Stop <span className="ls-num">{fmtSec(secs)}</span>
           </button>
         )}
@@ -195,6 +199,7 @@ function TakeRow({ take, onDelete }: { take: Take; onDelete: () => void }) {
   const [confirm, setConfirm] = useState(false)
   useEffect(() => {
     const u = URL.createObjectURL(take.blob)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- an object URL for the take, revoked on cleanup
     setUrl(u)
     return () => URL.revokeObjectURL(u)
   }, [take.blob])

@@ -110,6 +110,7 @@ export function InnerClock({ keyboard, onBack }: { keyboard: boolean; onBack: ()
   const muted = clicksMuted()
 
   const ctx = engine.ctx
+  // eslint-disable-next-line react-hooks/refs -- the bar playing now on the audio clock; useTick re-renders while the round runs
   const bar = running && ctx && run.current ? run.current.barAt(ctx.currentTime) : null
   const lastCycle = cycles[cycles.length - 1]
 

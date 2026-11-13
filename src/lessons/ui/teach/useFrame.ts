@@ -48,6 +48,7 @@ export function useWidth(el: RefObject<Element | null>): number {
   useEffect(() => {
     const node = el.current
     if (!node) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- measures the element once now; the ResizeObserver follows changes
     setW(Math.round(node instanceof HTMLElement ? node.clientWidth : node.getBoundingClientRect().width)) // now; the observer follows changes
     const ro = new ResizeObserver((es) => {
       const cw = Math.round(es[0]?.contentRect.width ?? 0)

@@ -50,6 +50,7 @@ export function SoloGuide({ chord, next, chordIdx, scalePcs, position, flats }: 
       first.current = false
       return
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- on a chord change: play the prepared phrase and prepare the next
     if (setMode) return playFromSet(setIdx + 1)
     show(upcoming && upcoming.chord === chord.symbol ? upcoming : make(chord))
     setUpcoming(next ? make(next) : null)
