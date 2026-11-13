@@ -5,7 +5,7 @@ import { useDailyGoal } from '../../practice/goal'
 import type { PainLevel, Progress, SessionPlan, StageDef, Stars } from '../types'
 import type { SkillStart } from '../../skills/data'
 import { STAGES, checkpointOf, lessonById, weeksLabel } from '../data'
-import { DINO_STAGES, dinoStageFor, eggCracked, isPassed, isUnlocked, levelFor, nextLesson, stageOpen, starsInStage } from '../progress'
+import { DINO_STAGES, closestThirdStar, dinoStageFor, eggCracked, isPassed, isUnlocked, levelFor, nextLesson, stageOpen, starsInStage } from '../progress'
 import type { ExtraKind } from '../session'
 import { knownChords, planDone, pocketOpen } from '../session'
 import { REVIEW_BRAKE, standingLabel, standingOf, strugglingList } from '../review'
@@ -311,6 +311,7 @@ export function LessonMap({
   // Once the session is done (or there is none), Continue is the main card again, above it.
   const showSet = !!plan && plan.steps.length > 0
   const setDone = showSet && planDone(plan)
+  const star3 = closestThirdStar(progress)
   // The session already plays the current lesson next: no second link to it.
   const inSetTodo = !!plan && plan.steps.some((s) => s.lessonId === current && !s.drill && s.state === 'todo')
   // Session done but the day's minutes aren't: the session card offers one more block, so Continue stays a quiet link.
@@ -352,6 +353,14 @@ export function LessonMap({
       )}
 
       <CoachCard progress={progress} moment={setDone ? 'done' : 'open'} />
+      {star3 && (
+        <p className="sc-quiet-note ls-star3-goal">
+          Closest third star: <b>{star3.title}</b>, {star3.gap > 0 ? `${star3.gap}% to go at full tempo` : 'the score is there, now at full tempo'}.{' '}
+          <button className="ls-link" onClick={() => onOpen(star3.id)}>
+            Go for it
+          </button>
+        </p>
+      )}
 
       <p className="ls-pace-line">
         <button className="ls-link" onClick={onWeeks}>

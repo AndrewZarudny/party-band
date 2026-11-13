@@ -7,7 +7,7 @@ import type { SkillEntry, SkillStats } from '../skills/data'
 import { bestKey, emptyStats } from '../skills/data'
 import { CHANGE_CHORDS, weakestPair } from '../skills/chords'
 import { ORDER, PLAN_PATH, lessonById, stageOf, weeksLabel } from './data'
-import { dayKey, daysAway, isPassed, isUnlocked, nextLesson, trimLog } from './progress'
+import { dayKey, daysAway, isPassed, isUnlocked, nextLesson, resting, trimLog } from './progress'
 import { FULL_SPEED, autoSpeed, bpmAt, earnedTop } from './speed'
 import { drillTitle, heatReady, spotLabel, topSpots } from './heat'
 import { SESSION_MIN_SEC, coldSpeedFor, isCold, isReviewItem, reviewBrake, sessionNow, sessionOf, strugglingList, weekKey, weekStatus } from './review'
@@ -219,7 +219,7 @@ function mixList(p: Progress, s: number, used: Set<string>, now: Date): string[]
   return ORDER.filter((id) => {
     const l = lessonById(id)
     const rec = p.lessons[id]
-    return !!l && !!rec && isReviewItem(l) && isPassed(p, id) && hasEarned(p, id) && rec.firstS !== s && !used.has(id) && !isCold(p, id, now)
+    return !!l && !!rec && isReviewItem(l) && isPassed(p, id) && hasEarned(p, id) && rec.firstS !== s && !used.has(id) && !isCold(p, id, now) && !resting(rec, now)
   }).sort((a, b) => (p.lessons[b].firstS ?? -1) - (p.lessons[a].firstS ?? -1) || (p.lessons[b].passedAt ?? 0) - (p.lessons[a].passedAt ?? 0))
 }
 

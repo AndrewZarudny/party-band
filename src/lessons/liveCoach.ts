@@ -186,6 +186,35 @@ export function hushCoach() {
   if ('speechSynthesis' in window) speechSynthesis.cancel()
 }
 
+// ---- What the coach can do on the current screen ------------------------------------------------
+
+/** One thing the coach may do for the player, on this screen. `arg`: e.g. "3-4" for a bar range. */
+export interface CoachAction {
+  /** For the coach: what it does, and the argument it takes, if any. */
+  about: string
+  run: (arg?: string) => boolean | void
+}
+export type CoachActions = Record<string, CoachAction>
+
+let actionsNow: () => CoachActions = () => ({})
+/** The screen tells the coach what it can do there (Lessons keeps this current). */
+export function setCoachActions(get: () => CoachActions) {
+  actionsNow = get
+}
+
+function actionsLine(): string {
+  const a = actionsNow()
+  const names = Object.keys(a)
+  return names.length ? `\n[actions you can take now: ${names.map((n) => `${n} = ${a[n].about}`).join('; ')}]` : '\n[no actions available on this screen]'
+}
+
+/** The reply without its action tag, and the action it asks for, if any. */
+export function splitAction(reply: string): { say: string; action: { name: string; arg?: string } | null } {
+  const m = reply.match(/<<\s*do:\s*([a-z-]+)(?:\s+([^>]*?))?\s*>>/i)
+  const say = reply.replace(/<<[^>]*>>/g, '').replace(/\s+/g, ' ').trim()
+  return { say, action: m ? { name: m[1].toLowerCase(), arg: m[2]?.trim() || undefined } : null }
+}
+
 // ---- Talking to the coach -----------------------------------------------------------------------
 
 async function send(kind: 'run' | 'player' | 'context', body: { text?: string; facts?: unknown }): Promise<string | null> {
@@ -214,11 +243,15 @@ async function ask(kind: 'run' | 'player', text: string, facts?: unknown): Promi
     addLog('you', text)
     set({ heard: '' })
   }
-  const reply = await send(kind, kind === 'run' ? { facts } : { text })
+  const reply = await send(kind, kind === 'run' ? { facts: { ...(facts as object), actionsNow: actionsLine().trim() } } : { text: text + actionsLine() })
   if (!reply || !state.on) return reply
-  addLog('coach', reply)
-  await speak(reply)
-  return reply
+  const { say, action } = splitAction(reply)
+  const act = action ? actionsNow()[action.name] : undefined
+  addLog('coach', say + (act ? ` (${action?.name}${action?.arg ? ' ' + action.arg : ''})` : ''))
+  await speak(say)
+  // The action after the words, so the player hears what's about to happen.
+  if (act && state.on) act.run(action?.arg)
+  return say
 }
 
 /** Turns the coach on. `context`: facts about the player and today, so the first words fit. */

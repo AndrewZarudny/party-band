@@ -38,7 +38,7 @@ import {
   withSongStepsFixed,
   withTodayPlan,
 } from '../session'
-import { importProgress, newProgress, nextLesson } from '../progress'
+import { closestThirdStar, importProgress, newProgress, nextLesson, stuckAdvice, thirdStar } from '../progress'
 import { firstReview } from '../review'
 import { dayNum } from '../heat'
 import { buildChart, jamChart } from '../charts'
@@ -600,5 +600,49 @@ describe('song steps whose song is gone', () => {
   it('the song is still there: nothing changes', () => {
     const { p } = withSong()
     expect(withSongStepsFixed(p, ['song:a:0', 'song:b:0'])).toBeNull()
+  })
+})
+
+describe('plateaus', () => {
+  it('a passed lesson with many runs and no new best rests from mixed practice, then comes back', () => {
+    // A B session, as in the mix test above, whose mix includes String Roll Call (w1-02).
+    const stuck = (lastPlayed: string) => {
+      const p = base([day('2026-11-02')])
+      p.lessons['w1-03'].review = firstReview(0)
+      p.lessons['w1-02'] = { ...p.lessons['w1-02'], flat: 12, lastPlayed: at(lastPlayed).getTime() }
+      return p
+    }
+    const mixItems = (p: Progress) => plan(p).plan.steps.find((s) => s.kind === 'mix')?.items ?? []
+    // Played yesterday, stuck: String Roll Call rests and another item takes its place.
+    expect(mixItems(stuck('2026-11-03'))).not.toContain('w1-02')
+    // Last played a week ago: the rest is over, it's back.
+    expect(mixItems(stuck('2026-10-28'))).toContain('w1-02')
+  })
+
+  it('advice: a plateau after a pass, or many failed runs before one; none while it moves', () => {
+    expect(stuckAdvice(passed({ flat: 21 }))).toMatch(/21 runs in a row without a new best/)
+    expect(stuckAdvice(rec({ plays: 6, fails: 5, best: 48 }))).toMatch(/Loop the hard part/)
+    expect(stuckAdvice(passed({ flat: 3 }))).toBeNull()
+    expect(stuckAdvice(undefined)).toBeNull()
+  })
+})
+
+describe('third stars', () => {
+  const spark = lessonById('w1-04') as Lesson // Spark Show: stars 65, 82, 95
+
+  it('says what the third star needs and how far the best is', () => {
+    expect(thirdStar(spark, passed({ best: 91, stars: 2 }))?.text).toBe('Third star: 95% at full tempo. Your best is 91%, 4 to go.')
+    expect(thirdStar(spark, passed({ best: 96, stars: 2 }))?.text).toBe("Third star: you've scored 95%; now do it at full tempo.")
+    expect(thirdStar(spark, passed({ best: 97, stars: 3 }))).toBeNull()
+    expect(thirdStar(spark, rec({ plays: 2, best: 70 }))).toBeNull() // not passed
+  })
+
+  it('the home goal is the passed lesson closest to its third star, within 8 points', () => {
+    const p = newProgress()
+    p.lessons['w1-04'] = passed({ best: 91, stars: 2 }) // 4 to go
+    p.lessons['w1-03'] = passed({ best: 80, stars: 2 }) // 15 to go: too far
+    expect(closestThirdStar(p)).toEqual({ id: 'w1-04', title: spark.title, gap: 4 })
+    p.lessons['w1-04'] = passed({ best: 97, stars: 3 })
+    expect(closestThirdStar(p)).toBeNull()
   })
 })

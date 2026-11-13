@@ -84,6 +84,8 @@ export interface Lesson {
   tone: ToneHint
   click?: boolean // clicks during the chart; default: true when there is no backing
   octaveOk?: boolean
+  /** A song lesson in another tuning (MIDI, low string first): the player tunes to it, and notes are judged in it. */
+  tuning?: number[]
   backing?: BackingSpec
   seq?: string // notes lessons
   step?: number // beats per seq unit

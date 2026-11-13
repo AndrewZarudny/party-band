@@ -489,6 +489,59 @@ export function levelFor(xp: number): { level: number; into: number; need: numbe
   return { level, into, need: xpToNext(level) }
 }
 
+/** Runs in a row without a new best after which a lesson counts as stuck on a plateau. */
+export const PLATEAU_RUNS = 12
+/** Days a plateaued lesson rests from mixed practice after it was last played. */
+export const PLATEAU_REST_DAYS = 3
+
+/** Many runs in a row without a new best: more of the same isn't helping. */
+export const isPlateau = (rec: LessonRecord | undefined): boolean => (rec?.flat ?? 0) >= PLATEAU_RUNS
+
+/** A plateaued lesson played in the last few days: it rests (spacing helps more than more reps here). */
+export function resting(rec: LessonRecord | undefined, now: Date): boolean {
+  return isPlateau(rec) && !!rec && now.getTime() - rec.lastPlayed < PLATEAU_REST_DAYS * 86_400_000
+}
+
+/**
+ * What to try on a lesson that isn't moving, for its lesson page; null when it's moving. A plateau after a pass:
+ * loop the hard bar or step the speed down, or rest it. Many failed runs before a pass: loop the hard part first.
+ */
+export function stuckAdvice(rec: LessonRecord | undefined): string | null {
+  if (!rec) return null
+  if (rec.passedAt === undefined && rec.fails >= 5 && rec.best < 60)
+    return `${rec.fails} runs without a pass yet. Make it smaller: after a run, use Loop the hard part on the bars it marks, then come back to the whole thing.`
+  if (isPlateau(rec))
+    return `${rec.flat} runs in a row without a new best. More of the same won't move it: loop the hardest bar after your next run, or drop the speed a step and earn it back. It rests from mixed practice for ${PLATEAU_REST_DAYS} days after you play it.`
+  return null
+}
+
+const EXTRA_LABEL = { palmMute: 'palm mutes', legato: 'legato', glide: 'slides' } as const
+
+/**
+ * What a passed lesson's third star still needs: its top score at full tempo (plus the lesson's technique extra,
+ * if it has one). Null when it has 3 stars, isn't passed, or has no stars (Tap In).
+ */
+export function thirdStar(lesson: Lesson | undefined, rec: LessonRecord | undefined): { need: number; best: number; gap: number; text: string } | null {
+  if (!lesson || !rec || rec.passedAt === undefined || rec.stars >= 3 || lesson.type === 'sync') return null
+  const need = lesson.stars[2]
+  const gap = Math.max(0, need - rec.best)
+  const extra = lesson.starExtra ? `, with ${EXTRA_LABEL[lesson.starExtra.kind]}` : ''
+  const text = gap > 0 ? `Third star: ${need}% at full tempo${extra}. Your best is ${rec.best}%, ${gap} to go.` : `Third star: you've scored ${need}%; now do it at full tempo${extra}.`
+  return { need, best: rec.best, gap, text }
+}
+
+/** The passed lesson closest to its third star (8 points or less to go), for a goal on the Lessons home. */
+export function closestThirdStar(p: Progress): { id: string; title: string; gap: number } | null {
+  let best: { id: string; title: string; gap: number } | null = null
+  for (const [id, rec] of Object.entries(p.lessons)) {
+    const l = lessonById(id)
+    if (!l || id.startsWith('song:')) continue
+    const t = thirdStar(l, rec)
+    if (t && t.gap <= 8 && (!best || t.gap < best.gap)) best = { id, title: l.title, gap: t.gap }
+  }
+  return best
+}
+
 export function isPassed(p: Progress, lessonId: string): boolean {
   return p.lessons[lessonId]?.passedAt !== undefined
 }

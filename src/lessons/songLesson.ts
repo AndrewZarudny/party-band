@@ -3,6 +3,7 @@
 import * as alphaTab from '@coderline/alphatab'
 import type { Chart, ChartEvent, Lesson } from './types'
 import { STANDARD_TUNING, pc } from '../music/theory'
+import { describeTuning, tuningLabel } from '../music/tunings'
 import { songSections } from '../music/songLevels'
 import { registerLesson } from './data'
 import { registerChart } from './charts'
@@ -32,6 +33,21 @@ type Draft = Omit<Extract<ChartEvent, { kind: 'note' }>, 'id'> | Omit<Extract<Ch
 const isGuitar = (t: alphaTab.model.Track) => t.staves[0]?.isStringed && !t.isPercussion && (/guit|gtr/i.test(t.name) || (t.playbackInfo.program >= 24 && t.playbackInfo.program <= 31))
 
 /**
+ * How a tab's tuning is played as a lesson: moved as a whole so its top string is E, which keeps the tab's
+ * frets. A standard shape needs no retuning (shape null). A drop shape (Drop C, Drop C♯ → Drop D) means
+ * retuning to that shape. Open and other tunings aren't supported yet. `tuning`: MIDI, low string first.
+ */
+export function lessonTuning(tuning: number[]): { shift: number; shape: number[] | null } | { error: string } {
+  if (tuning.length !== 6) return { error: 'Lessons from songs need a six-string guitar part.' }
+  const shift = STANDARD_TUNING[5] - tuning[5]
+  const moved = tuning.map((n) => n + shift)
+  if (moved.every((n, i) => n === STANDARD_TUNING[i])) return { shift, shape: null }
+  // The low string a whole step down, the rest standard: Drop D.
+  if (moved[0] === STANDARD_TUNING[0] - 2 && moved.slice(1).every((n, i) => n === STANDARD_TUNING[i + 1])) return { shift, shape: moved }
+  return { error: 'This song is in an open or unusual tuning. Lessons from songs work for standard and drop tunings for now.' }
+}
+
+/**
  * Builds and registers a lesson for every part of the song that can be one (enough notes, 4/4). The tab's
  * fingering is kept and read in standard tuning, as Learn a song does for a tuning that is a plain shift, so
  * nothing needs retuning. Returns the parts in song order, or why the song can't be used.
@@ -46,9 +62,9 @@ export function songLessons(song: SongSource): { parts: SongPart[] } | { error: 
   const track = score.tracks.find(isGuitar) ?? score.tracks.find((t) => t.staves[0]?.isStringed)
   const staff = track?.staves[0]
   if (!track || !staff) return { error: 'No guitar part in that tab.' }
-  const tuning = [...staff.tuning].reverse() // low string first
-  const shift = tuning.length === 6 ? STANDARD_TUNING[0] - tuning[0] : NaN
-  if (!tuning.every((n, i) => STANDARD_TUNING[i] - n === shift)) return { error: 'This song is in a drop or open tuning. Lessons from songs work for standard-shaped tunings for now.' }
+  const lt = lessonTuning([...staff.tuning].reverse()) // low string first
+  if ('error' in lt) return { error: lt.error }
+  const { shift, shape } = lt
 
   const beatsOf = (bar: number) => staff.bars[bar]?.voices[0]?.beats ?? []
   const sounding = (b: alphaTab.model.Beat) => (b.isRest ? [] : b.notes.filter((n) => !n.isTieDestination && !n.isDead && n.isStringed))
@@ -59,9 +75,11 @@ export function songLessons(song: SongSource): { parts: SongPart[] } | { error: 
   }
   const bpm = Math.max(40, Math.min(200, Math.round(score.tempo)))
   const by = song.artist && song.artist !== 'Unknown artist' ? ` by ${song.artist}` : ''
+  const tuneTo = shape ? `Tune to ${describeTuning(shape)} first (${tuningLabel(shape)}): the Tuner tab has it.` : ''
   const tuningTip = shift
-    ? `The tab is tuned ${Math.abs(shift)} semitone${Math.abs(shift) > 1 ? 's' : ''} ${shift > 0 ? 'down' : 'up'}. The fingering is the same in standard tuning; it just sounds ${shift > 0 ? 'higher' : 'lower'} than the record.`
-    : 'Same fingering as the tab.'
+    ? `${tuneTo ? tuneTo + ' ' : ''}The tab is tuned ${Math.abs(shift)} semitone${Math.abs(shift) > 1 ? 's' : ''} ${shift > 0 ? 'lower' : 'higher'}. The fingering is the same; it just sounds ${shift > 0 ? 'higher' : 'lower'} than the record.`
+    : tuneTo || 'Same fingering as the tab.'
+  const open = shape ?? STANDARD_TUNING
 
   const parts: SongPart[] = []
   songSections(score.masterBars.map((mb) => mb.section?.text ?? null)).forEach((sec, index) => {
@@ -89,7 +107,7 @@ export function songLessons(song: SongSource): { parts: SongPart[] } | { error: 
         const at = (n: alphaTab.model.Note) => ({ string: Math.max(0, Math.min(5, n.string - 1)), fret: n.fret })
         if (ns.length === 1) {
           const { string, fret } = at(ns[0])
-          drafts.push({ kind: 'note', beat, dur, string, fret, midi: STANDARD_TUNING[string] + fret })
+          drafts.push({ kind: 'note', beat, dur, string, fret, midi: open[string] + fret })
           continue
         }
         // Several notes at once: a shape judged by its pitches, like a power chord.
@@ -98,7 +116,7 @@ export function songLessons(song: SongSource): { parts: SongPart[] } | { error: 
         for (const n of ns) {
           const { string, fret } = at(n)
           frets[string] = fret
-          const p = pc(STANDARD_TUNING[string] + fret)
+          const p = pc(open[string] + fret)
           if (!pcs.includes(p)) pcs.push(p)
         }
         drafts.push({ kind: 'chord', beat, dur, symbol: '', frets, pcs, power: true, chroma: false })
@@ -124,6 +142,7 @@ export function songLessons(song: SongSource): { parts: SongPart[] } | { error: 
       timing: 'easy',
       tone: 'Classic rock',
       octaveOk: true,
+      ...(shape ? { tuning: shape } : {}),
       // Drums only: the lesson band plays from chord names, and a riff's chords can't be read off the tab reliably.
       backing: { feel: 'pop', chords: ['E5'], parts: { drums: true }, level: 0.7 },
       pass: 60,

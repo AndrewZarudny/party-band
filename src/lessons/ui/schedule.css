@@ -223,3 +223,13 @@
     transition: none;
   }
 }
+
+/* Cold start: what the lesson asks, set apart so it reads first. */
+.lessons .sc-cold-goal {
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  background: rgb(var(--accent-rgb) / 0.08);
+  border-radius: 0 8px 8px 0;
+}

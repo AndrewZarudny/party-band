@@ -14,7 +14,7 @@ import { scalePcsOf } from '../improv'
 import { FEELS } from '../../music/parts'
 import { KEYBOARD_DEVICE, deviceKey, latencyAdvice, loadLatency, micWarning } from '../calibration'
 import { clicksMuted } from '../clock'
-import { DINO_STAGES, dinoStageFor } from '../progress'
+import { DINO_STAGES, dinoStageFor, stuckAdvice, thirdStar } from '../progress'
 import { LEARN_SESSIONS, fullColds, isReviewItem, standingLabel, standingOf } from '../review'
 import { whereLabel } from '../data'
 import { connectSource } from '../source'
@@ -30,6 +30,7 @@ import type { WatchSpeed } from './teach/useWatch'
 import { GENRES, tracksFor, trackChords, withTrack } from '../tracks'
 import type { GenreId } from '../tracks'
 import './timing.css'
+import { describeTuning, setSongTuning, tuningLabel } from '../../music/tunings'
 
 /** Improv lessons: the box on the fretboard, home notes marked. */
 function BoxPreview({ lesson }: { lesson: Lesson }) {
@@ -155,6 +156,8 @@ export function LessonIntro({
 
   // Speed trainer: Auto unless the player picked a speed for this lesson.
   const rec = progress.lessons[lesson.id]
+  const stuck = stuckAdvice(rec)
+  const star3 = thirdStar(lesson, rec)
   const auto = autoSpeed(lesson, rec)
   const autoHint =
     lesson.type === 'improv'
@@ -204,6 +207,11 @@ export function LessonIntro({
   useEffect(() => {
     startRef.current?.focus()
   }, [])
+
+  // A song lesson in another tuning: the Tuner tab offers it as the song's tuning.
+  useEffect(() => {
+    if (lesson.tuning) setSongTuning({ song: lesson.title, notes: lesson.tuning })
+  }, [lesson])
 
   // Esc goes back (a dialog on top handles its own Esc).
   useEffect(() => {
@@ -260,6 +268,8 @@ export function LessonIntro({
             </p>
           )}
           {learnNote && <p className="ls-muted ls-learn-note">{learnNote}</p>}
+          {stuck && <p className="ls-note ls-stuck">{stuck}</p>}
+          {star3 && !stuck && <p className="ls-muted ls-star3">{star3.text}</p>}
         </div>
         <div className="ls-intro-dino">
           {lesson.tips[0] && <p className="ls-bubble">{lesson.tips[0]}</p>}
@@ -333,6 +343,11 @@ export function LessonIntro({
         </div>
 
         <div className="ls-start">
+          {lesson.tuning && (
+            <p className="ls-warn">
+              Tune to <b>{describeTuning(lesson.tuning)}</b> ({tuningLabel(lesson.tuning)}) first. The Tuner tab has it ready.
+            </p>
+          )}
           <InputPicker prefs={prefs} onPrefs={onPrefs} />
           {mic && <p className="ls-warn">{mic}</p>}
           {muted && (

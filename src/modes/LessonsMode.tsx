@@ -63,7 +63,8 @@ import { ProgressScreen } from '../lessons/ui/ProgressScreen'
 import { lessonsStartScreen, onOpenProgress, progressAsked, progressShown } from '../practice/progressLink'
 import { PlanWeeks } from '../lessons/ui/PlanWeeks'
 import { LiveCoachBar } from '../lessons/ui/LiveCoachBar'
-import { setCoachPlaying } from '../lessons/liveCoach'
+import { setCoachActions, setCoachPlaying } from '../lessons/liveCoach'
+import type { CoachActions } from '../lessons/liveCoach'
 import { useDailyGoal } from '../practice/goal'
 import { BasicsSheet } from '../lessons/ui/teach/BasicsSheet'
 import { LoopScreen } from '../lessons/ui/LoopScreen'
@@ -678,6 +679,12 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
     }
   }
 
+  // What the live coach may do for the player on this screen (asked by voice, or agreed to).
+  const coachActions: CoachActions = {}
+  const planNext = progress.plan && progress.plan.day === dayKey(new Date()) ? progress.plan.steps.findIndex((st) => st.state === 'todo') : -1
+  if ((screen === 'home' || screen === 'today') && planNext >= 0)
+    coachActions['play'] = { about: "start the next step of today's plan", run: () => openStep(planNext, screen === 'today' ? 'today' : 'home') }
+  if (screen !== 'home' && screen !== 'welcome' && screen !== 'play') coachActions['home'] = { about: 'back to the Lessons home', run: goHome }
   let body
   if (screen === 'welcome') {
     body = (
@@ -695,6 +702,7 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
   } else if (screen === 'sync') {
     body = <SyncUp key={`sync-${runKey}`} lessonMode={syncLesson} keyboard={keyboard} onDone={onSyncDone} />
   } else if (screen === 'intro' && lesson) {
+    coachActions['start'] = { about: `start ${lesson.title}`, run: () => play() }
     body = (
       <LessonIntro
         lesson={lesson}
@@ -714,6 +722,7 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
     body = (
       <ColdStart
         title={lesson.title}
+        goal={lesson.goal}
         bpm={bpmAt(lesson, speed)}
         speed={speed}
         onStart={() => startRun({ cold: true, quiet: false, shuffle: false, tab: 'hidden', speed, passes: 1 })}
@@ -760,6 +769,24 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
     const bn = last.step !== null && lesson.type !== 'sync' ? blockNext(last.step) : null
     const next = bn ? null : nextAfter(last.outcome.progress, lesson.id)
     const mixId = bn?.step.kind === 'mix' ? mixNext(bn.step) : null
+    const lr = last.result
+    coachActions['again'] = { about: 'play it again', run: () => (lesson.type === 'sync' ? open(lesson.id) : again()) }
+    if (lesson.type !== 'sync') coachActions['slower'] = { about: 'play it again a step slower', run: () => playSlower(lr.speed) }
+    if (lesson.type !== 'sync' && lesson.type !== 'improv')
+      coachActions['loop'] = {
+        about: `loop some bars slowly until clean; argument: bars like 3-4 (1 to ${lesson.bars}${lr.hardestBar !== null ? `, hardest was ${lr.hardestBar + 1}` : ''})`,
+        run: (arg) => {
+          const m = (arg ?? '').match(/(\d+)(?:\s*(?:-|to)\s*(\d+))?/)
+          const hard = lr.hardestBar ?? 0
+          const a = m ? Number(m[1]) - 1 : hard
+          const b = m ? Number(m[2] ?? m[1]) - 1 : hard
+          const from = Math.max(0, Math.min(a, b, lesson.bars - 1))
+          const to = Math.min(lesson.bars - 1, Math.max(a, b, from))
+          startLoop(loopSpecFor(lesson, lr, from, to), 'results')
+        },
+      }
+    if (bn) coachActions['next'] = { about: bn.nextLabel, run: () => moveOn(bn.i) }
+    else if (next) coachActions['next'] = { about: `on to ${lessonById(next)?.title ?? 'the next lesson'}`, run: () => open(next) }
     const session = bn
       ? {
           running: bn.running,
@@ -875,6 +902,11 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
       />
     )
   }
+
+  // After every render: this screen's actions are the ones the live coach may take.
+  useEffect(() => {
+    setCoachActions(() => coachActions)
+  })
 
   return (
     <div className={`lessons screen-${screen}`}>

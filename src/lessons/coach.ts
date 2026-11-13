@@ -5,7 +5,7 @@ import type { ApplyOutcome, Lesson, LessonResult, Progress, SessionPlan } from '
 import { bpmAt } from './speed'
 import type { SkillStats } from '../skills/data'
 import { lessonById } from './data'
-import { dayKey, nextLesson } from './progress'
+import { closestThirdStar, dayKey, nextLesson } from './progress'
 import { strugglingList, weekStatus } from './review'
 import { improvements, planDone, planPlayedSec, stepScore, stepTitle } from './session'
 import { pace } from './weeks'
@@ -34,6 +34,7 @@ export function coachFacts(p: Progress, stats: SkillStats, now: Date, moment: Co
     player: o.name,
     dino: p.dinoName,
     plan12Weeks: { headline: pc.headline, state: pc.state, advice: pc.advice.slice(0, 2) },
+    closestThirdStar: closestThirdStar(p),
     week: { sessionsDone: ws.done, sessionGoal: ws.goal, weekStreak: ws.streak },
     daysSinceLastPractice: plan?.away ?? null,
     today: {

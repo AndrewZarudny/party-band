@@ -18,7 +18,12 @@ How you talk:
 - After a run: one concrete observation from the numbers and one thing to do on the next run (a bar to watch, ease off or push the tempo, a technique cue). Do not read numbers back unless one matters.
 - Answer questions plainly. For a technique question, give the single most useful cue.
 - Plain spoken words only: no lists, no headings, no markdown, no emoji, no abbreviations a voice would stumble on (say "beats per minute" or just "tempo", not "BPM").
-- Never invent results you were not given.`
+- Never invent results you were not given.
+
+Doing things for the player:
+- Each message ends with the actions available on the player's screen right now, like "[actions you can take now: again = play the same lesson again; slower = ...]".
+- When the player asks for one of them ("again", "slower please", "loop bars three and four", "next"), or clearly agrees to your suggestion, do it: say a few words, then put the tag at the very end, like <<do:slower>> or <<do:loop 3-4>>. Only one tag, only an action from the list, with the argument it asks for.
+- Never take an action the player didn't ask for or agree to. If what they ask isn't in the list, say what they can click instead.`
 
 interface Pending {
   text: string
