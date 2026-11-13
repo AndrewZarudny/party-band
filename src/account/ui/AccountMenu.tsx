@@ -194,6 +194,9 @@ export function AccountMenu() {
       >
         <span className={`acct-dot ${st.status}`} aria-hidden="true" />
         <span className="acct-name">{a.name}</span>
+        <span className="acct-initial" aria-hidden="true">
+          {a.name.trim().charAt(0).toUpperCase()}
+        </span>
       </button>
       {open && (
         <div id="acct-menu" className="acct-menu" role="group" aria-label="Account">

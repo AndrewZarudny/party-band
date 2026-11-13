@@ -33,6 +33,9 @@ function Icon({ v }: { v: Theme }) {
 }
 
 /** Light / dark / match device, as a small radio group for the top bar. */
+/** Must match the compact top bar media query in index.css. */
+const COMPACT = '(max-width: 1280px)'
+
 export function ThemeToggle() {
   const [theme, setLocal] = useState<Theme>(getTheme)
   const refs = useRef<(HTMLButtonElement | null)[]>([])
@@ -74,7 +77,11 @@ export function ThemeToggle() {
           title={o.label}
           tabIndex={theme === o.v ? 0 : -1}
           className={theme === o.v ? 'on' : undefined}
-          onClick={() => pick(o.v)}
+          onClick={() => {
+            // Narrow windows show only the current theme (CSS): clicking it moves to the next one.
+            if (theme === o.v && window.matchMedia(COMPACT).matches) pick(OPTIONS[(i + 1) % OPTIONS.length].v)
+            else pick(o.v)
+          }}
           onKeyDown={(e) => onKey(e, i)}
         >
           <Icon v={o.v} />

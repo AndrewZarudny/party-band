@@ -3075,3 +3075,79 @@ code {
     transition: none;
   }
 }
+
+/* Compact top bar (13-inch screens and narrower windows): everything on one row. The theme shows only the
+   current choice (clicking it moves on, ThemeToggle.tsx), the account shows an initial, labels get shorter.
+   Keep the width in step with COMPACT in ThemeToggle.tsx. */
+.ai-teacher-btn .short,
+.acct-initial {
+  display: none;
+}
+@media (max-width: 1280px) {
+  .topbar {
+    gap: 8px 14px;
+    padding: 8px 14px;
+  }
+  .topbar-right {
+    gap: 8px 10px;
+  }
+  .tabs button {
+    padding: 6px 11px;
+  }
+  .audio-status {
+    gap: 8px;
+  }
+  .tuner-bar {
+    width: 56px;
+  }
+  .tuner-note {
+    width: 30px;
+  }
+  .meter {
+    width: 36px;
+  }
+  .tone-btn {
+    max-width: 150px;
+  }
+  .tone-btn-label {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .theme-toggle button:not(.on) {
+    display: none;
+  }
+  .ai-teacher-btn .long,
+  .prac-unit,
+  .acct-name {
+    display: none;
+  }
+  .ai-teacher-btn .short {
+    display: inline;
+  }
+  .acct-initial {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: 700;
+    font-size: 0.85em;
+  }
+}
+/* Narrower still (a 13-inch screen with the app window not full width): the header tuner needle goes (the
+   Tuner tab has it; the level meter stays), the tone name and logo get smaller. */
+@media (max-width: 1160px) {
+  .audio-status .tuner {
+    display: none;
+  }
+  .tone-btn {
+    max-width: 120px;
+  }
+  .brand {
+    font-size: calc(var(--fs-brand) * 0.85);
+  }
+}

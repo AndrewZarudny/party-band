@@ -188,7 +188,8 @@ export function AiTeacher() {
         }}
         title={st.loggedIn ? 'AI teacher: signed in to Claude' : 'AI teacher: sign in to Claude'}
       >
-        <span className={`ai-dot ${st.loggedIn ? 'on' : ''}`} aria-hidden /> AI teacher
+        <span className={`ai-dot ${st.loggedIn ? 'on' : ''}`} aria-hidden /> <span className="long">AI teacher</span>
+        <span className="short">AI</span>
       </button>
       {dialog}
     </>

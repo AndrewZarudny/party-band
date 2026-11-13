@@ -31,8 +31,8 @@ export function AudioStatus({ onOpen }: { onOpen: () => void }) {
           </div>
         </>
       )}
-      <button className={`btn ${e.running ? '' : 'primary'}`} onClick={onOpen}>
-        {e.running ? `🎸 ${e.tone.name}` : '🎸 Connect guitar'}
+      <button className={`btn tone-btn ${e.running ? '' : 'primary'}`} onClick={onOpen} title={e.running ? `Tone: ${e.tone.name}` : undefined}>
+        <span className="tone-btn-label">{e.running ? `🎸 ${e.tone.name}` : '🎸 Connect guitar'}</span>
       </button>
     </div>
   )

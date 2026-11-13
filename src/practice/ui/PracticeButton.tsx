@@ -33,7 +33,16 @@ export function PracticeButton({ open, onClick, ref }: { open: boolean; onClick:
       onClick={onClick}
     >
       <GoalRing sec={today} min={goal} />
-      <span className="prac-btn-text">{met ? fmtDuration(today) : `${wholeMin(today)} / ${goal} min`}</span>
+      <span className="prac-btn-text">
+        {met ? (
+          fmtDuration(today)
+        ) : (
+          <>
+            {wholeMin(today)} / {goal}
+            <span className="prac-unit"> min</span>
+          </>
+        )}
+      </span>
     </button>
   )
 }
