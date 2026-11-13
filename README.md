@@ -13,7 +13,23 @@ It opens at http://localhost:5173. Use **Chrome**: it supports picking the outpu
 
 ### On a Mac
 
-Double-click **Fretwise.command** in the project folder. It needs [Node.js](https://nodejs.org) 22 or newer and nothing else: no Docker and no database (accounts are kept in files in `.cache`). The first start installs the app's packages, which takes a minute. Leave the Terminal window open while you play; closing it stops Fretwise. If macOS won't open the file the first time, right-click it and choose **Open**.
+Two commands in Terminal, once:
+
+```bash
+git clone https://github.com/AndrewZarudny/party-band.git
+party-band/mac/install.sh
+```
+
+The installer needs nothing set up beforehand: no Docker and no database (accounts are kept in files in `.cache`). It:
+
+1. uses the Mac's Node.js if it is version 22 or newer, else downloads a copy for Fretwise only into `.cache/node` (from nodejs.org, checked against its checksum, no admin password);
+2. installs the app's packages;
+3. brings in `fretwise-account.tgz` if it finds one in the project folder, Downloads or Desktop (see below);
+4. builds **Fretwise.app**, with its icon, in your own Applications folder (`~/Applications`) and starts it.
+
+From then on, open **Fretwise** from Applications, Spotlight or the Dock. Opening it starts Fretwise and shows it in the browser (Chrome when installed); quitting it stops Fretwise. To keep the icon in the Dock, right-click it there and choose Options → Keep in Dock. After pulling a newer version, run `mac/install.sh` again.
+
+If the app can't be built, double-click **Fretwise.command** in the project folder: the same Fretwise in a Terminal window (close the window to stop it).
 
 macOS audio is fast in the browser, so on a Mac you can play **through the app's amp** (Direct Monitor off) without the delay Windows adds.
 
@@ -25,7 +41,7 @@ On the computer that has your account:
 node scripts/export-account.mjs
 ```
 
-It writes `fretwise-account.tgz` (your progress, settings, songs and your password's hash; git-ignored, never commit it). Copy that file into the project folder on the other computer, next to `Fretwise.command`, and start Fretwise there. It is unpacked once, only if that computer has no accounts yet. Then sign in with the same name and password and everything comes back. After that the two computers hold separate copies: what you do on one does not reach the other.
+It writes `fretwise-account.tgz` (your progress, settings, songs and your password's hash; git-ignored, never commit it). Copy that file to the other computer (on a Mac: into Downloads, the Desktop or the project folder) and run `mac/install.sh` there. It is unpacked once, only if that computer has no accounts yet. Then sign in with the same name and password and everything comes back. After that the two computers hold separate copies: what you do on one does not reach the other.
 
 ## Setup with the Scarlett Solo
 
