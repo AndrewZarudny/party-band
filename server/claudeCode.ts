@@ -23,21 +23,21 @@ function candidates(): string[] {
   return list
 }
 
-let found: string | null | undefined
-/** The full path of the `claude` command, or null when Claude Code isn't installed. Looked up once. */
-export function claudePath(): string | null {
-  if (found !== undefined) return found
-  found = null
-  for (const p of candidates()) {
-    try {
-      fs.accessSync(p, fs.constants.X_OK)
-      found = p
-      break
-    } catch {
-      // not here
-    }
+const runnable = (p: string) => {
+  try {
+    fs.accessSync(p, fs.constants.X_OK)
+    return true
+  } catch {
+    return false
   }
-  return found
+}
+
+/**
+ * The full path of the `claude` command, or null when Claude Code isn't installed. Looked up on every call, so
+ * the app follows Claude Code when it moves (e.g. `claude install` replaces an npm copy with the native one).
+ */
+export function claudePath(): string | null {
+  return candidates().find(runnable) ?? null
 }
 
 /** The environment for running `claude`: the subscription sign-in only, never an API key that happens to be set. */
