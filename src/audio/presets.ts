@@ -87,18 +87,39 @@ export function onSetup(l: () => void) {
   }
 }
 
-async function loadGear() {
+// Loads one change at a time, then checks again: clicking tones quickly ends on the last one clicked, never
+// on a slow capture that finished loading after a later choice.
+let loading: Promise<void> | null = null
+let again = false
+async function loadGearOnce() {
   const want = { capture: current.capture?.id ?? '', ir: current.ir?.id ?? '' }
   if (want.capture !== loaded.capture) {
-    loaded.capture = want.capture
     const c = want.capture ? await getCapture(want.capture) : undefined
     await engine.setCapture(c ? { kind: c.gear ?? 'amp', name: c.name, json: new TextDecoder().decode(c.data) } : null)
+    loaded.capture = want.capture
   }
   if (want.ir !== loaded.ir) {
-    loaded.ir = want.ir
     const c = want.ir ? await getCapture(want.ir) : undefined
     await engine.setIr(c ? { name: c.name, data: c.data } : null)
+    loaded.ir = want.ir
   }
+}
+function loadGear(): Promise<void> {
+  if (loading) {
+    again = true
+    return loading
+  }
+  loading = (async () => {
+    try {
+      do {
+        again = false
+        await loadGearOnce()
+      } while (again || (current.capture?.id ?? '') !== loaded.capture || (current.ir?.id ?? '') !== loaded.ir)
+    } finally {
+      loading = null
+    }
+  })()
+  return loading
 }
 
 /** Switches to a whole tone: amp settings plus its capture and cab (loaded only when they change). */

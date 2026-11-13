@@ -231,6 +231,10 @@ export class GuitarEngine {
   private timeBuf = new Float32Array(2048)
   private diffBuf = new Float32Array(1024)
   private autoHold = 0
+  /** Loop frames in a row with exact digital silence on both inputs: a live interface is never exactly 0. */
+  private deadFrames = 0
+  private muteTimer: number | null = null
+  private lastRestart = 0
   private tracker = new NoteTracker()
   private gateOpen = false
 
@@ -251,15 +255,21 @@ export class GuitarEngine {
     })
     // Browsers only start audio after a click or key press; resume on the first one.
     const resume = () => {
-      if (this.ctx && this.ctx.state === 'suspended') void this.ctx.resume()
+      if (this.ctx && this.paused) void this.ctx.resume()
     }
     window.addEventListener('pointerdown', resume, true)
     window.addEventListener('keydown', resume, true)
   }
 
-  /** Audio is set up but the browser is waiting for a click before it plays. */
+  /** Chrome stopped the audio: 'suspended' (waiting for a click) or 'interrupted' (macOS took the audio away). */
+  private get paused() {
+    const st = this.ctx?.state as string | undefined
+    return !!st && st !== 'running' && st !== 'closed'
+  }
+
+  /** Audio is set up but stopped, and a click is needed to start it again (the app tries by itself first). */
   get needsResume() {
-    return !!this.ctx && this.ctx.state === 'suspended'
+    return this.paused
   }
 
   /**
@@ -270,7 +280,12 @@ export class GuitarEngine {
     if (!this.ctx) {
       // NAM captures are trained at 48 kHz; the browser resamples the interface if it runs higher.
       this.ctx = new AudioContext({ latencyHint: 'interactive', sampleRate: 48000 })
-      this.ctx.addEventListener('statechange', () => this.state.emit())
+      this.ctx.addEventListener('statechange', () => {
+        this.state.emit()
+        // The app never pauses audio itself: when Chrome or macOS does (another app took the audio, the output
+        // changed), start it again. If Chrome wants a click first, the "click anywhere" bar shows.
+        if (this.paused && this.wanted) setTimeout(() => this.paused && void this.ctx?.resume().catch(() => {}), 300)
+      })
       this.buildGraph(this.ctx)
     }
     if (this.ctx.state !== 'running') {
@@ -341,6 +356,18 @@ export class GuitarEngine {
     const label = track?.label ?? ''
     this.wanted = true
     saveConnection({ deviceId: track?.getSettings().deviceId ?? deviceId ?? '', label })
+    // Muted by the browser for more than a moment (another capture took the device): connect again.
+    track?.addEventListener('mute', () => {
+      if (this.muteTimer) clearTimeout(this.muteTimer)
+      this.muteTimer = window.setTimeout(() => {
+        this.muteTimer = null
+        if (this.stream?.getAudioTracks()[0] === track && track.muted && this.wanted) void this.restartInput()
+      }, 2000)
+    })
+    track?.addEventListener('unmute', () => {
+      if (this.muteTimer) clearTimeout(this.muteTimer)
+      this.muteTimer = null
+    })
     // The stream ends if the interface disappears (unplugged, sleep): try to come back.
     track?.addEventListener('ended', () => {
       if (this.stream?.getAudioTracks()[0] !== track) return
@@ -366,6 +393,17 @@ export class GuitarEngine {
     this.loop()
     this.state.emit()
     return label
+  }
+
+  /** Opens the guitar input again, on the same device (a stream that went dead or was muted). */
+  private async restartInput() {
+    // At most once in 30 s: an input that is silent for real (macOS input volume at zero) isn't reopened forever.
+    if (this.reconnecting || Date.now() - this.lastRestart < 30000) return
+    this.lastRestart = Date.now()
+    this.deadFrames = 0
+    this.stopInput()
+    this.state.emit()
+    if (!(await this.reconnect())) setTimeout(() => this.wanted && !this.running && void this.reconnect(), 1500)
   }
 
   private stopInput() {
@@ -834,6 +872,12 @@ export class GuitarEngine {
     const l = chRms(this.aL)
     const r = chRms(this.aR)
     this.chLevels = [Math.max(l, this.chLevels[0] * 0.9), Math.max(r, this.chLevels[1] * 0.9)]
+    // Exact zeros on both inputs for 3 s while audio runs: the stream died without saying so. Open it again.
+    this.deadFrames = l === 0 && r === 0 && this.ctx.state === 'running' ? this.deadFrames + 1 : 0
+    if (this.deadFrames > 180 && this.wanted) {
+      this.deadFrames = 0
+      void this.restartInput()
+    }
     if (this.channel === 'auto') {
       const other = this.autoPick === 'right' ? l : r
       const cur = this.autoPick === 'right' ? r : l
