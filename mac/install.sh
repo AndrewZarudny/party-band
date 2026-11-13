@@ -76,8 +76,9 @@ app="$apps/Fretwise.app"
 mkdir -p "$apps"
 chmod +x mac/start.sh mac/stop.sh 2>/dev/null
 tmp="$(mktemp -d)"
-# The project's folder goes into the app as an AppleScript string: escape \ and ".
-esc="$(printf '%s' "$FRETWISE_DIR" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/[&|]/\\&/g')"
+# The project's folder goes into the app as an AppleScript string: escape \ and " for AppleScript,
+# then \, & and | once more for the sed replacement below.
+esc="$(printf '%s' "$FRETWISE_DIR" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | sed -e 's/\\/\\\\/g' -e 's/[&|]/\\&/g')"
 sed "s|__FRETWISE_DIR__|$esc|" mac/Fretwise.applescript >"$tmp/Fretwise.applescript"
 # Quit an older copy first, so its files can be replaced.
 pkill -f "Fretwise.app/Contents/MacOS/applet" >/dev/null 2>&1
