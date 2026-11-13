@@ -32,6 +32,7 @@ import {
   swapStep,
   withExtraStep,
   withSessionDay,
+  withSongStepsFixed,
   withTodayPlan,
 } from '../lessons/session'
 import { coldRun, coldSpeedFor, reviewBrake } from '../lessons/review'
@@ -347,6 +348,12 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
       p = made
       changed = true
     }
+    // A song deleted since the plan was made: its step takes another song part, or is skipped.
+    const fixed = withSongStepsFixed(p, openParts)
+    if (fixed) {
+      p = fixed
+      changed = true
+    }
     const sd = withSessionDay(p, now, practiceSecToday())
     if (sd.changed) {
       p = sd.progress
@@ -485,7 +492,12 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
     }
     const id = step.lessonId
     const l = lessonById(id)
-    if (!l) return
+    if (!l) {
+      // Never a button that does nothing: say why.
+      setBlock(null)
+      setNotice(id.startsWith('song:') ? "That song part can't be opened: its song is no longer in your library. Skip this step." : "That lesson can't be opened.")
+      return
+    }
     // A review-first step on an item due its cold test takes the test first, then its blocked reps (with rests).
     if (stepOpensCold(p, step, new Date())) {
       setLessonId(id)

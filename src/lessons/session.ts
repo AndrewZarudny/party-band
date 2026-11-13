@@ -396,14 +396,9 @@ export function makeSessionPlan(p: Progress, now: Date, ctx: PlanCtx): SessionPl
   }
   // A real song before the jam, when the player has any: added on top of the plan (nothing gives up its minutes),
   // a different song each session.
-  const songParts = (ctx.songParts ?? []).filter((id) => !!lessonById(id) && !used.has(id))
+  const songPick = pickSongPart(p, (ctx.songParts ?? []).filter((id) => !used.has(id)))
   const ji = steps.findIndex((x) => x.kind === 'jam')
-  if (songParts.length && ji >= 0) {
-    // The next part not passed yet; with all passed, the one played longest ago.
-    const fresh = songParts.find((id) => !isPassed(p, id))
-    const id = fresh ?? [...songParts].sort((a, b) => (p.lessons[a]?.lastPlayed ?? 0) - (p.lessons[b]?.lastPlayed ?? 0))[0]
-    steps.splice(ji, 0, lessonStep(p, 'song', { id, why: fresh ? 'A part of one of your songs. It starts slow; clean runs earn the tempo.' : 'A song part you know: keep it fresh.' }, SONG_MIN))
-  }
+  if (songPick && ji >= 0) steps.splice(ji, 0, lessonStep(p, 'song', songPick, SONG_MIN))
   // Spare minutes (no cold item, no warm-up) go to blocked reps of the new item, else changes or ear;
   // with none of those the session is simply shorter.
   if (spare > 0) {
@@ -493,6 +488,40 @@ export function withTodayPlan(p: Progress, now: Date, ctx: PlanCtx): Progress | 
   const plan = p.plan
   if (plan && plan.v === 2 && plan.day === dayKey(now) && !(setupOnly(plan) && syncDone(p)) && !brakeStale(p, plan)) return null
   return { ...p, plan: makeSessionPlan(p, now, ctx) }
+}
+
+/** The song part to play: the next one not passed yet; with all passed, the one played longest ago. */
+function pickSongPart(p: Progress, parts: string[]): { id: string; why: string } | null {
+  const ok = parts.filter((id) => !!lessonById(id))
+  if (!ok.length) return null
+  const fresh = ok.find((id) => !isPassed(p, id))
+  if (fresh) return { id: fresh, why: 'A part of one of your songs. It starts slow; clean runs earn the tempo.' }
+  const id = [...ok].sort((a, b) => (p.lessons[a]?.lastPlayed ?? 0) - (p.lessons[b]?.lastPlayed ?? 0))[0]
+  return { id, why: 'A song part you know: keep it fresh.' }
+}
+
+/**
+ * Today's song steps whose part can't be played any more (its song was deleted, or its tab no longer makes that
+ * part) take another of the player's song parts, or are skipped when there is none. `songParts`: the parts there
+ * are now. Null when nothing changed. Steps keep their place, so a block in progress keeps its index.
+ */
+export function withSongStepsFixed(p: Progress, songParts: string[]): Progress | null {
+  const plan = p.plan
+  if (!plan) return null
+  const there = new Set(songParts.filter((id) => !!lessonById(id)))
+  const gone = (st: SessionStep) => st.kind === 'song' && st.state === 'todo' && !!st.lessonId && !there.has(st.lessonId)
+  if (!plan.steps.some(gone)) return null
+  const inPlan = new Set(plan.steps.map((st) => st.lessonId).filter((id): id is string => !!id))
+  const steps = plan.steps.map((st) => {
+    if (!gone(st)) return st
+    const pick = pickSongPart(p, [...there].filter((id) => !inPlan.has(id)))
+    if (!pick) return { ...st, state: 'skipped' as const, why: 'That song is no longer in your library.' }
+    inPlan.add(pick.id)
+    const made = lessonStep(p, 'song', pick, st.min)
+    // Time already played in this block still counts.
+    return { ...made, sec: st.sec }
+  })
+  return { ...p, plan: { ...plan, steps } }
 }
 
 export function planDone(plan: SessionPlan): boolean {

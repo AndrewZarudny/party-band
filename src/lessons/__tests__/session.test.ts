@@ -35,13 +35,14 @@ import {
   swapStep,
   withSessionDay,
   withSessionMin,
+  withSongStepsFixed,
   withTodayPlan,
 } from '../session'
 import { importProgress, newProgress, nextLesson } from '../progress'
 import { firstReview } from '../review'
 import { dayNum } from '../heat'
 import { buildChart, jamChart } from '../charts'
-import { lessonById } from '../data'
+import { lessonById, registerLesson } from '../data'
 import { at, oldMapSave, rec, result } from './fixtures'
 
 const NOW = at('2026-11-04') // a Wednesday; the week starts on Monday 2026-11-02
@@ -566,5 +567,38 @@ describe('blocks run on the clock', () => {
     expect(saved[saved.length - 1]).toMatchObject({ extra: true, sec: 100, runs: 1 })
     expect(clockText(65)).toBe('1:05')
     expect(blockLine({ ...last, sec: 65 })).toBe('Jam: 1:05 of 8 min. Jam on.')
+  })
+})
+
+describe('song steps whose song is gone', () => {
+  // Two song parts, made the way songLesson.ts makes them (from a built-in lesson, for a chart that exists).
+  const songPart = (id: string, title: string): Lesson => ({ ...(lessonById('w1-02') as Lesson), id, title, world: 4 })
+  registerLesson(songPart('song:a:0', 'A: Verse'))
+  registerLesson(songPart('song:b:0', 'B: Chorus'))
+  // A Thursday after three counted sessions: a D session, which has a jam, so the song step goes before it.
+  const withSong = () => {
+    const p = plan(base([day('2026-11-02'), day('2026-11-03'), day('2026-11-04')]), at('2026-11-05'), { ...ctx, songParts: ['song:a:0'] })
+    const i = p.plan?.steps.findIndex((s) => s.kind === 'song') ?? -1
+    expect(i).toBeGreaterThanOrEqual(0)
+    return { p, i }
+  }
+
+  it('a song deleted after the plan was made: its step takes another song part, in the same place, keeping its time', () => {
+    const { p, i } = withSong()
+    const played: Progress = { ...p, plan: { ...p.plan!, steps: p.plan!.steps.map((s, j) => (j === i ? { ...s, sec: 40 } : s)) } }
+    const fixed = withSongStepsFixed(played, ['song:b:0'])
+    expect(fixed?.plan?.steps[i]).toMatchObject({ kind: 'song', lessonId: 'song:b:0', state: 'todo', sec: 40 })
+    expect(fixed?.plan?.steps.map((s) => s.kind)).toEqual(p.plan?.steps.map((s) => s.kind))
+  })
+
+  it('no other song part: the step is skipped, so Play moves on to the next step', () => {
+    const { p, i } = withSong()
+    const fixed = withSongStepsFixed(p, [])
+    expect(fixed?.plan?.steps[i]).toMatchObject({ kind: 'song', state: 'skipped' })
+  })
+
+  it('the song is still there: nothing changes', () => {
+    const { p } = withSong()
+    expect(withSongStepsFixed(p, ['song:a:0', 'song:b:0'])).toBeNull()
   })
 })
