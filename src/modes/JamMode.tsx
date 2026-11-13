@@ -39,6 +39,7 @@ import { BackingBand } from '../audio/backing'
 import type { BackingPart } from '../audio/backing'
 import { BandSoundSwitch } from '../components/BandSound'
 import type { KeysVoicing } from '../music/parts'
+import { LooperPanel } from '../components/LooperPanel'
 
 interface Played {
   midi: number
@@ -830,6 +831,8 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
           {running ? '■ Stop' : '▶ Start'}
         </button>
       </div>
+
+      {view === 'jam' && <LooperPanel jamBpm={bpm} />}
 
       {view === 'songs' && (
         <SongsPanel

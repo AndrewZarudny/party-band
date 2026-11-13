@@ -3151,3 +3151,76 @@ code {
     font-size: calc(var(--fs-brand) * 0.85);
   }
 }
+
+/* Looper (LooperPanel.tsx), in the Jam tab under the controls. */
+.looper {
+  margin: 10px 0;
+}
+.looper:not(.closed) {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.looper-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.looper-head h3 {
+  margin: 0;
+  font-size: var(--fs-ui);
+}
+.looper-status {
+  flex: 1;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.looper-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.looper-bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left;
+}
+.looper.recording .looper-bar,
+.looper.overdubbing .looper-bar {
+  outline: 1px solid #e0695f;
+}
+.looper-main,
+.looper-opts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.looper-go {
+  min-width: 170px;
+  font-size: 1.05em;
+}
+.looper-go.recording,
+.looper-go.overdubbing {
+  background: #c9524a;
+  border-color: #c9524a;
+  color: #fff;
+}
+.looper-opts label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+.looper-opts input[type='number'] {
+  width: 64px;
+}
+.looper-err {
+  color: #e07a5f;
+}
