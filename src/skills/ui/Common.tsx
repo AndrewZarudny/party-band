@@ -16,10 +16,21 @@ export const RoundSessionContext = createContext<RoundSession | null>(null)
 const GAP_MS = 30000 // the pause after a round that still counts as practice (lessons/session.ts GAP_SEC)
 
 export function GameHead({ title, sub, onBack, right }: { title: string; sub: string; onBack: () => void; right?: ReactNode }) {
+  const session = useContext(RoundSessionContext)
   return (
+    <>
+    {/* A block of today's session: its clock and the way on, from the start, not only after a round. */}
+    {session && (
+      <p className="sk-session-bar ls-num">
+        <span>{session.text}</span>
+        <button className="ls-btn small" onClick={session.onNext}>
+          {session.nextLabel}
+        </button>
+      </p>
+    )}
     <header className="sk-head">
       <button className="ls-btn ghost small" onClick={onBack}>
-        Back
+        {session ? 'Back to session' : 'Back'}
       </button>
       <div className="sk-head-text">
         <h2 id="sk-game-h" className="ls-display">
@@ -29,6 +40,7 @@ export function GameHead({ title, sub, onBack, right }: { title: string; sub: st
       </div>
       {right}
     </header>
+    </>
   )
 }
 
@@ -59,12 +71,14 @@ const SETTLE_MS = 1000 // Space and Enter do nothing this long after a round end
 export function RoundDone({
   s,
   onAgain,
+  againLabel = 'Again',
   onBack,
   actions,
   children,
 }: {
   s: RoundSummary
   onAgain: () => void
+  againLabel?: string
   onBack: () => void
   actions?: ReactNode
   children?: ReactNode
@@ -128,7 +142,7 @@ export function RoundDone({
           </button>
         )}
         <button className={`ls-btn ${session && !session.running ? '' : 'primary'}`} onClick={onAgain}>
-          Again
+          {againLabel}
         </button>
         {session?.running && (
           <button className="ls-btn" onClick={session.onNext}>
@@ -138,7 +152,7 @@ export function RoundDone({
         {actions}
         {!session && (
           <button className="ls-btn ghost" onClick={onBack}>
-            Back to skills
+            Back
           </button>
         )}
       </div>

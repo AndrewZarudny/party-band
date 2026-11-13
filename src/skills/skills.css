@@ -489,3 +489,19 @@
     transition: none;
   }
 }
+
+/* A session block's clock and the way on, above the game (Common.tsx GameHead). */
+.lessons .sk-session-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: var(--fs-sm);
+}

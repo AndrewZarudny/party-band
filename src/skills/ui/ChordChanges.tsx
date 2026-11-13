@@ -3,7 +3,7 @@ import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { ChordDiagram } from '../../components/PartViews'
 import { guitarShape } from '../../music/parts'
 import { parseChord } from '../../music/theory'
-import { CHANGE_CHORDS, RETIRE_AT, countStrum, emptyCount, judgeStrum, pairKey, weakestPair } from '../chords'
+import { CHANGE_CHORDS, RETIRE_AT, countStrum, emptyCount, judgeStrum, nextPairInBlock, pairKey } from '../chords'
 import { knownChords } from '../../lessons/session'
 import { loadProgress } from '../../lessons/progress'
 import { bestKey, dailyBest } from '../data'
@@ -38,6 +38,8 @@ export function ChordChanges({ keyboard, onBack, pair: startPair }: { keyboard: 
   const [count, setCount] = useState(emptyCount)
   const [last, setLast] = useState<'clean' | 'muddy' | null>(null)
   const [done, setDone] = useState<RoundSummary | null>(null)
+  // In a session block: the pair Again moves on to, worked out when a round ends.
+  const [nextInBlock, setNextInBlock] = useState<string | null>(null)
   const [stats, setStats] = useState(loadStats)
   const pending = useRef<(() => void)[]>([])
 
@@ -55,11 +57,11 @@ export function ChordChanges({ keyboard, onBack, pair: startPair }: { keyboard: 
     setRunning(true)
   }
 
-  // Inside a session's changes block, Again moves on to the weakest pair now (the round just played raised its own best),
-  // so the block's minutes go round the pairs that need them instead of repeating one.
+  // Inside a session's changes block, Again moves on to another pair (the weakest one not retired), so the block's
+  // minutes go round the pairs that need them instead of repeating one. Only two chords known: the same pair again.
   const inSession = useContext(RoundSessionContext) !== null
   const again = () => {
-    const next = inSession ? splitPair(weakestPair(loadStats(), knownChords(loadProgress())) ?? undefined) : null
+    const next = splitPair(nextInBlock ?? undefined)
     if (next) {
       setA(next[0])
       setB(next[1])
@@ -99,6 +101,7 @@ export function ChordChanges({ keyboard, onBack, pair: startPair }: { keyboard: 
     pending.current = []
     const r = finishRound('changes', count.changes, pair)
     setStats(r.stats)
+    setNextInBlock(inSession ? nextPairInBlock(r.stats, knownChords(loadProgress()), pair) : null)
     const tried = count.strums + count.muddy
     setDone({
       headline: `${count.changes} clean changes`,
@@ -115,7 +118,7 @@ export function ChordChanges({ keyboard, onBack, pair: startPair }: { keyboard: 
             ? 'Switch slowly and land every finger together. Speed comes on its own.'
             : undefined,
     })
-  }, [running, left, count, pair, a, b])
+  }, [running, left, count, pair, a, b, inSession])
 
   const trend = useMemo(() => dailyBest(stats, 'changes', pair), [stats, pair])
   const best = stats.best[bestKey('changes', pair)]
@@ -127,6 +130,7 @@ export function ChordChanges({ keyboard, onBack, pair: startPair }: { keyboard: 
         <RoundDone
           s={done}
           onAgain={again}
+          againLabel={inSession ? (nextInBlock ? `Next pair: ${nextInBlock.replace('-', ' and ')}` : 'Same chords again') : undefined}
           onBack={onBack}
           actions={
             <button className="ls-btn ghost" onClick={() => setDone(null)}>

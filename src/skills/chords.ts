@@ -44,6 +44,23 @@ export function weakestPair(s: SkillStats, known: string[]): string | null {
   return pick
 }
 
+/**
+ * The pair after `current` in a session's changes block: never the same pair while another is known. The weakest
+ * pair not retired yet; with all others retired, the one with the lowest best (still practice); null when the two
+ * chords of `current` are the only ones known.
+ */
+export function nextPairInBlock(s: SkillStats, known: string[], current: string): string | null {
+  const chords = [...new Set(known)]
+  const others: string[] = []
+  for (let i = 0; i < chords.length; i++) for (let j = i + 1; j < chords.length; j++) if (pairKey(chords[i], chords[j]) !== current) others.push(pairKey(chords[i], chords[j]))
+  if (!others.length) return null
+  const best = (k: string) => s.best[bestKey('changes', k)] ?? 0
+  const open = others.filter((k) => best(k) < RETIRE_AT)
+  const pool = open.length ? open : others
+  const core = (k: string) => (CORE_PAIRS.indexOf(k) < 0 ? CORE_PAIRS.length : CORE_PAIRS.indexOf(k))
+  return [...pool].sort((a, b) => best(a) - best(b) || core(a) - core(b))[0]
+}
+
 const READ_AT_MS = [140, 240] // the strum has settled, the next one hasn't started
 
 /**

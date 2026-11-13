@@ -14,6 +14,7 @@ import {
   planPlayedSec,
   stepLeftSec,
   stepStarted,
+  stepTitle,
   withExtraStep,
   ctxDefault,
   knownChords,
@@ -567,6 +568,9 @@ describe('blocks run on the clock', () => {
     expect(saved[saved.length - 1]).toMatchObject({ extra: true, sec: 100, runs: 1 })
     expect(clockText(65)).toBe('1:05')
     expect(blockLine({ ...last, sec: 65 })).toBe('Jam: 1:05 of 8 min. Jam on.')
+    // A skill block goes by its game's name, not its slot in the plan.
+    const find = { kind: 'changes' as const, lessonId: null, skill: { game: 'find' as const }, min: 4, state: 'todo' as const, why: '', from: { best: 0, stars: 0 as const, speed: 1 } }
+    expect(blockLine({ ...find, sec: 0 })).toMatch(new RegExp(`^${stepTitle(find)}: 0:00 of 4 min`))
   })
 })
 

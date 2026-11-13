@@ -63,14 +63,16 @@ export function SkillsHome({ keyboard, onBack, onConnect, start }: { keyboard: b
     setStats(loadStats())
     setScreen('home')
   }
+  // Opened for a session block or a pocket session: Back leaves for Lessons, not the skills menu.
+  const leave = start && start.game !== 'mental' ? onBack : home
   const pair = start?.game === 'changes' ? start.pair : undefined
   const band = start?.game === 'record' ? start.band : undefined
 
-  if (screen === 'find' || screen === 'name') return <FretGame key={screen} mode={screen} keyboard={keyboard} onBack={home} />
-  if (screen === 'changes') return <ChordChanges keyboard={keyboard} onBack={home} pair={pair} />
-  if (screen === 'clock') return <InnerClock keyboard={keyboard} onBack={home} />
-  if (screen === 'record') return <RecordTakes keyboard={keyboard} onBack={home} band={band} />
-  if (screen === 'ear') return <EarGame keyboard={keyboard} onBack={home} />
+  if (screen === 'find' || screen === 'name') return <FretGame key={screen} mode={screen} keyboard={keyboard} onBack={leave} />
+  if (screen === 'changes') return <ChordChanges keyboard={keyboard} onBack={leave} pair={pair} />
+  if (screen === 'clock') return <InnerClock keyboard={keyboard} onBack={leave} />
+  if (screen === 'record') return <RecordTakes keyboard={keyboard} onBack={leave} band={band} />
+  if (screen === 'ear') return <EarGame keyboard={keyboard} onBack={leave} />
 
   return (
     <section className="ls-panel sk-home" aria-labelledby="sk-home-h">

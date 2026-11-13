@@ -485,7 +485,8 @@ const BLOCK_HINT: Record<StepKind, string> = {
 
 /** A block's clock in words: "Warm-up: 1:20 of 2 min. Play it again until the time is up." or "Warm-up done." */
 export function blockLine(s: SessionStep): string {
-  const kind = KIND_LABEL[s.kind]
+  // A skill block by its game (Fretboard notes, Call and response), not its slot in the plan.
+  const kind = s.skill ? stepTitle(s) : KIND_LABEL[s.kind]
   if (s.state === 'done') return `${kind} done.`
   if (s.state === 'skipped') return `${kind} skipped.`
   return `${kind}: ${clockText(stepSec(s))} of ${s.min} min. ${BLOCK_HINT[s.kind]}`.trim()
