@@ -6,6 +6,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
 import { createHash } from 'node:crypto'
 import { execFile, spawn } from 'node:child_process'
+import { cancelClaudeLogin, claudeEnv, claudePath, claudeStatus, sendClaudeLoginCode, startClaudeLogin } from './claudeCode'
 import { z } from 'zod'
 import type { Cost, Feature, ModelId } from './ai'
 import { aiError, costSummary, getClient, runJson } from './ai'
@@ -84,19 +85,10 @@ Rules:
 // Claude Code is signed in on this computer with the player's Claude account. Run headless (`claude -p`), it answers
 // one prompt and exits; its usage counts against that subscription, exactly as a Claude Code session does.
 
-let claudeCodeFound: boolean | null = null
-/** True when the `claude` command is on this computer's PATH (checked once). */
-function hasClaudeCode(): Promise<boolean> {
-  if (claudeCodeFound !== null) return Promise.resolve(claudeCodeFound)
-  return new Promise((resolve) => {
-    execFile('claude', ['--version'], { timeout: 15000 }, (err) => {
-      claudeCodeFound = !err
-      resolve(claudeCodeFound)
-    })
-  })
-}
+/** True when Claude Code is installed on this computer (see claudeCode.ts for where it looks). */
+const hasClaudeCode = () => Promise.resolve(!!claudePath())
 
-const SIGN_IN = "Claude Code's sign-in on this computer has expired or is missing. Open a terminal, run claude, type /login and sign in with your Claude account. Then reload this page."
+const SIGN_IN = "Claude Code isn't signed in on this computer. Click AI teacher at the top and sign in with your Claude account."
 
 const COACH_JSON_SCHEMA = JSON.stringify({
   type: 'object',
@@ -121,12 +113,12 @@ function noteFromText(text: string): { message: string; next: string } | null {
 /** One coach note written by Claude Code in headless mode. The facts go in on stdin; nothing is run from the project folder. */
 function coachViaClaudeCode(user: string): Promise<{ message: string; next: string }> {
   return new Promise((resolve, reject) => {
-    const env = { ...process.env }
+    const bin = claudePath()
+    if (!bin) return reject(new Error('Claude Code is not installed on this computer.'))
     // The subscription sign-in, never a key that happens to be in the environment.
-    delete env.ANTHROPIC_API_KEY
-    delete env.ANTHROPIC_AUTH_TOKEN
+    const env = claudeEnv()
     const child = spawn(
-      'claude',
+      bin,
       ['-p', '--output-format', 'json', '--system-prompt', `${COACH_SYSTEM}\n\nAnswer with one JSON object and nothing else: {"message": "...", "next": "..."}.`, '--json-schema', COACH_JSON_SCHEMA],
       { cwd: os.tmpdir(), env, stdio: ['pipe', 'pipe', 'pipe'] },
     )
@@ -630,10 +622,32 @@ export function fretwiseServer(): Plugin {
 
       server.middlewares.use('/api/ai-status', (_req, res) => json(res, 200, { ai: !!getClient(), ...costSummary(MODELS) }))
 
+      // Signing in to Claude Code from the app (this computer only): the AI teacher runs on the Claude subscription.
+      server.middlewares.use('/api/claude/status', async (_req, res) => json(res, 200, await claudeStatus()))
+      server.middlewares.use('/api/claude/login', async (req, res) => {
+        if (req.method !== 'POST') return json(res, 405, { error: 'POST only' })
+        const r = startClaudeLogin()
+        json(res, r.ok ? 200 : 503, r)
+      })
+      server.middlewares.use('/api/claude/code', async (req, res) => {
+        if (req.method !== 'POST') return json(res, 405, { error: 'POST only' })
+        try {
+          const { code } = JSON.parse(await readBody(req)) as { code?: unknown }
+          json(res, 200, { ok: typeof code === 'string' && sendClaudeLoginCode(code) })
+        } catch {
+          json(res, 400, { error: 'Bad request' })
+        }
+      })
+      server.middlewares.use('/api/claude/cancel', (req, res) => {
+        if (req.method !== 'POST') return json(res, 405, { error: 'POST only' })
+        cancelClaudeLogin()
+        json(res, 200, { ok: true })
+      })
+
       // The coach note (this computer only, like every AI call): practice facts in, two short strings out.
       server.middlewares.use('/api/coach', async (req, res) => {
         if (req.method !== 'POST') return json(res, 405, { error: 'POST only' })
-        if (!(await hasClaudeCode()) && !getClient()) return json(res, 503, { error: 'Claude can coach you here through Claude Code and your Claude subscription. Install Claude Code on this computer, sign in, then restart the app.' })
+        if (!(await hasClaudeCode()) && !getClient()) return json(res, 503, { error: 'Claude can coach you here through Claude Code and your Claude subscription. Install Claude Code on this computer, then click AI teacher at the top to sign in.' })
         try {
           const { facts } = JSON.parse(await readBody(req)) as { facts?: unknown }
           if (!facts || typeof facts !== 'object') return json(res, 400, { error: 'No facts' })

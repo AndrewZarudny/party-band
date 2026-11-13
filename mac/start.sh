@@ -28,9 +28,10 @@ if ! up; then
   exit 1
 fi
 
-# Chrome when it is installed (lowest delay, and it can pick the output device); else the default browser.
+# Chrome when it is installed (lowest delay, and it can pick the output device), in its own app window:
+# no tabs or address bar, like an installed app. Else the default browser.
 if [ -d "/Applications/Google Chrome.app" ] || [ -d "$HOME/Applications/Google Chrome.app" ]; then
-  open -a "Google Chrome" "$FRETWISE_URL"
+  open -na "Google Chrome" --args --app="$FRETWISE_URL"
 else
   open "$FRETWISE_URL"
 fi

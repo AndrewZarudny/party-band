@@ -268,50 +268,6 @@ export function LessonIntro({
         </div>
       </header>
 
-      <BoxPreview lesson={lesson} />
-
-      {chart && fingering && <TeachPanel lesson={lesson} chart={chart} fingering={fingering} prefs={prefs} onPrefs={onPrefs} follow={follow} />}
-
-      {chart && fingering && (
-        <section className="tc-ov-box" aria-labelledby="tc-ov-title">
-          <div className="tc-ov-top">
-            <h3 id="tc-ov-title" className="tc-ov-title">
-              The whole lesson
-            </h3>
-            <div className="tc-ov-ctl">
-              <button className={`ls-btn small ${watchFrom !== null ? 'on' : ''}`} onClick={() => (watchFrom !== null ? stopWatch() : watch.start(0))}>
-                <svg className="tc-glyph" viewBox="0 0 12 12" aria-hidden>
-                  {watchFrom !== null ? <rect x={2} y={2} width={8} height={8} rx={1.5} /> : <path d="M3 1.8 10.2 6 3 10.2Z" />}
-                </svg>
-                {watchFrom !== null ? 'Stop' : 'Watch'}
-              </button>
-              <Seg label="Watch speed" value={watch.speed} options={WATCH_SPEEDS} onPick={watch.setSpeed} />
-              <button className="ls-link tc-ov-runway" onClick={leave(onListen)}>
-                or watch it on the runway
-              </button>
-            </div>
-          </div>
-          <p className="tc-ov-hint">Tap a bar to watch from there.</p>
-          <LessonOverview
-            lesson={lesson}
-            chart={chart}
-            fingering={fingering}
-            beatNow={watchBeat}
-            countIn={watch.countIn}
-            parkBar={watchFrom}
-            onBar={watch.start}
-          />
-        </section>
-      )}
-
-      {lesson.tips.length > 1 && (
-        <ul className="ls-tips">
-          {lesson.tips.slice(1).map((t) => (
-            <li key={t}>{t}</li>
-          ))}
-        </ul>
-      )}
-
       <div className="ls-intro-grid">
         <div className="ls-controls">
           <div className="ls-field tm-speeds">
@@ -418,6 +374,51 @@ export function LessonIntro({
           )}
         </div>
       </div>
+
+      <BoxPreview lesson={lesson} />
+
+      {chart && fingering && <TeachPanel lesson={lesson} chart={chart} fingering={fingering} prefs={prefs} onPrefs={onPrefs} follow={follow} />}
+
+      {chart && fingering && (
+        <section className="tc-ov-box" aria-labelledby="tc-ov-title">
+          <div className="tc-ov-top">
+            <h3 id="tc-ov-title" className="tc-ov-title">
+              The whole lesson
+            </h3>
+            <div className="tc-ov-ctl">
+              <button className={`ls-btn small ${watchFrom !== null ? 'on' : ''}`} onClick={() => (watchFrom !== null ? stopWatch() : watch.start(0))}>
+                <svg className="tc-glyph" viewBox="0 0 12 12" aria-hidden>
+                  {watchFrom !== null ? <rect x={2} y={2} width={8} height={8} rx={1.5} /> : <path d="M3 1.8 10.2 6 3 10.2Z" />}
+                </svg>
+                {watchFrom !== null ? 'Stop' : 'Watch'}
+              </button>
+              <Seg label="Watch speed" value={watch.speed} options={WATCH_SPEEDS} onPick={watch.setSpeed} />
+              <button className="ls-link tc-ov-runway" onClick={leave(onListen)}>
+                or watch it on the runway
+              </button>
+            </div>
+          </div>
+          <p className="tc-ov-hint">Tap a bar to watch from there.</p>
+          <LessonOverview
+            lesson={lesson}
+            chart={chart}
+            fingering={fingering}
+            beatNow={watchBeat}
+            countIn={watch.countIn}
+            parkBar={watchFrom}
+            onBar={watch.start}
+          />
+        </section>
+      )}
+
+      {lesson.tips.length > 1 && (
+        <ul className="ls-tips">
+          {lesson.tips.slice(1).map((t) => (
+            <li key={t}>{t}</li>
+          ))}
+        </ul>
+      )}
+
     </div>
   )
 }

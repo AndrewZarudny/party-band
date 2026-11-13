@@ -27,7 +27,7 @@ The installer needs nothing set up beforehand: no Docker and no database (accoun
 3. brings in `fretwise-account.tgz` if it finds one in the project folder, Downloads or Desktop (see below);
 4. builds **Fretwise.app**, with its icon, in your own Applications folder (`~/Applications`) and starts it.
 
-From then on, open **Fretwise** from Applications, Spotlight or the Dock. Opening it starts Fretwise and shows it in the browser (Chrome when installed); quitting it stops Fretwise. To keep the icon in the Dock, right-click it there and choose Options → Keep in Dock. After pulling a newer version, run `mac/install.sh` again.
+From then on, open **Fretwise** from Applications, Spotlight or the Dock. Opening it starts Fretwise and shows it in its own window, like an installed app: Chrome's app window with no tabs or address bar when Chrome is installed, else your default browser. Quitting it stops Fretwise. To keep the icon in the Dock, right-click it there and choose Options → Keep in Dock. After pulling a newer version, run `mac/install.sh` again.
 
 If the app can't be built, double-click **Fretwise.command** in the project folder: the same Fretwise in a Terminal window (close the window to stop it).
 
@@ -52,6 +52,10 @@ It writes `fretwise-account.tgz` (your progress, settings, songs and your passwo
 3. In the app, click **Connect guitar**. It finds the Scarlett on its own, reads input 2, and sends sound out of the Scarlett's headphone and monitor outputs.
 4. Turn up the Scarlett's gain knob until its halo flashes green when you strum hard, but never red.
 5. If notes aren't picked up, open **🎸 → Input** and play. You'll see a meter for each input, the note the app hears, and a message saying what's wrong (no signal, wrong input, too quiet).
+
+## AI teacher (coach notes)
+
+The coach in Lessons is written by Claude through Claude Code on this computer, on your Claude subscription (no API key). Click **AI teacher** at the top of the app, then **Sign in with Claude**: the Claude sign-in page opens in your browser, and the app notices when you're done. If the page shows a code instead, paste it into the app. It's the same sign-in Claude Code uses in the terminal. Claude Code must be installed ([claude.com/claude-code](https://claude.com/claude-code)).
 
 ## Find a song (AI search)
 

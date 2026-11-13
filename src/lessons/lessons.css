@@ -862,6 +862,10 @@
   margin-top: 22px;
   padding-top: 18px;
   border-top: 1px solid var(--line);
+  /* Right under the title, so Start shows without scrolling on a laptop screen; the teaching follows. */
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
 }
 .lessons .ls-controls {
   display: grid;

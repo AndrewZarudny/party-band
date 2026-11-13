@@ -322,3 +322,51 @@
     transition: none;
   }
 }
+
+/* AI teacher (src/components/AiTeacher.tsx): Claude Code sign-in for the coach. */
+.ai-teacher-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ai-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line);
+  flex: none;
+}
+.ai-dot.on {
+  background: #6fbf73;
+}
+.ai-dot.busy {
+  background: var(--accent);
+  animation: ai-pulse 1.2s ease-in-out infinite;
+}
+@keyframes ai-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ai-dot.busy {
+    animation: none;
+  }
+}
+.ai-teacher-note {
+  color: var(--muted);
+  font-size: 0.9em;
+  margin: 6px 0 0;
+}
+.ai-teacher-on p,
+.ai-teacher-wait > p {
+  margin: 0 0 6px;
+}
+.ai-teacher-row {
+  display: flex;
+  gap: 8px;
+}
+.ai-teacher a {
+  color: var(--accent);
+}

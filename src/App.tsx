@@ -9,6 +9,7 @@ import { TunerMode } from './modes/TunerMode'
 import { LessonsMode } from './modes/LessonsMode'
 import { AudioPanel, AudioStatus } from './components/AudioPanel'
 import { AccountMenu } from './account/ui/AccountMenu'
+import { AiTeacher } from './components/AiTeacher'
 import { ThemeToggle } from './components/ThemeToggle'
 import { onOpenProgress } from './practice/progressLink'
 
@@ -92,6 +93,7 @@ export default function App() {
         </nav>
         <AudioStatus onOpen={() => setPanel(true)} />
         <ThemeToggle />
+        <AiTeacher />
         <AccountMenu />
       </header>
       {e.running && e.needsResume && (
