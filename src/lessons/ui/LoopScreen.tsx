@@ -287,7 +287,7 @@ export function LoopScreen({
                   <h3 id="lo-card-h">Paused</h3>
                   <p>Your clean passes so far are kept.</p>
                   <div className="lp-card-btns">
-                    <button className="ls-btn primary" onClick={resume}>
+                    <button className="ls-btn primary" onClick={resume} data-pedal="go">
                       Resume
                     </button>
                     {!drill && (
@@ -323,7 +323,7 @@ export function LoopScreen({
                   <h3 id="lo-card-h">Couldn't start the sound</h3>
                   <p>Check your audio device, then try again.</p>
                   <div className="lp-card-btns">
-                    <button className="ls-btn primary" onClick={resume}>
+                    <button className="ls-btn primary" onClick={resume} data-pedal="go">
                       Try again
                     </button>
                     <button className="ls-btn" onClick={() => exit('back')}>
@@ -341,7 +341,7 @@ export function LoopScreen({
                   <div className="lp-card-btns">
                     {drill ? (
                       <>
-                        <button className="ls-btn primary" onClick={() => exit('back')}>
+                        <button className="ls-btn primary" onClick={() => exit('back')} data-pedal="go">
                           Done
                         </button>
                         <button className="ls-btn" onClick={again}>
@@ -350,7 +350,7 @@ export function LoopScreen({
                       </>
                     ) : (
                       <>
-                        <button className="ls-btn primary" onClick={() => exit('full')}>
+                        <button className="ls-btn primary" onClick={() => exit('full')} data-pedal="go">
                           Back to the full lesson
                         </button>
                         <button className="ls-btn" onClick={again}>

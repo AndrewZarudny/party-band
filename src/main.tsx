@@ -8,8 +8,11 @@ import { relayPopupCallback } from './tone3000/client'
 import type { BootLoader } from './account/sync'
 import { bootAccount } from './account/sync'
 import { startFavicon } from './favicon'
+import { installPedal } from './pedal'
 
 startFavicon()
+// A foot pedal presses the screen's main or Next button (pedal.ts).
+installPedal()
 
 const join = /^\/join\/([A-Z0-9]{4})\/?$/i.exec(location.pathname)
 

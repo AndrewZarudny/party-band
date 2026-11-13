@@ -487,16 +487,16 @@ export function ResultCard({
           // A session block: play again while it has minutes left, then on to the next block. One main button either way.
           session.running ? (
             <>
-              <button ref={primary} className="ls-btn primary" onClick={onAgain}>
+              <button ref={primary} className="ls-btn primary" onClick={onAgain} data-pedal="go">
                 {session.againLabel}
               </button>
-              <button className="ls-btn" onClick={session.onNext}>
+              <button className="ls-btn" onClick={session.onNext} data-pedal="next">
                 {session.nextLabel}
               </button>
             </>
           ) : (
             <>
-              <button ref={primary} className="ls-btn primary" onClick={session.onNext}>
+              <button ref={primary} className="ls-btn primary" onClick={session.onNext} data-pedal="go">
                 {session.nextLabel}
               </button>
               <button className="ls-btn" onClick={onAgain}>
@@ -507,11 +507,11 @@ export function ResultCard({
         ) : (
           <>
             {onNext && (
-              <button ref={primary} className="ls-btn primary" onClick={onNext}>
+              <button ref={primary} className="ls-btn primary" onClick={onNext} data-pedal="next">
                 Next lesson
               </button>
             )}
-            <button ref={onNext ? undefined : primary} className={`ls-btn ${onNext ? '' : 'primary'}`} onClick={onAgain}>
+            <button ref={onNext ? undefined : primary} className={`ls-btn ${onNext ? '' : 'primary'}`} onClick={onAgain} data-pedal="go">
               Again
             </button>
           </>

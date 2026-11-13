@@ -4,6 +4,8 @@ import type { Prefs, Progress } from '../types'
 import { dayKey, exportProgress, importProgress, newProgress } from '../progress'
 import { withSessionMin } from '../session'
 import { InputPicker } from './InputPicker'
+import type { PedalRole, PedalSetup } from '../../pedal'
+import { learnPedalKey, loadPedal, savePedal } from '../../pedal'
 
 const LENGTHS: Progress['sessionMin'][] = [20, 30]
 const WEEK_GOALS = [2, 3, 4, 5]
@@ -169,6 +171,8 @@ export function SettingsPanel({
         </Row>
       </div>
 
+      <PedalSettings />
+
       <div className="ls-set-group">
         <Row
           label="Session length"
@@ -259,5 +263,47 @@ export function SettingsPanel({
         </Row>
       </div>
     </section>
+  )
+}
+
+const keyName = (k: string) => ({ PageDown: 'Page Down', PageUp: 'Page Up', ArrowRight: '→', ArrowLeft: '←', ArrowUp: '↑', ArrowDown: '↓', ' ': 'Space', Enter: 'Return' })[k] ?? k
+
+/** A foot pedal (a Bluetooth page turner): on or off, and which key each pedal sends, taught by pressing it. */
+function PedalSettings() {
+  const [pedal, setPedal] = useState<PedalSetup>(loadPedal)
+  const [learning, setLearning] = useState<PedalRole | null>(null)
+  const update = (p: PedalSetup) => {
+    savePedal(p)
+    setPedal(p)
+  }
+  const teach = async (role: PedalRole) => {
+    setLearning(role)
+    const key = await learnPedalKey()
+    setLearning(null)
+    if (!key) return
+    // One key does one thing: taken off the other pedal if it was there.
+    const other: PedalRole = role === 'go' ? 'next' : 'go'
+    update({ ...pedal, on: true, [role]: [key], [other]: pedal[other].filter((k) => k !== key) })
+  }
+  const row = (role: PedalRole, label: string, note: string) => (
+    <Row label={label} note={note}>
+      <span className="ls-num ls-set-val">{pedal[role].map(keyName).join(', ') || 'none'}</span>
+      <button className="ls-btn small" onClick={() => void teach(role)} aria-live="polite">
+        {learning === role ? 'Press the pedal now… (Esc cancels)' : 'Set'}
+      </button>
+    </Row>
+  )
+  return (
+    <div className="ls-set-group">
+      <Row label="Foot pedal" note="A Bluetooth page turner">
+        <Switch on={pedal.on} set={(v) => update({ ...pedal, on: v })} label="Foot pedal" />
+      </Row>
+      {pedal.on && (
+        <>
+          {row('go', 'Main pedal', 'Start, Again, Play')}
+          {row('next', 'Next pedal', 'Next step or pair')}
+        </>
+      )}
+    </div>
   )
 }

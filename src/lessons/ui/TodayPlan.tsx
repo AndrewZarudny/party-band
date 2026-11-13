@@ -269,7 +269,7 @@ export function TodayCard({ progress, plan, onStep, onSwap, onSkip, onToday, onP
           (paused ? (
             <Paused />
           ) : next ? (
-            <button className="ls-btn primary" onClick={() => onStep(ni)} autoFocus>
+            <button className="ls-btn primary" onClick={() => onStep(ni)} autoFocus data-pedal="go">
               {stepStarted(next) ? 'Keep going' : 'Play'}: {stepTitle(next)}
             </button>
           ) : (
@@ -326,7 +326,7 @@ export function TodayScreen({ progress, onStep, onSwap, onSkip, onPain, onPressu
             {paused && !done && <Paused />}
             {next && !paused && (
               <div className="ls-set-foot">
-                <button className="ls-btn primary" onClick={() => onStep(ni)} autoFocus>
+                <button className="ls-btn primary" onClick={() => onStep(ni)} autoFocus data-pedal="go">
                   {stepStarted(next) ? 'Keep going' : 'Play'}: {stepTitle(next)}
                 </button>
               </div>

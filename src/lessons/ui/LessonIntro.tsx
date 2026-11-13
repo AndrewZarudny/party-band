@@ -376,12 +376,12 @@ export function LessonIntro({
           )}
           {latency.warn && <LatencyNote advice={latency} />}
           {e.running ? (
-            <button ref={startRef} className="ls-btn primary big" onClick={leave(start)}>
+            <button ref={startRef} className="ls-btn primary big" onClick={leave(start)} data-pedal="go">
               Start
             </button>
           ) : (
             <div className="ls-connect">
-              <button ref={startRef} className="ls-btn primary big" onClick={connect}>
+              <button ref={startRef} className="ls-btn primary big" onClick={connect} data-pedal="go">
                 {prefs.input === 'mic' ? 'Connect microphone' : 'Connect guitar'}
               </button>
               <button className="ls-btn" onClick={leave(start)}>

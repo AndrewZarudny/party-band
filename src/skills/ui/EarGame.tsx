@@ -241,7 +241,7 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
           )}
           <div className="sk-actions">
             {phase === 'idle' ? (
-              <button className="ls-btn primary big" onClick={start} autoFocus>
+              <button className="ls-btn primary big" onClick={start} autoFocus data-pedal="go">
                 Start
               </button>
             ) : (

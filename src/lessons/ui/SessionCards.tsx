@@ -143,7 +143,7 @@ export function ColdStart({ title, goal, bpm, speed, onStart, onBack }: { title:
       {speed !== undefined && speed < 1 && <p className="ls-muted">Clean at full tempo is what counts toward learned. Each clean cold start brings the next one a little closer.</p>}
       <p className="ls-muted">Stuck? Peek shows the tab for 3 seconds.</p>
       <div className="sc-acts">
-        <button className="ls-btn primary" onClick={onStart} autoFocus>
+        <button className="ls-btn primary" onClick={onStart} autoFocus data-pedal="go">
           Start
         </button>
         <button className="ls-btn ghost" onClick={onBack}>

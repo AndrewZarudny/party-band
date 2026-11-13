@@ -23,7 +23,7 @@ export function GameHead({ title, sub, onBack, right }: { title: string; sub: st
     {session && (
       <p className="sk-session-bar ls-num">
         <span>{session.text}</span>
-        <button className="ls-btn small" onClick={session.onNext}>
+        <button className="ls-btn small" onClick={session.onNext} data-pedal="next">
           {session.nextLabel}
         </button>
       </p>
@@ -137,15 +137,15 @@ export function RoundDone({
       {session && <p className="sk-session ls-num">{session.text}</p>}
       <div className="sk-actions">
         {session && !session.running && (
-          <button className="ls-btn primary" onClick={session.onNext}>
+          <button className="ls-btn primary" onClick={session.onNext} data-pedal="go">
             {session.nextLabel}
           </button>
         )}
-        <button className={`ls-btn ${session && !session.running ? '' : 'primary'}`} onClick={onAgain}>
+        <button className={`ls-btn ${session && !session.running ? '' : 'primary'}`} onClick={onAgain} data-pedal={session && !session.running ? undefined : 'go'}>
           {againLabel}
         </button>
         {session?.running && (
-          <button className="ls-btn" onClick={session.onNext}>
+          <button className="ls-btn" onClick={session.onNext} data-pedal="next">
             {session.nextLabel}
           </button>
         )}

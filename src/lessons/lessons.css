@@ -2378,3 +2378,17 @@
   color: var(--root-text, #e07a5f);
   font-size: var(--fs-sm);
 }
+
+/* Settings rows share the class name with the session plan's rows (.ls-set-row above, a 34 px number column):
+   in the settings panel, label and control get their own two columns back. */
+.lessons .ls-settings .ls-set-row {
+  grid-template-columns: minmax(180px, 1fr) auto;
+  gap: 8px 20px;
+  padding: 10px 0;
+  border-bottom: 0;
+}
+@media (max-width: 700px) {
+  .lessons .ls-settings .ls-set-row {
+    grid-template-columns: 1fr;
+  }
+}

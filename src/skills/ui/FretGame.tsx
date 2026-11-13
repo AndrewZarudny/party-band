@@ -212,7 +212,7 @@ export function FretGame({ mode, keyboard, onBack }: { mode: Mode; keyboard: boo
           {running && keyboard && mode === 'name' && <NamePad onPick={(p) => (p === pc(spot.midi) ? hit() : miss())} />}
           <div className="sk-actions">
             {!running ? (
-              <button className="ls-btn primary big" onClick={start} autoFocus>
+              <button className="ls-btn primary big" onClick={start} autoFocus data-pedal="go">
                 Start
               </button>
             ) : (

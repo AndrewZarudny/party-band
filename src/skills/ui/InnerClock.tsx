@@ -173,7 +173,7 @@ export function InnerClock({ keyboard, onBack }: { keyboard: boolean; onBack: ()
           )}
           <div className="sk-actions">
             {!running ? (
-              <button className="ls-btn primary big" onClick={() => void start()} disabled={muted} autoFocus>
+              <button className="ls-btn primary big" onClick={() => void start()} disabled={muted} autoFocus data-pedal="go">
                 Start
               </button>
             ) : (
