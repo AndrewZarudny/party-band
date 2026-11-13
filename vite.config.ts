@@ -1,6 +1,5 @@
 import { defineConfig, loadEnv } from 'vite'
-import babel from '@rolldown/plugin-babel'
-import react, { reactCompilerPreset } from '@vitejs/plugin-react'
+import react from '@vitejs/plugin-react'
 import { alphaTab } from '@coderline/alphatab-vite'
 import { fretwiseServer } from './server/fretwise-server'
 
@@ -10,9 +9,9 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), ['ANTHROPIC_', 'FRETWISE_'])
   Object.assign(process.env, env)
   return {
-    // React Compiler: memoizes components and hooks automatically, so the tab, meters and scoring
-    // redraw only what changed while you play.
-    plugins: [react(), babel({ presets: [reactCompilerPreset()] }), alphaTab(), fretwiseServer()],
+    // No React Compiler: components here read live audio state (meters, the current tone, the engine)
+    // straight from modules during render, and the compiler would cache those reads forever.
+    plugins: [react(), alphaTab(), fretwiseServer()],
     server: {
       open: true,
       // Listen on the Wi-Fi too, so bandmates can join a live session from their phones.
