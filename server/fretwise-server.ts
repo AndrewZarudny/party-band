@@ -6,6 +6,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
 import { createHash } from 'node:crypto'
 import { execFile, spawn } from 'node:child_process'
+import { endCoach, tellCoach } from './liveCoach'
 import { cancelClaudeLogin, claudeEnv, claudePath, claudeStatus, sendClaudeLoginCode, startClaudeLogin } from './claudeCode'
 import { z } from 'zod'
 import type { Cost, Feature, ModelId } from './ai'
@@ -636,6 +637,28 @@ export function fretwiseServer(): Plugin {
           json(res, 200, { ok: typeof code === 'string' && sendClaudeLoginCode(code) })
         } catch {
           json(res, 400, { error: 'Bad request' })
+        }
+      })
+      // The live coach: a spoken conversation during practice (server/liveCoach.ts). The browser sends a run's
+      // numbers ("run"), what the player said ("player") or background ("context"); the reply is spoken there.
+      server.middlewares.use('/api/live-coach/end', (req, res) => {
+        if (req.method !== 'POST') return json(res, 405, { error: 'POST only' })
+        endCoach()
+        json(res, 200, { ok: true })
+      })
+      server.middlewares.use('/api/live-coach', async (req, res) => {
+        if (req.method !== 'POST') return json(res, 405, { error: 'POST only' })
+        if (!claudePath()) return json(res, 503, { error: 'The live coach needs Claude Code on this computer.' })
+        try {
+          const { kind, text, facts } = JSON.parse(await readBody(req)) as { kind?: unknown; text?: unknown; facts?: unknown }
+          if (kind !== 'run' && kind !== 'player' && kind !== 'context') return json(res, 400, { error: 'Bad kind' })
+          const body = typeof text === 'string' ? text.slice(0, 2000) : JSON.stringify(facts ?? {}).slice(0, 12000)
+          if (!body.trim()) return json(res, 400, { error: 'Nothing to say' })
+          const reply = await tellCoach(`[${kind}] ${body}`)
+          json(res, 200, { reply: /^\(silence\)$/i.test(reply.trim()) ? '' : reply })
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          json(res, /signed in/i.test(msg) ? 503 : 500, { error: msg })
         }
       })
       server.middlewares.use('/api/claude/cancel', (req, res) => {

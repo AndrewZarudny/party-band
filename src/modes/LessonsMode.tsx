@@ -62,6 +62,9 @@ import { ColdStart, MentalCard } from '../lessons/ui/SessionCards'
 import { ProgressScreen } from '../lessons/ui/ProgressScreen'
 import { lessonsStartScreen, onOpenProgress, progressAsked, progressShown } from '../practice/progressLink'
 import { PlanWeeks } from '../lessons/ui/PlanWeeks'
+import { LiveCoachBar } from '../lessons/ui/LiveCoachBar'
+import { setCoachPlaying } from '../lessons/liveCoach'
+import { useDailyGoal } from '../practice/goal'
 import { BasicsSheet } from '../lessons/ui/teach/BasicsSheet'
 import { LoopScreen } from '../lessons/ui/LoopScreen'
 import { HeatScreen } from '../lessons/ui/HeatScreen'
@@ -171,6 +174,11 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
   const [songs, setSongs] = useState<{ id: string; title: string; done: number; total: number; full: boolean }[] | null>(null)
   const [songParts, setSongParts] = useState<MapSongPart[] | null>(null) // null until the songs are read // null until the library is read
   const [notice, setNotice] = useState<string | null>(null)
+  const goalMin = useDailyGoal()
+  // The live coach doesn't listen during a run or the sync check, so the guitar isn't taken for speech.
+  useEffect(() => {
+    setCoachPlaying(screen === 'play' || screen === 'sync')
+  }, [screen])
   const [pressure, setPressure] = useState(false)
   const [staleEngine] = useState(() => import.meta.env.DEV && !engineHasLessons())
   // The session block being played (a step of today's plan), and the practice clock when its time was last counted.
@@ -870,6 +878,7 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
 
   return (
     <div className={`lessons screen-${screen}`}>
+      {screen !== 'welcome' && <LiveCoachBar progress={progress} goalMin={goalMin} />}
       {staleEngine && (
         <p className="ls-banner" role="status">
           Audio engine changed: reload the page.

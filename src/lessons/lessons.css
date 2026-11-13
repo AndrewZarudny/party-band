@@ -2252,3 +2252,129 @@
   flex-wrap: wrap;
   max-width: 100%;
 }
+
+/* Live coach (LiveCoachBar.tsx): bottom right, over the screen, out of the way of Start and the runway. */
+.lessons .lc-bar {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 20;
+  max-width: min(380px, calc(100vw - 32px));
+}
+.lessons .lc-start {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 9px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.25);
+}
+.lessons .lc-start:hover {
+  border-color: var(--accent);
+}
+.lessons .lc-bar.on {
+  width: 380px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  box-shadow: 0 6px 22px rgb(0 0 0 / 0.3);
+}
+.lessons .lc-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lessons .lc-status {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  flex: 1;
+  white-space: nowrap;
+}
+.lessons .lc-buttons {
+  display: flex;
+  gap: 4px;
+}
+.lessons .lc-btn {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 4px 9px;
+  border-radius: 7px;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.lessons .lc-btn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.lessons .lc-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--line);
+  flex: none;
+}
+.lessons .lc-dot.listening {
+  background: #6fbf73;
+  animation: lc-pulse 1.6s ease-in-out infinite;
+}
+.lessons .lc-dot.thinking,
+.lessons .lc-dot.speaking {
+  background: var(--accent);
+  animation: lc-pulse 0.9s ease-in-out infinite;
+}
+@keyframes lc-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lessons .lc-dot {
+    animation: none !important;
+  }
+}
+.lessons .lc-log {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 34vh;
+  overflow-y: auto;
+}
+.lessons .lc-log li {
+  padding: 6px 9px;
+  border-radius: 9px;
+  line-height: 1.35;
+}
+.lessons .lc-log li.coach {
+  background: var(--panel-2);
+}
+.lessons .lc-log li.you {
+  background: rgb(var(--accent-rgb) / 0.14);
+  margin-left: 28px;
+  text-align: right;
+}
+.lessons .lc-log li.hint,
+.lessons .lc-heard {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.lessons .lc-heard {
+  margin: 6px 0 0;
+  font-style: italic;
+}
+.lessons .lc-last {
+  margin: 6px 0 0;
+  font-size: var(--fs-sm);
+}
+.lessons .lc-err {
+  margin: 6px 0 0;
+  color: var(--root-text, #e07a5f);
+  font-size: var(--fs-sm);
+}

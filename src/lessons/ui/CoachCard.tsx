@@ -9,6 +9,7 @@ import { getPracticeSnapshot, subscribePractice } from '../../practice/log'
 import { practiceDaySec } from '../../practice/data'
 import { useDailyGoal } from '../../practice/goal'
 import { dayKey } from '../progress'
+import { coachRunEnded, liveCoachOn } from '../liveCoach'
 
 const asked = new Set<string>() // keys already requested on this page load, so a re-render never asks twice
 
@@ -85,7 +86,19 @@ export function RunCoach({ lesson, result, outcome, block }: { lesson: Lesson; r
     asked.add(key)
     let live = true
     setBusy(true)
-    void fetchCoach(key, runFacts(lesson, result, outcome, { name: account?.name ?? null, block })).then((n) => {
+    const facts = runFacts(lesson, result, outcome, { name: account?.name ?? null, block })
+    // The live coach is on: it says its note out loud, and the card shows the same words.
+    if (liveCoachOn()) {
+      void coachRunEnded(facts).then((reply) => {
+        if (!live) return
+        setBusy(false)
+        if (reply) setNote({ message: reply, next: '' })
+      })
+      return () => {
+        live = false
+      }
+    }
+    void fetchCoach(key, facts).then((n) => {
       if (!live) return
       setBusy(false)
       if (n && 'off' in n) setOff(n.off)
