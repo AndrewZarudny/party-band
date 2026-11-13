@@ -10,6 +10,7 @@ import { practiceDaySec } from '../../practice/data'
 import { useDailyGoal } from '../../practice/goal'
 import { dayKey } from '../progress'
 import { coachRunEnded, liveCoachOn } from '../liveCoach'
+import { dismissWeekly, saveWeekly, savedWeekly, weeklyDue, weeklyFacts } from '../weekly'
 
 const asked = new Set<string>() // keys already requested on this page load, so a re-render never asks twice
 
@@ -46,6 +47,57 @@ export function CoachCard({ progress, moment }: { progress: Progress; moment: Co
   }, [key])
 
   return <CoachView note={note} busy={busy} off={off} wait="Looking at your practice…" />
+}
+
+/** The weekly review on the Lessons home: once at the start of a week, about the week before, until dismissed. */
+export function WeeklyReview({ progress }: { progress: Progress }) {
+  const [now] = useState(() => new Date())
+  const [due, setDue] = useState(() => weeklyDue(progress, now))
+  const [note, setNote] = useState(() => savedWeekly(now))
+  const [busy, setBusy] = useState(false)
+  const [off, setOff] = useState<string | null>(null)
+  const { account } = useAccount()
+
+  useEffect(() => {
+    if (!due || savedWeekly(now) || asked.has('weekly')) return
+    asked.add('weekly')
+    let live = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the request starts here; the note arrives later
+    setBusy(true)
+    void fetchCoach(`weekly:${now.getTime()}`, weeklyFacts(progress, now, account?.name ?? null)).then((n) => {
+      if (!live) return
+      setBusy(false)
+      if (n && 'off' in n) setOff(n.off)
+      else if (n) {
+        saveWeekly(now, n)
+        setNote(n)
+      }
+    })
+    return () => {
+      live = false
+    }
+    // Once per page load: the facts are read when the week's review is first due.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [due])
+
+  if (!due || off) return null
+  return (
+    <div className="ls-weekly">
+      <p className="ls-weekly-h">Your week in review</p>
+      <CoachView note={note} busy={busy} off={null} wait="Looking back at last week…" className="weekly" />
+      {note && (
+        <button
+          className="ls-btn small"
+          onClick={() => {
+            dismissWeekly(now)
+            setDue(false)
+          }}
+        >
+          Got it
+        </button>
+      )}
+    </div>
+  )
 }
 
 function CoachView({ note, busy, off, wait, className = '' }: { note: CoachNote | null; busy: boolean; off: string | null; wait: string; className?: string }) {

@@ -8,6 +8,7 @@ import { bestKey, emptyStats } from '../skills/data'
 import { CHANGE_CHORDS, weakestPair } from '../skills/chords'
 import { ORDER, PLAN_PATH, lessonById, stageOf, weeksLabel } from './data'
 import { dayKey, daysAway, isPassed, isUnlocked, nextLesson, resting, trimLog } from './progress'
+import { weekFocus } from './weekly'
 import { FULL_SPEED, autoSpeed, bpmAt, earnedTop } from './speed'
 import { drillTitle, heatReady, spotLabel, topSpots } from './heat'
 import { SESSION_MIN_SEC, coldSpeedFor, isCold, isReviewItem, reviewBrake, sessionNow, sessionOf, strugglingList, weekKey, weekStatus } from './review'
@@ -40,6 +41,8 @@ export interface PlanCtx {
   stats: SkillStats
   /** Lesson ids of the player's song parts whose week is open, in map order: with any, the session gets a Song block on top of its plan. */
   songParts?: string[]
+  /** Songs whose parts are learned and whose path goes on in Learn a song: the Song block opens one of them. */
+  songsToPlay?: { id: string; title: string }[]
 }
 
 /** Minutes per step (research section 4). Every list sums to the session length. */
@@ -139,11 +142,12 @@ function warmupList(p: Progress, now: Date): string[] {
   return (passed.length ? passed : WARMUPS.filter((id) => isUnlocked(p, id))).filter((id) => !isCold(p, id, now))
 }
 
+/** The plan's lessons in map order, then the player's song parts (made at run time, so only those built now). */
+const withSongParts = (p: Progress) => [...ORDER, ...Object.keys(p.lessons).filter((id) => id.startsWith('song:') && !!lessonById(id))]
+
 /** Due cold-start items: soonest due first, then fewest cold passes, then map order. */
 export function coldList(p: Progress, now: Date): string[] {
-  // The plan's lessons in map order, then the player's song parts that were passed (their lessons are made at run time).
-  const ids = [...ORDER, ...Object.keys(p.lessons).filter((id) => id.startsWith('song:') && !!lessonById(id))]
-  return ids
+  return withSongParts(p)
     .map((id, i) => ({ id, i, r: p.lessons[id]?.review }))
     .filter((x) => x.r && isCold(p, x.id, now))
     .sort((a, b) => (a.r?.due ?? 0) - (b.r?.due ?? 0) || (a.r?.coldPasses ?? 0) - (b.r?.coldPasses ?? 0) || a.i - b.i)
@@ -216,11 +220,15 @@ function consolidatePick(p: Progress, s: number): string | null {
 
 /** Mix items: review items with an earned tempo, not first played this session, not due a cold start, newest first. */
 function mixList(p: Progress, s: number, used: Set<string>, now: Date): string[] {
-  return ORDER.filter((id) => {
+  // Song parts too, once passed with an earned tempo: a riff learned last week comes back like any lesson.
+  // This week's focus (the weekly review's) goes first.
+  const focus = weekFocus(p, now).map((f) => f.id)
+  const rank = (id: string) => (focus.includes(id) ? 0 : 1)
+  return withSongParts(p).filter((id) => {
     const l = lessonById(id)
     const rec = p.lessons[id]
     return !!l && !!rec && isReviewItem(l) && isPassed(p, id) && hasEarned(p, id) && rec.firstS !== s && !used.has(id) && !isCold(p, id, now) && !resting(rec, now)
-  }).sort((a, b) => (p.lessons[b].firstS ?? -1) - (p.lessons[a].firstS ?? -1) || (p.lessons[b].passedAt ?? 0) - (p.lessons[a].passedAt ?? 0))
+  }).sort((a, b) => rank(a) - rank(b) || (p.lessons[b].firstS ?? -1) - (p.lessons[a].firstS ?? -1) || (p.lessons[b].passedAt ?? 0) - (p.lessons[a].passedAt ?? 0))
 }
 
 /** Different items a mix step needs before its minutes can end it: one item alone is not a mix. */
@@ -398,7 +406,13 @@ export function makeSessionPlan(p: Progress, now: Date, ctx: PlanCtx): SessionPl
   // a different song each session.
   const songPick = pickSongPart(p, (ctx.songParts ?? []).filter((id) => !used.has(id)))
   const ji = steps.findIndex((x) => x.kind === 'jam')
-  if (songPick && ji >= 0) steps.splice(ji, 0, lessonStep(p, 'song', songPick, SONG_MIN))
+  if (ji >= 0) {
+    // A part not learned yet first; else a song whose path goes on in Learn a song; else a known part, kept fresh.
+    const fresh = songPick && !isPassed(p, songPick.id)
+    const song = !fresh ? songToPlay(ctx.songsToPlay ?? [], now) : null
+    if (song) steps.splice(ji, 0, songStep(song, SONG_MIN))
+    else if (songPick) steps.splice(ji, 0, lessonStep(p, 'song', songPick, SONG_MIN))
+  }
   // Spare minutes (no cold item, no warm-up) go to blocked reps of the new item, else changes or ear;
   // with none of those the session is simply shorter.
   if (spare > 0) {
@@ -488,6 +502,18 @@ export function withTodayPlan(p: Progress, now: Date, ctx: PlanCtx): Progress | 
   const plan = p.plan
   if (plan && plan.v === 2 && plan.day === dayKey(now) && !(setupOnly(plan) && syncDone(p)) && !brakeStale(p, plan)) return null
   return { ...p, plan: makeSessionPlan(p, now, ctx) }
+}
+
+/** A different song each day, in turn (by day number), from the songs whose path goes on in Learn a song. */
+function songToPlay(songs: { id: string; title: string }[], now: Date): { id: string; title: string } | null {
+  if (!songs.length) return null
+  const dayNo = Math.floor(new Date(dayKey(now)).getTime() / 86_400_000)
+  return songs[dayNo % songs.length]
+}
+
+/** A Song block played in Learn a song: the song's next level on its path. */
+function songStep(song: { id: string; title: string }, min: number): SessionStep {
+  return { kind: 'song', lessonId: null, song, min, state: 'todo', why: 'Its parts are learned: play it with the song in Learn a song, the next level on its path.', from: { best: 0, stars: 0, speed: 1 } }
 }
 
 /** The song part to play: the next one not passed yet; with all passed, the one played longest ago. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Lesson, LessonRecord, LoopSummary, Progress, SessionDay, SessionMin, SessionPlan, StepKind, WeekShape } from '../types'
+import type { Lesson, LessonRecord, LoopSummary, Progress, RunSample, SessionDay, SessionMin, SessionPlan, StepKind, WeekShape } from '../types'
 import type { SkillEntry } from '../../skills/data'
 import { emptyStats } from '../../skills/data'
 import {
@@ -38,7 +38,7 @@ import {
   withSongStepsFixed,
   withTodayPlan,
 } from '../session'
-import { closestThirdStar, importProgress, newProgress, nextLesson, stuckAdvice, thirdStar } from '../progress'
+import { closestThirdStar, importProgress, newProgress, nextLesson, stuckAdvice, thirdStar, timingHabit } from '../progress'
 import { firstReview } from '../review'
 import { dayNum } from '../heat'
 import { buildChart, jamChart } from '../charts'
@@ -644,5 +644,58 @@ describe('third stars', () => {
     expect(closestThirdStar(p)).toEqual({ id: 'w1-04', title: spark.title, gap: 4 })
     p.lessons['w1-04'] = passed({ best: 97, stars: 3 })
     expect(closestThirdStar(p)).toBeNull()
+  })
+})
+
+describe('song parts in mixed practice', () => {
+  it('a passed song part with an earned tempo joins the mix; one without an earned tempo does not', () => {
+    registerLesson({ ...(lessonById('w1-02') as Lesson), id: 'song:mix:0', title: 'Riff: Verse', world: 4 })
+    const p = base([day('2026-11-02')]) // a B session, which has a mix
+    p.lessons['w1-03'].review = firstReview(0)
+    p.lessons['song:mix:0'] = passed({ topSpeed: 1, firstS: 0 })
+    const items = (q: Progress) => plan(q).plan.steps.find((s) => s.kind === 'mix')?.items ?? []
+    expect(items(p)).toContain('song:mix:0')
+    p.lessons['song:mix:0'] = { ...passed({ firstS: 0 }), passedAt: undefined }
+    expect(items(p)).not.toContain('song:mix:0')
+  })
+})
+
+describe('the Song block follows the song path', () => {
+  it('all parts learned and the song goes on in Learn a song: the Song block opens the song', () => {
+    registerLesson({ ...(lessonById('w1-02') as Lesson), id: 'song:path:0', title: 'Tune: Verse', world: 4 })
+    const p = base([day('2026-11-02'), day('2026-11-03'), day('2026-11-04')])
+    p.lessons['song:path:0'] = passed()
+    const c = { ...ctx, songParts: ['song:path:0'], songsToPlay: [{ id: 'path', title: 'Tune' }] }
+    const step = plan(p, at('2026-11-05'), c).plan.steps.find((s) => s.kind === 'song')
+    expect(step).toMatchObject({ song: { id: 'path', title: 'Tune' }, lessonId: null })
+  })
+
+  it('a part not learned yet comes first', () => {
+    registerLesson({ ...(lessonById('w1-02') as Lesson), id: 'song:path:1', title: 'Tune: Chorus', world: 4 })
+    const p = base([day('2026-11-02'), day('2026-11-03'), day('2026-11-04')])
+    const c = { ...ctx, songParts: ['song:path:1'], songsToPlay: [{ id: 'other', title: 'Other' }] }
+    expect(plan(p, at('2026-11-05'), c).plan.steps.find((s) => s.kind === 'song')).toMatchObject({ lessonId: 'song:path:1' })
+  })
+})
+
+describe('timing habits', () => {
+  const run = (id: string, mean: number | null, n = 10): RunSample => ({ at: 1, id, bpm: 64, swing: false, mean, spread: 60, n, tab: 'full', quiet: false, cold: false, clean: false, bend: null })
+
+  it('consistently early on a lesson: rushing, with a cue to wait for the click', () => {
+    const h = timingHabit([run('w1-02', -156), run('w1-02', -48), run('w1-02', -114), run('w1-02', -195)], 'w1-02')
+    expect(h).toMatchObject({ dir: 'early', ms: 130, runs: 4 })
+    expect(h?.text).toMatch(/early on this one/)
+  })
+
+  it('consistently late: dragging', () => {
+    expect(timingHabit([run('w1-04', 97), run('w1-04', 138), run('w1-04', 60)], 'w1-04')).toMatchObject({ dir: 'late', ms: 100 })
+  })
+
+  it('no habit: too few runs, small or mixed offsets, or runs with too few graded hits', () => {
+    expect(timingHabit([run('a', -150), run('a', -150)], 'a')).toBeNull()
+    expect(timingHabit([run('a', 20), run('a', -10), run('a', 25)], 'a')).toBeNull()
+    expect(timingHabit([run('a', 150), run('a', -140), run('a', 160), run('a', -150)], 'a')).toBeNull()
+    expect(timingHabit([run('a', -150, 3), run('a', -150, 3), run('a', -150, 3)], 'a')).toBeNull()
+    expect(timingHabit([run('b', -150), run('b', -150), run('b', -150)], 'a')).toBeNull() // another lesson's runs
   })
 })

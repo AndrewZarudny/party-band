@@ -5,7 +5,7 @@ import type { ApplyOutcome, Lesson, LessonResult, Progress, SessionPlan } from '
 import { bpmAt } from './speed'
 import type { SkillStats } from '../skills/data'
 import { lessonById } from './data'
-import { closestThirdStar, dayKey, nextLesson } from './progress'
+import { closestThirdStar, dayKey, nextLesson, timingHabit } from './progress'
 import { strugglingList, weekStatus } from './review'
 import { improvements, planDone, planPlayedSec, stepScore, stepTitle } from './session'
 import { pace } from './weeks'
@@ -85,6 +85,10 @@ export function runFacts(lesson: Lesson, r: LessonResult, o: ApplyOutcome, x: { 
       firstTryFromColdToday: o.cold ? { clean: o.cold.clean, bpm: o.cold.bpm } : null,
     },
     thisLessonSoFar: rec ? { runs: rec.plays, bestScorePercent: rec.best } : null,
+    timingHabitOnThisLesson: (() => {
+      const h = timingHabit(p.runs, lesson.id)
+      return h ? { usually: h.dir, byMs: h.ms, overRuns: h.runs } : null
+    })(),
     whatGotBetter: o.competence,
     nextTimeBpm: o.speed ? bpmAt(lesson, o.speed.next) : null,
     newlyOpened: o.unlocked.map(title),

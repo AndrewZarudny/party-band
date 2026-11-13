@@ -515,6 +515,25 @@ export function stuckAdvice(rec: LessonRecord | undefined): string | null {
   return null
 }
 
+/**
+ * A lesson's timing habit from its recent runs: consistently early (rushing) or late (dragging). Needs 3+ runs with
+ * 6+ graded hits, an average 30 ms or more off, and two thirds of them leaning the same way. Null: no clear habit.
+ */
+export function timingHabit(runs: RunSample[] | undefined, lessonId: string): { dir: 'early' | 'late'; ms: number; runs: number; text: string } | null {
+  const rs = (runs ?? []).filter((r) => r.id === lessonId && r.mean !== null && r.n >= 6).slice(-8)
+  if (rs.length < 3) return null
+  const avg = rs.reduce((a, r) => a + (r.mean ?? 0), 0) / rs.length
+  const leaning = rs.filter((r) => Math.sign(r.mean ?? 0) === Math.sign(avg) && Math.abs(r.mean ?? 0) > 15).length
+  if (Math.abs(avg) < 30 || leaning < Math.ceil((rs.length * 2) / 3)) return null
+  const dir = avg < 0 ? 'early' : 'late'
+  const ms = Math.round(Math.abs(avg) / 5) * 5
+  const text =
+    dir === 'early'
+      ? `You've been about ${ms} ms early on this one: rushing ahead of the click, which slow tempos invite. Let each note wait for its click, and count the in-between beats out loud ("one and two and").`
+      : `You've been about ${ms} ms late on this one: just behind the click. Have the next fret ready before the beat, and start the pick stroke on the click, not after it.`
+  return { dir, ms, runs: rs.length, text }
+}
+
 const EXTRA_LABEL = { palmMute: 'palm mutes', legato: 'legato', glide: 'slides' } as const
 
 /**

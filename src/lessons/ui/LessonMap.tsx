@@ -13,8 +13,10 @@ import { FULL_SPEED, pct } from '../speed'
 import { weakestPair } from '../../skills/chords'
 import { loadStats } from '../../skills/store'
 import { ACHIEVEMENTS } from '../achievements'
+import { partsOf, songPath } from '../../music/songPath'
+import type { SongLevels } from '../../music/songLevels'
 import { pace } from '../weeks'
-import { CoachCard } from './CoachCard'
+import { CoachCard, WeeklyReview } from './CoachCard'
 import { Dino } from './Dino'
 import { TodayCard } from './TodayPlan'
 import { PocketCard, WeekDots, WeeklyNote } from './SessionCards'
@@ -158,6 +160,16 @@ function PathNode({ id, mark, extra, progress, current, onOpen }: { id: string; 
 }
 
 /** A part of one of the player's songs, as a lesson placed in a course week. */
+/** One of the player's songs on the map, with its Learn a song levels (for its path). */
+export interface MapSong {
+  id: string
+  title: string
+  done: number
+  total: number
+  full: boolean
+  levels: SongLevels | null
+}
+
 export interface MapSongPart {
   id: string // lesson id
   song: string
@@ -269,7 +281,7 @@ export function LessonMap({
 }: {
   onPlanExtra: (kind: ExtraKind, leftSec: number) => void
   /** The player's own songs, shown as a row on the map; a tap opens the song in Learn a song. */
-  songs?: { id: string; title: string; done: number; total: number; full: boolean }[]
+  songs?: MapSong[]
   onSong?: (id: string) => void
   /** The parts of those songs as lessons, each placed in a course week. */
   songParts?: MapSongPart[]
@@ -352,6 +364,7 @@ export function LessonMap({
         </p>
       )}
 
+      <WeeklyReview progress={progress} />
       <CoachCard progress={progress} moment={setDone ? 'done' : 'open'} />
       {star3 && (
         <p className="sc-quiet-note ls-star3-goal">
@@ -420,29 +433,36 @@ export function LessonMap({
               <h3 id="ls-songs">
                 <span>Your songs</span>
               </h3>
-              <span className="ls-world-skill">The whole tab, in Learn a song. Their parts are lessons in the weeks below.</span>
+              <span className="ls-world-skill">Each song's path: learn its parts, play each with the song, then the whole song at full tempo. Hover for the steps.</span>
             </header>
             <ol className="ls-path extra" aria-label="Your songs">
-              {songs.map((sg) => (
-                <li key={sg.id} className="ls-fret">
-                  <button
-                    className={`ls-node ${sg.full ? 'done' : 'open'}`}
-                    onClick={() => onSong(sg.id)}
-                    aria-label={`${sg.title}: ${sg.full ? 'whole song passed' : sg.total ? `${sg.done} of ${sg.total} parts passed` : 'not started'}, open in Learn a song`}
-                  >
-                    <span className="ls-node-pick">
-                      <PickMark />
-                      <span className="ls-node-mark ls-num">{sg.total ? sg.done : ''}</span>
-                    </span>
-                    <span className="ls-node-title">{sg.title}</span>
-                    {sg.total > 0 && (
-                      <span className="ls-node-tag ls-num" aria-hidden>
-                        {sg.full ? 'whole song' : `${sg.done}/${sg.total} parts`}
+              {songs.map((sg) => {
+                // The song's path: parts as lessons, then each part with the song, the whole song, full tempo.
+                const path = songPath(partsOf(songParts, sg.id, (id) => isPassed(progress, id)), sg.levels)
+                const open = () => (path.next?.kind === 'part' ? onOpen(path.next.id) : onSong(sg.id))
+                return (
+                  <li key={sg.id} className="ls-fret">
+                    <button
+                      className={`ls-node ${path.next ? 'open' : 'done'}`}
+                      onClick={open}
+                      title={path.steps.map((st) => `${st.done ? '✓' : '·'} ${st.label} (${st.detail})`).join('\n')}
+                      aria-label={`${sg.title}: song path ${path.done} of ${path.steps.length}${path.nextLabel ? `, next: ${path.nextLabel}` : ', done'}`}
+                    >
+                      <span className="ls-node-pick">
+                        <PickMark />
+                        <span className="ls-node-mark ls-num">{path.done}</span>
                       </span>
-                    )}
-                  </button>
-                </li>
-              ))}
+                      <span className="ls-node-title">{sg.title}</span>
+                      <span className="ls-node-tag" aria-hidden>
+                        <span className="ls-num">
+                          {path.done}/{path.steps.length}
+                        </span>{' '}
+                        · {path.nextLabel ?? 'done'}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
             </ol>
           </section>
         )}

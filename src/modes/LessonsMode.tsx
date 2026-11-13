@@ -49,7 +49,8 @@ import { hasUnratedTake } from '../skills/takes'
 import { listSongs } from '../music/library'
 import { levelCount, loadLevels } from '../music/songLevels'
 import { loadStats, onSkillRound } from '../skills/store'
-import type { MapSongPart } from '../lessons/ui/LessonMap'
+import type { MapSong, MapSongPart } from '../lessons/ui/LessonMap'
+import { partsOf, songPath } from '../music/songPath'
 import { LessonMap } from '../lessons/ui/LessonMap'
 import { LessonIntro } from '../lessons/ui/LessonIntro'
 import { ResultCard } from '../lessons/ui/ResultCard'
@@ -172,7 +173,7 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
   const [skillStart, setSkillStart] = useState<SkillStart | undefined>(undefined)
   const [skillKey, setSkillKey] = useState(0)
   const [unrated, setUnrated] = useState<boolean | null>(null) // null until the take check is back
-  const [songs, setSongs] = useState<{ id: string; title: string; done: number; total: number; full: boolean }[] | null>(null)
+  const [songs, setSongs] = useState<MapSong[] | null>(null)
   const [songParts, setSongParts] = useState<MapSongPart[] | null>(null) // null until the songs are read // null until the library is read
   const [notice, setNotice] = useState<string | null>(null)
   const goalMin = useDailyGoal()
@@ -259,7 +260,7 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
           .map((sp, i) => ({ id: sp.id, song: sp.song, part: sp.part, stage: weeks[Math.min(weeks.length - 1, Math.floor(i / per))] as number }))
         if (!live) return
         setSongParts(placed)
-        setSongs(all.map((x) => ({ id: x.id, title: x.title, ...levelCount(loadLevels(x.id)) })).sort((a, b) => a.title.localeCompare(b.title)))
+        setSongs(all.map((x) => ({ id: x.id, title: x.title, levels: loadLevels(x.id), ...levelCount(loadLevels(x.id)) })).sort((a, b) => a.title.localeCompare(b.title)))
       } catch {
         if (!live) return
         setSongParts([])
@@ -352,7 +353,11 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
     let changed = false
     // Song parts whose week is open, in map order.
     const openParts = songParts.filter((sp) => stageOpen(p, sp.stage as StageId)).map((sp) => sp.id)
-    const made = withTodayPlan(p, now, { unratedTake: unrated, stats: loadStats(), songParts: openParts })
+    // Songs whose parts are learned (or that have none) and whose path goes on in Learn a song.
+    const songsToPlay = (songs ?? [])
+      .filter((sg) => songPath(partsOf(songParts, sg.id, (id) => isPassed(p, id)), sg.levels).next?.kind === 'song')
+      .map((sg) => ({ id: sg.id, title: sg.title }))
+    const made = withTodayPlan(p, now, { unratedTake: unrated, stats: loadStats(), songParts: openParts, songsToPlay })
     if (made) {
       p = made
       changed = true
@@ -371,7 +376,7 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
       if (sd.weekMet) setNotice(WEEK_NOTE)
     }
     if (changed) updateProgress(p)
-  }, [screen, progress, unrated, songParts, updateProgress])
+  }, [screen, progress, unrated, songParts, songs, updateProgress])
 
   // Skill rounds count for the plan's skill blocks (with the round's practice time) and toward today's session.
   useEffect(() => {

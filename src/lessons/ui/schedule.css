@@ -233,3 +233,18 @@
   background: rgb(var(--accent-rgb) / 0.08);
   border-radius: 0 8px 8px 0;
 }
+
+/* The weekly review on the Lessons home (CoachCard.tsx WeeklyReview). */
+.lessons .ls-weekly {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  margin-bottom: 12px;
+}
+.lessons .ls-weekly-h {
+  margin: 0;
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+}

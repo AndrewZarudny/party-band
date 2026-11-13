@@ -14,7 +14,7 @@ import { scalePcsOf } from '../improv'
 import { FEELS } from '../../music/parts'
 import { KEYBOARD_DEVICE, deviceKey, latencyAdvice, loadLatency, micWarning } from '../calibration'
 import { clicksMuted } from '../clock'
-import { DINO_STAGES, dinoStageFor, stuckAdvice, thirdStar } from '../progress'
+import { DINO_STAGES, dinoStageFor, stuckAdvice, thirdStar, timingHabit } from '../progress'
 import { LEARN_SESSIONS, fullColds, isReviewItem, standingLabel, standingOf } from '../review'
 import { whereLabel } from '../data'
 import { connectSource } from '../source'
@@ -158,6 +158,7 @@ export function LessonIntro({
   const rec = progress.lessons[lesson.id]
   const stuck = stuckAdvice(rec)
   const star3 = thirdStar(lesson, rec)
+  const habit = timingHabit(progress.runs, lesson.id)
   const auto = autoSpeed(lesson, rec)
   const autoHint =
     lesson.type === 'improv'
@@ -270,6 +271,7 @@ export function LessonIntro({
           {learnNote && <p className="ls-muted ls-learn-note">{learnNote}</p>}
           {stuck && <p className="ls-note ls-stuck">{stuck}</p>}
           {star3 && !stuck && <p className="ls-muted ls-star3">{star3.text}</p>}
+          {habit && <p className="ls-note ls-habit">{habit.text}</p>}
         </div>
         <div className="ls-intro-dino">
           {lesson.tips[0] && <p className="ls-bubble">{lesson.tips[0]}</p>}
