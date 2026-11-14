@@ -814,7 +814,8 @@ export function PlayScreen({
         </div>
       )}
 
-      {prefs.showFretboard && helper && helper.kind !== 'chords' && !quiet && !(helper.kind === 'notes' && shownTab !== 'full') && (
+      {/* A jam keeps its box on the fretboard even in listen mode: the notes to pick from, not a verdict. */}
+      {prefs.showFretboard && helper && helper.kind !== 'chords' && (!quiet || helper.kind === 'improv') && !(helper.kind === 'notes' && shownTab !== 'full') && (
         <div className="lp-fretboard">
           <Fretboard
             markers={helper.markers}

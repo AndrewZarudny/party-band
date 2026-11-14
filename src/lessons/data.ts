@@ -434,6 +434,34 @@ export const LESSONS: Lesson[] = [
 const MADE = new Map<string, Lesson>()
 export function registerLesson(l: Lesson): void {
   MADE.set(l.id, l)
+  if (l.id.startsWith('song:') && partTitles()[l.id] !== l.title) {
+    partTitles()[l.id] = l.title
+    try {
+      localStorage.setItem(TITLES, JSON.stringify(partTitles()))
+    } catch {
+      /* storage unavailable */
+    }
+  }
+}
+
+// Song parts' names ("Numb: Intro"), kept across reloads: today's plan and the coach can name a part before
+// Lessons has read the songs again (the coach can start from any tab).
+const TITLES = 'song-part-titles'
+let titles: Record<string, string> | null = null
+function partTitles(): Record<string, string> {
+  if (titles) return titles
+  try {
+    const o = JSON.parse(localStorage.getItem(TITLES) ?? '{}') as unknown
+    titles = o && typeof o === 'object' ? (o as Record<string, string>) : {}
+  } catch {
+    titles = {}
+  }
+  return titles
+}
+
+/** A lesson's name: built now, or a song part's last known name. */
+export function lessonTitle(id: string): string | undefined {
+  return lessonById(id)?.title ?? (id.startsWith('song:') ? partTitles()[id] : undefined)
 }
 
 /** The lessons made from the player's songs, as built now (empty until Lessons has read the songs). */

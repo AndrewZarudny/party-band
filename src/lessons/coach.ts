@@ -4,7 +4,7 @@
 import type { ApplyOutcome, Lesson, LessonResult, Progress, SessionPlan } from './types'
 import { bpmAt } from './speed'
 import type { SkillStats } from '../skills/data'
-import { lessonById } from './data'
+import { lessonById, lessonTitle } from './data'
 import { closestThirdStar, dayKey, isPassed, nextLesson, timingHabit } from './progress'
 import { goalFacts } from './goal'
 import { lastCheckIn, todayCheckIn } from './checkin'
@@ -24,7 +24,7 @@ export interface CoachNote {
 }
 
 const KEY = 'coach-notes'
-const title = (id: string) => lessonById(id)?.title ?? id
+const title = (id: string) => lessonTitle(id) ?? id
 
 /** What the coach is told: plain facts from the saved progress, nothing guessed. */
 export function coachFacts(p: Progress, stats: SkillStats, now: Date, moment: CoachMoment, o: { name: string | null; todaySec: number; goalMin: number }) {

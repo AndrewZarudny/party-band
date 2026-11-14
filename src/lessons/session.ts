@@ -6,7 +6,7 @@ import type { Lesson, LessonResult, LoopSummary, PainLevel, Progress, SessionDay
 import type { SkillEntry, SkillStats } from '../skills/data'
 import { bestKey, emptyStats } from '../skills/data'
 import { CHANGE_CHORDS, weakestPair } from '../skills/chords'
-import { ORDER, PLAN_PATH, lessonById, stageOf, weeksLabel } from './data'
+import { ORDER, PLAN_PATH, lessonById, lessonTitle, stageOf, weeksLabel } from './data'
 import { dayKey, daysAway, isPassed, isUnlocked, nextLesson, resting, timingHabit, trimLog } from './progress'
 import { weekFocus } from './weekly'
 import { noteName } from '../music/theory'
@@ -521,7 +521,7 @@ export function clockText(sec: number): string {
 /** What a step is called on the session card and on buttons. */
 export function stepTitle(s: SessionStep): string {
   if (s.drill) return drillTitle(s.drill)
-  if (s.lessonId) return lessonById(s.lessonId)?.title ?? (s.lessonId.startsWith('song:') ? 'A part of your song' : s.lessonId)
+  if (s.lessonId) return lessonTitle(s.lessonId) ?? (s.lessonId.startsWith('song:') ? 'A part of your song' : s.lessonId)
   if (s.kind === 'mix') return `${s.items?.length ?? 0} lessons in turn`
   if (s.song) return s.song.title
   if (s.kind === 'listenback') return 'Your last jam take'
