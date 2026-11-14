@@ -144,6 +144,14 @@ Songs live in their own top tab, **Songs**; **Jam** is for free jamming with you
 - **Set up** a new song with AI, or pick one from **Our songs**: every song you've set up, with its form edits, lyrics and recording.
 - A **progress bar** shows the whole song by section (solos in green), with elapsed/total time, on your screen and every phone. Click a section to jump there (with the recording, the record jumps too).
 - A song **stops at its end**: after the last section, or when the recording finishes. Everyone's screen shows "🏁 End of song". Free jams keep looping.
+- **◀ / ▶** step a section: ◀ goes back to the start of this section (twice: the one before), ▶ to the next one. ▶ is also the **next pedal**.
+- **🔁** loops the section playing until you click it again. The band goes round without a gap (with the recording, the record jumps back). Jumping with ◀ / ▶ or the bar moves the loop along.
+- Each song in **Our songs** says when it was last played and how often to the end, how far **your part** is in Learn a song (**🎸 band-ready**, or parts passed; matched by title), and marks **🎯 your goal song**.
+- **📝** keeps the band's notes on a song (the tricky bit, who sings what, a capo). They show under the song.
+- **To rehearse** lists songs never played, never played to the end, or not played for 2 weeks. **▶ Rehearse back to back** plays them as a set; with **★ Favourites** shown, **▶ Play the favourites back to back** does the same.
+- In a **set**, a bar shows where you are and what's next. When a song ends, **▶ Load** (or the next pedal) brings up the next one; press Start (the main pedal) when everyone's ready. **Skip to it** and **end the set** are there too.
+- **After a song**, a card says whether you played it to the end or which section it stopped in (and suggests looping it). With your guitar connected it adds how your notes sat against the band and your timing. The live coach hears about it as a band song.
+- The **weekly review** and the coach note know the week's rehearsals: plays per song, to the end or not, and what's due a rehearsal.
 - **History** logs every play: when, how long, whether you played it to the end, with or without the record, and who was in the band, with **▶ again**.
 
 ### Play a song together
