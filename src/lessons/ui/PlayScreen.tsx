@@ -688,7 +688,7 @@ export function PlayScreen({
 
       {!listen && tab !== 'full' && (
         <div className="lp-tabbar">
-          <button type="button" className={`lp-peek${peek ? ' on' : ''}`} onClick={peekNow} disabled={peek || !playing} aria-pressed={peek}>
+          <button type="button" className={`lp-peek${peek ? ' on' : ''}`} onClick={peekNow} disabled={peek || !playing} aria-pressed={peek} data-pedal="next" title="Next pedal">
             Peek (3 s)
           </button>
           <span className="lp-tabbar-note">{tab === 'hidden' ? 'Tab hidden: play it from memory.' : 'Tab faded: lean on your memory.'}</span>

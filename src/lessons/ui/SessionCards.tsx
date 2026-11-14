@@ -141,7 +141,7 @@ export function ColdStart({ title, goal, bpm, speed, onStart, onBack }: { title:
         {bpm} BPM{speed !== undefined && speed < 1 ? ` (${Math.round(speed * 100)}%)` : ''} · no tab
       </p>
       {speed !== undefined && speed < 1 && <p className="ls-muted">Clean at full tempo is what counts toward learned. Each clean cold start brings the next one a little closer.</p>}
-      <p className="ls-muted">Stuck? Peek shows the tab for 3 seconds.</p>
+      <p className="ls-muted">Stuck? Peek shows the tab for 3 seconds: the button under the runway, or the next foot pedal.</p>
       <div className="sc-acts">
         <button className="ls-btn primary" onClick={onStart} autoFocus data-pedal="go">
           Start
