@@ -1,5 +1,5 @@
-// The live coach in the browser: listens for the player's voice (Chrome's speech recognition, through the
-// Mac's default microphone), sends what was said and each run's numbers to the coach (server/liveCoach.ts),
+// The live coach in the browser: listens for the player's voice (Chrome's speech recognition, fed from the
+// Mac's own microphone with voice processing off, so the amp isn't turned down while it listens), sends what was said and each run's numbers to the coach (server/liveCoach.ts),
 // and speaks the replies aloud. It never listens during a run, or while it is speaking, so it doesn't hear
 // the guitar or itself. A mute button stops the listening; the coach still speaks after runs.
 
@@ -27,7 +27,7 @@ interface Rec {
   lang: string
   continuous: boolean
   interimResults: boolean
-  start(): void
+  start(track?: MediaStreamTrack): void
   stop(): void
   abort(): void
   onresult: ((ev: { resultIndex: number; results: ArrayLike<RecResult> }) => void) | null
@@ -42,6 +42,36 @@ function recCtor(): RecCtor | null {
 }
 
 export const canListen = () => typeof window !== 'undefined' && !!recCtor()
+
+// ---- The microphone ------------------------------------------------------------------------------
+// Left to itself, Chrome's recognizer opens the default input with voice processing (echo cancelling), and on a
+// Mac that turns down every other sound: the amp goes quiet while the coach listens. So the coach opens the
+// Mac's own mic itself, with all processing off, and hands that track to the recognizer (Chrome 133+).
+
+const INTERFACE = /scarlett|focusrite|audient|motu|presonus|behringer|steinberg|universal audio|\bssl\b|arturia|m-audio|line 6|irig|audio interface/i
+let micTrack: MediaStreamTrack | null = null
+/** Set when this Chrome can't take a track: it listens the old way. */
+let noTrack = false
+
+/** The voice mic, plain: a mic that isn't the audio interface (the guitar is on that), else the default. */
+async function openMic(): Promise<MediaStreamTrack | null> {
+  if (micTrack && micTrack.readyState === 'live') return micTrack
+  try {
+    const plain = { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    const inputs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput' && d.deviceId !== 'default' && d.deviceId !== 'communications')
+    const own = inputs.find((d) => d.label && !INTERFACE.test(d.label))
+    const s = await navigator.mediaDevices.getUserMedia({ audio: own ? { ...plain, deviceId: { exact: own.deviceId } } : plain })
+    micTrack = s.getAudioTracks()[0] ?? null
+    return micTrack
+  } catch {
+    return null
+  }
+}
+
+function closeMic() {
+  micTrack?.stop()
+  micTrack = null
+}
 
 // ---- State --------------------------------------------------------------------------------------
 
@@ -137,13 +167,30 @@ function startRec() {
       }, 250)
     }
   }
-  try {
-    rec.start()
-    recRunning = true
-  } catch {
-    // already started
-    recRunning = true
-  }
+  recRunning = true
+  const r = rec
+  void (async () => {
+    const track = noTrack ? null : await openMic()
+    // Things changed while the mic opened (a run began, the coach was turned off).
+    if (rec !== r || !shouldListen()) {
+      if (rec === r) recRunning = false
+      return
+    }
+    try {
+      if (track) r.start(track)
+      else r.start()
+    } catch (err) {
+      if (track && err instanceof TypeError) {
+        // This Chrome can't listen to a track: a fresh recognizer, the old way.
+        noTrack = true
+        closeMic()
+        rec = null
+        recRunning = false
+        startRec()
+      }
+      // else: already started
+    }
+  })()
 }
 
 // ---- Speaking -----------------------------------------------------------------------------------
@@ -274,6 +321,7 @@ export function stopLiveCoach() {
   hushCoach()
   speaking = false
   set({ on: false, heard: '' })
+  closeMic()
   void fetch('/api/live-coach/end', { method: 'POST' }).catch(() => {})
 }
 
