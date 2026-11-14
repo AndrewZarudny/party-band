@@ -1,6 +1,6 @@
 // The looper in the Jam tab: one big button (also the main foot pedal) for record, close the loop, overdub;
 // Stop/Play (the second pedal), Undo, Clear. Free length, or a number of bars at a tempo with a count-in.
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useEngineState } from '../audio/hooks'
 import { looperClear, looperMain, looperMixdown, looperSecond, looperUndo, setLooper, useLooper } from '../audio/looper'
 import { addTake } from '../skills/takes'
@@ -24,7 +24,16 @@ const STATUS: Record<string, string> = {
 export function LooperPanel({ jamBpm, startOpen = false }: { jamBpm: number; startOpen?: boolean }) {
   const lp = useLooper()
   const e = useEngineState()
-  const [open, setOpen] = useState(startOpen)
+  const [open, setOpenState] = useState(startOpen)
+  const setOpen = (o: boolean) => {
+    setOpenState(o)
+    setLooper({ panelOpen: o })
+  }
+  // Open from the start (the loop jam): the pedals belong to the looper; closed again when it goes.
+  useEffect(() => {
+    if (startOpen) setLooper({ panelOpen: true })
+    return () => setLooper({ panelOpen: false })
+  }, [startOpen])
   const [kept, setKept] = useState<string | null>(null)
   // The loop as it sounds now, saved as a take in Record yourself (Lessons, Skills), where it can be played back.
   const keep = async () => {

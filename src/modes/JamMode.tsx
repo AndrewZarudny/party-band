@@ -40,6 +40,7 @@ import type { BackingPart } from '../audio/backing'
 import { BandSoundSwitch } from '../components/BandSound'
 import type { KeysVoicing } from '../music/parts'
 import { LooperPanel } from '../components/LooperPanel'
+import { useLooper } from '../audio/looper'
 import { setCoachPlaying } from '../lessons/liveCoach'
 
 interface Played {
@@ -71,6 +72,7 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   const [auto, setAuto] = useState<boolean>((prefs.auto as boolean) ?? true)
   const [position, setPosition] = useState<number | null>(null)
   const [running, setRunning] = useState(false)
+  const looper = useLooper()
   // The live coach doesn't listen while the band plays.
   useEffect(() => {
     setCoachPlaying('jam', running)
@@ -833,7 +835,8 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
           {backingOn && <BandSoundSwitch />}
         </div>
         <Toggle on={auto} set={setAuto} label="Auto-advance" />
-        <button className="btn primary" onClick={() => (running ? stop() : start())}>
+        {/* The main pedal starts and stops the band, unless the looper is open (then it records). */}
+        <button className="btn primary" onClick={() => (running ? stop() : start())} data-pedal={looper.panelOpen ? undefined : 'go'} title="Space, or the main pedal">
           {running ? '■ Stop' : '▶ Start'}
         </button>
       </div>

@@ -66,9 +66,11 @@ export interface LooperView {
   volume: number // 0–1.5
   countIn: number | null // beats left before recording starts (bars mode)
   error: string | null
+  /** The looper panel is open: then the pedals work the looper, not the band. */
+  panelOpen: boolean
 }
 
-let view: LooperView = { ready: false, state: 'idle', layers: 0, lenSec: 0, pos: 0, mode: 'free', bars: 4, bpm: 90, click: true, volume: 1, countIn: null, error: null }
+let view: LooperView = { ready: false, state: 'idle', layers: 0, lenSec: 0, pos: 0, mode: 'free', bars: 4, bpm: 90, click: true, volume: 1, countIn: null, error: null, panelOpen: false }
 const listeners = new Set<() => void>()
 const set = (patch: Partial<LooperView>) => {
   view = { ...view, ...patch }
@@ -253,7 +255,7 @@ export function looperClear() {
   set({ countIn: null })
 }
 
-export function setLooper(patch: Partial<Pick<LooperView, 'mode' | 'bars' | 'bpm' | 'click' | 'volume'>>) {
+export function setLooper(patch: Partial<Pick<LooperView, 'mode' | 'bars' | 'bpm' | 'click' | 'volume' | 'panelOpen'>>) {
   set(patch)
   if (patch.volume !== undefined && gain && engine.ctx) gain.gain.setTargetAtTime(patch.volume, engine.ctx.currentTime, 0.02)
   if (patch.click !== undefined) {

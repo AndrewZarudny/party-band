@@ -90,7 +90,7 @@ export function PhraseBoard(props: {
             active
             onPin={() => props.onPin(current)}
             extra={
-              <button className="link" onClick={props.onNew} title="N">
+              <button className="link" onClick={props.onNew} title="N, or the next pedal" data-pedal="next">
                 {props.setMode ? 'next in set' : 'new phrase'}
               </button>
             }
