@@ -23,7 +23,7 @@ import type { SongLevels } from '../music/songLevels'
 import { BAND_READY_PCT, MIN_NOTES, PASS_PCT, PASS_SPEED, levelPassed, loadLevels, nextLevel, nextSongSpeed, saveLevels, songSections, withPass } from '../music/songLevels'
 import { hasSavedProgress, loadProgress, saveProgress } from '../lessons/progress'
 import { coachRunEnded, liveCoachOn, setCoachPlaying } from '../lessons/liveCoach'
-import { loadRuns, partTrend, saveRun, weakestPart } from '../music/songRuns'
+import { loadRuns, partTrend, saveRun, weakestPart, worstBar } from '../music/songRuns'
 
 interface Conversion {
   to: number[] // low → high
@@ -89,9 +89,9 @@ function namesFromFile(fileName: string): { artist: string; title: string } | nu
   return artist && title ? { artist, title } : null
 }
 
-type HitCount = { hit: number; miss: number }
+type HitCount = { hit: number; miss: number; bars?: number[] } // bars: the bar of each miss
 function clearHits(ref: { current: HitCount }, set: (h: HitCount) => void) {
-  ref.current = { hit: 0, miss: 0 }
+  ref.current = { hit: 0, miss: 0, bars: [] }
   set({ hit: 0, miss: 0 })
 }
 
@@ -181,6 +181,8 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
   const [lastPass, setLastPass] = useState<{ pct: number; passed: boolean } | null>(null)
   // The part that needs work most (from the run history), worked out after each run and on a new song.
   const [weakIdx, setWeakIdx] = useState<number | null>(null)
+  // The bar with the most misses in the last run, for a slow loop of just that spot.
+  const [hardBar, setHardBar] = useState<{ bar: number; misses: number; speed: number } | null>(null)
   const [countBeat, setCountBeat] = useState<number | null>(null)
   const finishRef = useRef<() => void>(() => {})
   const autoLevel = useRef(false) // opened from the Lessons session: start on the next level not passed yet
@@ -285,6 +287,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
       const prev = beatRef.current
       if (prev && expectedFor(prev).midis.length && !beatHitRef.current) {
         countRef.current.miss++
+        countRef.current.bars?.push(prev.voice.bar.index)
         setHits((h) => ({ ...h, miss: h.miss + 1 }))
       }
       // A looping level came round to its start: that pass is judged, and the count starts again.
@@ -331,12 +334,34 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
       api.isLooping = !!s
       levelRef.current = lv
       setLastPass(null)
+      setHardBar(null)
       setLevel(lv)
       clearHits(countRef, setHits)
       setLevelNote('')
     },
     [score, sections],
   )
+
+  /** The worst bar and the next on a loop, slower: practice, not judged. */
+  const loopHardBar = () => {
+    const api = apiRef.current
+    if (!api || !score || !hardBar) return
+    api.stop()
+    const from = hardBar.bar
+    const to = Math.min(score.masterBars.length - 1, from + 1)
+    const a = score.masterBars[from]
+    const b = score.masterBars[to]
+    api.playbackRange = { startTick: a.start, endTick: b.start + b.calculateDuration() }
+    api.tickPosition = a.start
+    api.isLooping = true
+    levelRef.current = null
+    setLevel(null)
+    clearHits(countRef, setHits)
+    const slow = Math.max(50, hardBar.speed - 15)
+    setSpeed(slow)
+    setHardBar(null)
+    setLevelNote(`Looping bars ${from + 1}–${to + 1} at ${slow}% speed. Play it until it's clean, then go back to the part.`)
+  }
 
   // A new song: its saved levels, and no level running (or, sent over by the Lessons session, the next one to pass).
   useEffect(() => {
@@ -400,7 +425,11 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
     if (nextSpeed !== speed) setSpeed(nextSpeed)
     const speedNote0 = nextSpeed > speed ? ` Next round at ${nextSpeed}% speed.` : nextSpeed < speed ? ` Next round slower, at ${nextSpeed}%.` : ''
     // Every judged run is kept; the note shows where this part is heading.
-    if (total >= MIN_NOTES) saveRun(id, { at: Date.now(), part: lv, pct, speed, passed })
+    const missBars = countRef.current.bars ?? []
+    if (total >= MIN_NOTES) saveRun(id, { at: Date.now(), part: lv, pct, speed, passed, missBars })
+    // Where the misses were: the worst bar gets a slow loop of its own.
+    const worst = passed && pct >= 90 ? null : worstBar(missBars)
+    setHardBar(worst ? { bar: worst.bar, misses: worst.misses, speed } : null)
     const trend = partTrend(loadRuns(id), lv)
     const trendNote = trend.length >= 3 ? ` Your last ${trend.length} runs: ${trend[0]}% → ${trend[trend.length - 1]}%.` : ''
     const speedNote = speedNote0 + trendNote
@@ -964,6 +993,11 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
               {levels?.track === track?.name && levels?.full ? '✓ ' : ''}
               Whole song{levels?.track === track?.name && levels?.ready ? ' · band-ready' : ''}
             </button>
+            {hardBar && (
+              <button className="btn small" disabled={!ready} onClick={loopHardBar} title={`${hardBar.misses} misses in bar ${hardBar.bar + 1}`}>
+                Loop bars {hardBar.bar + 1}–{hardBar.bar + 2} slowly
+              </button>
+            )}
             {weakIdx !== null && level !== weakIdx && (
               <button className="btn small" disabled={!ready} onClick={() => startLevel(weakIdx)} title="The part with the lowest recent runs that isn't passed well yet">
                 Practise the weakest: {sections[weakIdx]?.name}

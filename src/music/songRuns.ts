@@ -55,3 +55,12 @@ export function weakestPart(runs: SongRun[], parts: number, passed: (i: number) 
   }
   return best ? best.i : null
 }
+
+/** The bar with the most misses in a run, and how many; null under 2 misses there. */
+export function worstBar(bars: number[]): { bar: number; misses: number } | null {
+  const n = new Map<number, number>()
+  for (const b of bars) n.set(b, (n.get(b) ?? 0) + 1)
+  let best: { bar: number; misses: number } | null = null
+  for (const [bar, misses] of n) if (!best || misses > best.misses || (misses === best.misses && bar < best.bar)) best = { bar, misses }
+  return best && best.misses >= 2 ? best : null
+}
