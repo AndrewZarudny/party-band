@@ -3224,3 +3224,27 @@ code {
 .looper-err {
   color: #e07a5f;
 }
+
+/* The jam just played (JamMode.tsx JamSummaryCard). */
+.jam-summary {
+  margin: 10px 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.jam-summary header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.jam-summary header .ls-num {
+  flex: 1;
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+.jam-summary p {
+  margin: 6px 0 0;
+}

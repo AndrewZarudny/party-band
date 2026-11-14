@@ -41,6 +41,8 @@ import { BandSoundSwitch } from '../components/BandSound'
 import type { KeysVoicing } from '../music/parts'
 import { LooperPanel } from '../components/LooperPanel'
 import { useLooper } from '../audio/looper'
+import type { JamSummary } from '../music/jamSummary'
+import { emptyJamCounts, jamSummary } from '../music/jamSummary'
 import { setCoachPlaying } from '../lessons/liveCoach'
 
 interface Played {
@@ -73,6 +75,11 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   const [position, setPosition] = useState<number | null>(null)
   const [running, setRunning] = useState(false)
   const looper = useLooper()
+  // This jam in numbers (notes against chord and scale, phrases played), shown when the band stops.
+  const jamCounts = useRef(emptyJamCounts())
+  const jamStartedAt = useRef(0)
+  const runningRef = useRef(false)
+  const [jamDone, setJamDone] = useState<JamSummary | null>(null)
   // The live coach doesn't listen while the band plays.
   useEffect(() => {
     setCoachPlaying('jam', running)
@@ -273,6 +280,11 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
       setHistoryTick((n) => n + 1)
     }
     clock.current.finished = false
+    if (runningRef.current) {
+      runningRef.current = false
+      jamCounts.current.sec = (performance.now() - jamStartedAt.current) / 1000
+      setJamDone(jamSummary(jamCounts.current))
+    }
     setRunning(false)
     setEighth(null)
     setCountIn(0)
@@ -407,6 +419,10 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
       c.raf = requestAnimationFrame(frame)
     }
     frame()
+    jamCounts.current = emptyJamCounts()
+    jamStartedAt.current = performance.now()
+    runningRef.current = true
+    setJamDone(null)
     setRunning(true)
   }, [])
 
@@ -700,11 +716,13 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
         const p = pc(midi)
         const kind: Played['kind'] = s.chord?.tones.includes(p) ? 'chord' : s.scalePcs.includes(p) ? 'scale' : 'out'
         setPlayed((list) => [...list.slice(-15), { midi, t: performance.now(), kind }])
+        if (runningRef.current) jamCounts.current[kind]++
         const want = s.phrase[s.ptr]
         if (want && pc(want.midi) === p) {
           const n = s.ptr + 1
           setPtr(n)
           // Phrase finished: next one from the set, or a new one resolving towards the next chord late in the bar.
+          if (n >= s.phrase.length && runningRef.current) jamCounts.current.phrases++
           if (n >= s.phrase.length) setTimeout(() => (s.setMode ? playFromSet(s.setIdx + 1) : newPhrase(s.beatInChord >= s.beatsPerChord / 2)), 350)
         }
       },
@@ -841,6 +859,7 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
         </button>
       </div>
 
+      {view === 'jam' && jamDone && <JamSummaryCard s={jamDone} onClose={() => setJamDone(null)} />}
       {view === 'jam' && <LooperPanel jamBpm={bpm} />}
 
       {view === 'songs' && (
@@ -1149,4 +1168,24 @@ function nextSectionName(steps: Step[], i: number) {
     if (st.first) return st.section + (st.solo ? ' (solo)' : '')
   }
   return ''
+}
+
+/** The jam just played, in numbers, with one pointer for next time. */
+function JamSummaryCard({ s, onClose }: { s: JamSummary; onClose: () => void }) {
+  const min = Math.floor(s.sec / 60)
+  return (
+    <section className="jam-summary" aria-label="Your jam">
+      <header>
+        <b>Your jam</b>
+        <span className="ls-num">
+          {min}:{String(s.sec % 60).padStart(2, '0')} · {s.notes} notes · {s.chordPct}% chord tones · {s.scalePct}% scale · {s.outPct}% outside
+          {s.phrases > 0 && ` · ${s.phrases} phrase${s.phrases > 1 ? 's' : ''} played`}
+        </span>
+        <button className="btn small ghost" onClick={onClose}>
+          Close
+        </button>
+      </header>
+      <p>{s.pointer}</p>
+    </section>
+  )
 }
