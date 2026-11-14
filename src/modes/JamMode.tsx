@@ -11,7 +11,7 @@ import { loadPinned, savePinned } from '../music/pinned'
 import type { SavedPhrase } from '../music/pinned'
 import { jamMarkers } from '../music/jamMarkers'
 import type { SongSetup, Step } from '../music/songForm'
-import { beatsToNextSection, locate, progressionSteps, soloAt, songSegments, songSteps, totalBeats } from '../music/songForm'
+import { beatsToNextSection, locate, progressionSteps, segmentAt, soloAt, songSegments, songSteps, totalBeats } from '../music/songForm'
 import { lyricTimeline } from '../music/lyrics'
 import { SongsPanel } from '../session/SongsPanel'
 import { LyricSync } from '../session/LyricSync'
@@ -280,7 +280,12 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   const activeRef = useRef(active)
   activeRef.current = active
 
-  const stop = useCallback(() => {
+  // The section looped in a song (🔁), as beats; the scheduler reads it. Set from render below.
+  const loopRef = useRef<{ start: number; beats: number } | null>(null)
+  const seekRef = useRef<(beat: number) => void>(() => {})
+
+  /** Stops the band. `jump`: only to start again somewhere else in the song (no summary of a jam that goes on). */
+  const stop = useCallback((jump = false) => {
     clearInterval(clock.current.timer)
     cancelAnimationFrame(clock.current.raf)
     try {
@@ -297,6 +302,7 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
       setHistoryTick((n) => n + 1)
     }
     clock.current.finished = false
+    if (runningRef.current && jump) runningRef.current = false
     if (runningRef.current) {
       runningRef.current = false
       jamCounts.current.sec = (performance.now() - jamStartedAt.current) / 1000
@@ -403,7 +409,20 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
           return
         }
       }
+      const lp = s.isSong ? loopRef.current : null
+      if (lp && c.withRec && ((ctx.currentTime - c.start) * s.bpm) / 60 >= lp.start + lp.beats) {
+        // The record can't loop by itself: jump it back.
+        window.setTimeout(() => seekRef.current(lp.start), 0)
+        clearInterval(c.timer)
+        return
+      }
       for (;;) {
+        // Looping a section: at its end, the timeline shifts back by its length. Times already scheduled stay put
+        // (start and the 8th count move together), so the band carries on into the section's start without a gap.
+        if (lp && !c.withRec && Math.floor(c.nextEighth / 2) >= lp.start + lp.beats) {
+          c.start += (lp.beats * 60) / s.bpm
+          c.nextEighth -= lp.beats * 2
+        }
         const n = c.nextEighth
         const swing = g.feel.swing && n % 2 !== 0 ? e * 0.33 : 0
         const t = c.start + n * e + swing
@@ -464,7 +483,7 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
 
   /** Jump to a beat of the song (clicking the progress bar), playing or not. */
   const seek = (beat: number) => {
-    if (running) stop()
+    if (running) stop(true)
     setSongBeat(beat)
     void start(beat)
   }
@@ -588,6 +607,11 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   }, [chords])
 
   const segments = useMemo(() => songSegments(steps), [steps])
+  // The looped section belongs to its song: another song starts unlooped.
+  const [loop, setLoop] = useState<{ song: string; idx: number } | null>(null)
+  const loopIdx = loop && loop.song === songKey && loop.idx < segments.length ? loop.idx : null
+  loopRef.current = loopIdx !== null ? { start: segments[loopIdx].start, beats: segments[loopIdx].beats } : null
+  seekRef.current = seek
   // Auto-synced words are kept in seconds of the recording; their beats follow the recording's
   // current grid and the song's current sections, so later nudges or Analyse don't pull them off the record.
   const timing = useMemo(() => {
@@ -1114,7 +1138,21 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
         )}
       </div>
 
-      {song && <SongProgress segments={segments} beat={songBeat} bpm={bpm} ended={ended && !running} onSeek={seek} />}
+      {song && (
+        <SongProgress
+          segments={segments}
+          beat={songBeat}
+          bpm={bpm}
+          ended={ended && !running}
+          onSeek={seek}
+          loopIdx={loopIdx}
+          onLoop={(i) => {
+            setLoop(i === null ? null : { song: songKey, idx: i })
+            // Looping a section you're not in: go there.
+            if (i !== null && segmentAt(segments, songBeat) !== i) seek(segments[i].start)
+          }}
+        />
+      )}
 
       <div className="chord-strip">
         {countIn > 0 && <span className="count-in">Count-in: {5 - countIn}</span>}

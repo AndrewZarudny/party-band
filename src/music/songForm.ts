@@ -213,6 +213,21 @@ export interface Segment {
 }
 
 /** The song's sections as stretches of beats, for the progress bar. */
+/**
+ * Where ◀ / ▶ take you from `beat`: ▶ the next section's start (null at the last one); ◀ back to the start of
+ * this section, or to the one before when you're within its first 2 beats (pressed twice, it keeps going back).
+ */
+export function sectionJump(segments: Segment[], beat: number, dir: 1 | -1): number | null {
+  if (!segments.length) return null
+  let i = segments.findIndex((s) => beat >= s.start && beat < s.start + s.beats)
+  if (i < 0) i = beat < segments[0].start ? 0 : segments.length - 1
+  if (dir === 1) return i + 1 < segments.length ? segments[i + 1].start : null
+  return beat - segments[i].start > 2 || i === 0 ? segments[i].start : segments[i - 1].start
+}
+
+/** The section playing at `beat`, as an index into the segments; -1 outside the song. */
+export const segmentAt = (segments: Segment[], beat: number) => segments.findIndex((s) => beat >= s.start && beat < s.start + s.beats)
+
 export function songSegments(steps: Step[]): Segment[] {
   const out: Segment[] = []
   let beat = 0
