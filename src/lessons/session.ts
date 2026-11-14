@@ -601,7 +601,8 @@ export function withSongStepsFixed(p: Progress, songParts: string[], allParts: s
   // (parts are spread over the weeks across all songs, so deleting a song moves the others) is still there.
   const exists = new Set(allParts.filter((id) => !!lessonById(id)))
   const there = new Set(songParts.filter((id) => !!lessonById(id)))
-  const gone = (st: SessionStep) => st.kind === 'song' && st.state === 'todo' && !!st.lessonId && !exists.has(st.lessonId)
+  // Any kind of step: a song part also comes back as a cold-start test, a review or a warm-up.
+  const gone = (st: SessionStep) => st.state === 'todo' && !!st.lessonId?.startsWith('song:') && !exists.has(st.lessonId)
   // Skipped by mistake as gone (by the earlier rule) while its part still exists: back on the plan.
   const wronglySkipped = (st: SessionStep) => st.kind === 'song' && st.state === 'skipped' && st.why === GONE_WHY && !!st.lessonId && exists.has(st.lessonId)
   if (!plan.steps.some((st) => gone(st) || wronglySkipped(st))) return null
@@ -609,6 +610,8 @@ export function withSongStepsFixed(p: Progress, songParts: string[], allParts: s
   const steps = plan.steps.map((st) => {
     if (wronglySkipped(st)) return { ...lessonStep(p, 'song', { id: st.lessonId as string, why: 'A part of one of your songs. It starts slow; clean runs earn the tempo.' }, st.min), sec: st.sec }
     if (!gone(st)) return st
+    // A test or review of that part has nothing to stand in for it: off today's plan.
+    if (st.kind !== 'song') return { ...st, state: 'skipped' as const, why: GONE_WHY }
     const pick = pickSongPart(p, [...there].filter((id) => !inPlan.has(id)))
     if (!pick) return { ...st, state: 'skipped' as const, why: GONE_WHY }
     inPlan.add(pick.id)

@@ -815,4 +815,11 @@ describe('a song part that moved week is not gone', () => {
     // Really gone (not built at all): skipped, as before.
     expect(withSongStepsFixed(q, [], [])?.plan?.steps[i].state).toBe('skipped')
   })
+  it('a cold test or review of a deleted song part is skipped too', () => {
+    const p = base([day('2026-11-02'), day('2026-11-03'), day('2026-11-04')])
+    const q = plan(p, at('2026-11-05'), { ...ctx, songParts: [] })
+    const steps = [...q.plan.steps, { ...q.plan.steps[0], kind: 'cold' as const, lessonId: 'song:old-numb:2', state: 'todo' as const }]
+    const fixed = withSongStepsFixed({ ...q, plan: { ...q.plan, steps } }, [], [])
+    expect(fixed?.plan?.steps.at(-1)).toMatchObject({ lessonId: 'song:old-numb:2', state: 'skipped' })
+  })
 })
