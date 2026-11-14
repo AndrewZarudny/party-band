@@ -23,6 +23,7 @@ import type { SongLevels } from '../music/songLevels'
 import { BAND_READY_PCT, MIN_NOTES, PASS_PCT, PASS_SPEED, levelPassed, loadLevels, nextLevel, nextSongSpeed, saveLevels, songSections, withPass } from '../music/songLevels'
 import { hasSavedProgress, loadProgress, saveProgress } from '../lessons/progress'
 import { coachRunEnded, liveCoachOn, setCoachPlaying } from '../lessons/liveCoach'
+import { loadRuns, partTrend, saveRun } from '../music/songRuns'
 
 interface Conversion {
   to: number[] // low → high
@@ -389,7 +390,12 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
     // Auto speed: the next round's tempo from this one (shown in the level note).
     const nextSpeed = autoSpeed && total >= MIN_NOTES ? nextSongSpeed(speed, pct, passed) : speed
     if (nextSpeed !== speed) setSpeed(nextSpeed)
-    const speedNote = nextSpeed > speed ? ` Next round at ${nextSpeed}% speed.` : nextSpeed < speed ? ` Next round slower, at ${nextSpeed}%.` : ''
+    const speedNote0 = nextSpeed > speed ? ` Next round at ${nextSpeed}% speed.` : nextSpeed < speed ? ` Next round slower, at ${nextSpeed}%.` : ''
+    // Every judged run is kept; the note shows where this part is heading.
+    if (total >= MIN_NOTES) saveRun(id, { at: Date.now(), part: lv, pct, speed, passed })
+    const trend = partTrend(loadRuns(id), lv)
+    const trendNote = trend.length >= 3 ? ` Your last ${trend.length} runs: ${trend[0]}% → ${trend[trend.length - 1]}%.` : ''
+    const speedNote = speedNote0 + trendNote
     // The live coach, when on, hears about the run: the numbers of this part (or the whole song).
     if (liveCoachOn())
       void coachRunEnded({
