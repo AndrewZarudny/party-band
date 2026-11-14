@@ -426,7 +426,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
     const speedNote0 = nextSpeed > speed ? ` Next round at ${nextSpeed}% speed.` : nextSpeed < speed ? ` Next round slower, at ${nextSpeed}%.` : ''
     // Every judged run is kept; the note shows where this part is heading.
     const missBars = countRef.current.bars ?? []
-    if (total >= MIN_NOTES) saveRun(id, { at: Date.now(), part: lv, pct, speed, passed, missBars })
+    if (total >= MIN_NOTES) saveRun(id, { at: Date.now(), part: lv, pct, speed, passed, missBars, title: entryRef.current?.title, partName: name })
     // Where the misses were: the worst bar gets a slow loop of its own.
     const worst = passed && pct >= 90 ? null : worstBar(missBars)
     setHardBar(worst ? { bar: worst.bar, misses: worst.misses, speed } : null)

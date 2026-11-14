@@ -8,6 +8,7 @@ import { lessonById } from './data'
 import { closestThirdStar, dayKey, isPassed, nextLesson, timingHabit } from './progress'
 import { goalFacts } from './goal'
 import { lastCheckIn, todayCheckIn } from './checkin'
+import { songWork } from '../music/songRuns'
 import { loadLevels } from '../music/songLevels'
 import { strugglingList, weekStatus } from './review'
 import { improvements, planDone, planPlayedSec, stepScore, stepTitle } from './session'
@@ -39,6 +40,8 @@ export function coachFacts(p: Progress, stats: SkillStats, now: Date, moment: Co
     plan12Weeks: { headline: pc.headline, state: pc.state, advice: pc.advice.slice(0, 2) },
     closestThirdStar: closestThirdStar(p),
     songGoal: goalFacts((id) => isPassed(p, id), (id) => !!lessonById(id), loadLevels, now),
+    // Learn a song in the last 7 days: runs per song, where each part's score moved.
+    songWorkThisWeek: songWork(now.getTime() - 7 * 86_400_000, now.getTime() + 1),
     // The player's own words after a session: how it felt, and anything they wanted the coach to know.
     lastCheckIn: (() => {
       const c = todayCheckIn(now) ?? lastCheckIn(now)

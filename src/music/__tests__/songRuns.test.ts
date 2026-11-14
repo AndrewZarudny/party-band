@@ -26,3 +26,17 @@ describe('runs in Learn a song', () => {
     expect(weakestPart(runs, 3, () => 95)).toBeNull()
   })
 })
+
+describe('song work across songs', () => {
+  beforeEach(() => localStorage.clear())
+  it('per song in the window: runs, passes, and where each part moved', async () => {
+    const { songWork } = await import('../songRuns')
+    const r = (at: number, partName: string, pct: number, title = 'ZOMBIE') => ({ at, part: 0, partName, pct, speed: 80, passed: pct >= 70, title })
+    saveRun('z', r(5, 'Solo', 50))
+    saveRun('z', r(15, 'Solo', 60))
+    saveRun('z', r(16, 'Solo', 78))
+    saveRun('z', r(17, 'Intro', 90))
+    saveRun('n', r(1, 'Verse', 40, 'Numb')) // before the window
+    expect(songWork(10, 20)).toEqual([{ song: 'ZOMBIE', runs: 3, passes: 2, parts: [{ part: 'Solo', runs: 2, firstPct: 60, lastPct: 78 }, { part: 'Intro', runs: 1, firstPct: 90, lastPct: 90 }] }])
+  })
+})

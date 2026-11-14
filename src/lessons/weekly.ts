@@ -8,6 +8,7 @@ import { strugglingList, weekKey } from './review'
 import { goalFacts } from './goal'
 import { loadCheckIns } from './checkin'
 import { loadJamHistory } from '../music/jamSummary'
+import { songWork } from '../music/songRuns'
 import { loadLevels } from '../music/songLevels'
 
 const DAY = 86_400_000
@@ -63,6 +64,8 @@ export function weeklyFacts(p: Progress, now: Date, name: string | null) {
     focusThisWeek: weekFocus(p, now).map((f) => ({ lesson: title(f.id), why: f.why })),
     songGoal: goalFacts((id) => isPassed(p, id), (id) => !!lessonById(id), loadLevels, now),
     // Free jams in the Jam tab: how much, and how the notes sat against the chords and the scale, against the week before.
+    // Learn a song: runs per song and where each part's score moved last week.
+    songWork: songWork(from, to),
     jamming: (() => {
       const all = loadJamHistory()
       const week = all.filter((j) => inWeek(j.at))
