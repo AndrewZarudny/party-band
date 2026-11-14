@@ -912,7 +912,8 @@ export class GuitarEngine {
     let frame: PitchFrame | null = null
     if (rms > 0.0012) {
       const f = yin(this.timeBuf, this.ctx.sampleRate / k, this.diffBuf, 0.15)
-      if (f > 70 && f < 1400) {
+      // From 57 Hz: the low B of Drop B (61.7 Hz) and a C standard low C (65.4) count, mains hum at 50 Hz doesn't.
+      if (f > 57 && f < 1400) {
         const mf = freqToMidiFloat(f)
         const midi = Math.round(mf)
         frame = { freq: f, midi, cents: Math.round((mf - midi) * 100), rms }
