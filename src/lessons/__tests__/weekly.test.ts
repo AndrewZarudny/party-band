@@ -59,3 +59,21 @@ describe('the weekly review reads the check-ins', () => {
     expect(weeklyFacts(player(), NOW, null).checkIns).toEqual([{ day: '2026-11-10', felt: 'too hard', note: 'barre chords hurt' }])
   })
 })
+
+describe('the weekly review knows your jamming', () => {
+  beforeEach(() => localStorage.clear())
+  it("last week's jams in the Jam tab, against the week before", () => {
+    const j = (day: string, chordPct: number, outPct: number) => ({ at: at(day).getTime(), notes: 100, chordPct, outPct, sec: 300 })
+    localStorage.setItem('jam-history', JSON.stringify([j('2026-11-04', 20, 30), j('2026-11-10', 30, 12), j('2026-11-12', 40, 8), j('2026-11-16', 50, 5)]))
+    expect(weeklyFacts(player(), NOW, null).jamming).toEqual({
+      jams: 2,
+      minutes: 10,
+      chordTonesPercent: 35,
+      outsidePercent: 10,
+      weekBefore: { jams: 1, chordTonesPercent: 20, outsidePercent: 30 },
+    })
+  })
+  it('no jams last week: nothing', () => {
+    expect(weeklyFacts(player(), NOW, null).jamming).toBeNull()
+  })
+})

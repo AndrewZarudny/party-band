@@ -7,6 +7,7 @@ import { closestThirdStar, dayKey, isPassed, isPlateau, thirdStar, timingHabit }
 import { strugglingList, weekKey } from './review'
 import { goalFacts } from './goal'
 import { loadCheckIns } from './checkin'
+import { loadJamHistory } from '../music/jamSummary'
 import { loadLevels } from '../music/songLevels'
 
 const DAY = 86_400_000
@@ -61,6 +62,21 @@ export function weeklyFacts(p: Progress, now: Date, name: string | null) {
     thirdStars: [...perLesson.keys()].map((id) => ({ id, t: thirdStar(lessonById(id), p.lessons[id]) })).filter((x) => x.t && x.t.gap <= 8).map((x) => ({ lesson: title(x.id), pointsToGo: x.t!.gap })),
     focusThisWeek: weekFocus(p, now).map((f) => ({ lesson: title(f.id), why: f.why })),
     songGoal: goalFacts((id) => isPassed(p, id), (id) => !!lessonById(id), loadLevels, now),
+    // Free jams in the Jam tab: how much, and how the notes sat against the chords and the scale, against the week before.
+    jamming: (() => {
+      const all = loadJamHistory()
+      const week = all.filter((j) => inWeek(j.at))
+      if (!week.length) return null
+      const prev = all.filter((j) => j.at >= from - 7 * DAY && j.at < from)
+      const avg = (js: typeof all, f: (j: (typeof all)[number]) => number) => (js.length ? Math.round(js.reduce((a, j) => a + f(j), 0) / js.length) : null)
+      return {
+        jams: week.length,
+        minutes: Math.round(week.reduce((a, j) => a + j.sec, 0) / 60),
+        chordTonesPercent: avg(week, (j) => j.chordPct),
+        outsidePercent: avg(week, (j) => j.outPct),
+        weekBefore: prev.length ? { jams: prev.length, chordTonesPercent: avg(prev, (j) => j.chordPct), outsidePercent: avg(prev, (j) => j.outPct) } : null,
+      }
+    })(),
     // How the sessions felt to the player, in their own words (the check-ins after each session).
     checkIns: loadCheckIns()
       .filter((c) => c.day >= lastWeekKey(now) && c.day < weekKey(dayKey(now)))
