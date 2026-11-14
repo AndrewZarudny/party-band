@@ -109,6 +109,7 @@ export function PlayScreen({
   shuffle = false,
   cold = false,
   passes = 1,
+  timingCue = null,
 }: {
   lesson: Lesson
   prefs: Prefs
@@ -133,7 +134,16 @@ export function PlayScreen({
   cold?: boolean
   /** A jam block of today's session: the jam plays this many times through in one run. */
   passes?: number
+  /** The lesson's timing habit as a cue ("you tend to rush this one…"), shown while the run starts. */
+  timingCue?: string | null
 }) {
+  // The cue shows for the count-in and the first bars, then gets out of the way.
+  const [cueOn, setCueOn] = useState(!!timingCue)
+  useEffect(() => {
+    if (!timingCue) return
+    const t = window.setTimeout(() => setCueOn(false), 9000)
+    return () => window.clearTimeout(t)
+  }, [timingCue])
   // A jam plays over the backing track picked for it; everything else about the lesson stays.
   const trackId = prefs.jamTracks[given.id]
   const lesson = useMemo(() => withTrack(given, trackId), [given, trackId])
@@ -587,8 +597,9 @@ export function PlayScreen({
       <div className="lp-stage">
         {run && <Runway run={run} zoom={prefs.zoom} nudgeMs={prefs.visualNudgeMs} guides={guides} tab={shownTab} quiet={quiet && !listen} />}
         {listen && playing && <span className="lp-listen-tag">{guides ? 'Just watch: the numbers show which finger.' : 'Just watch and listen.'}</span>}
-        {!listen && (quiet || cold || shuffle || times > 1) && (
+        {!listen && (quiet || cold || shuffle || times > 1 || (cueOn && !!timingCue)) && (
           <div className="lp-mode-tags">
+            {cueOn && timingCue && <span className="lp-mode-tag cue">{timingCue}</span>}
             {times > 1 && (
               <span className="lp-mode-tag ls-num">
                 {times} times through, about {jamMin} min

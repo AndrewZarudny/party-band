@@ -75,3 +75,9 @@
       color 160ms ease-out;
   }
 }
+
+/* A timing cue at the start of a run (the lesson's habit: rushing or dragging). */
+.lp-mode-tag.cue {
+  border-color: var(--accent);
+  color: var(--text);
+}

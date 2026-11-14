@@ -8,7 +8,7 @@ import { loopSpecFor, recordLoop } from '../lessons/loop'
 import { recordHeat } from '../lessons/heat'
 import { drillSpec } from '../lessons/drill'
 import { STAGES, lessonById, stageOf, validateLessons } from '../lessons/data'
-import { applyResult, dayKey, dinoStageFor, isPassed, isUnlocked, loadProgress, nextLesson, recordSkip, saveProgress, stageOpen } from '../lessons/progress'
+import { applyResult, dayKey, dinoStageFor, isPassed, isUnlocked, loadProgress, nextLesson, recordSkip, saveProgress, stageOpen, timingHabit } from '../lessons/progress'
 import { FULL_SPEED, bpmAt, pickFor, slowerSpeed, speedFor } from '../lessons/speed'
 import type { ExtraKind } from '../lessons/session'
 import {
@@ -742,6 +742,7 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
   } else if (screen === 'play' && lesson) {
     body = (
       <PlayScreen
+        timingCue={lesson ? habitCue(progress, lesson.id) : null}
         key={`${lesson.id}-${runKey}`}
         lesson={lesson}
         listen={listen}
@@ -966,4 +967,11 @@ function Welcome({ onStart, onSignIn }: { onStart: (name: string) => void; onSig
       </div>
     </section>
   )
+}
+
+/** A lesson's timing habit as a short cue for the start of a run, or null. */
+function habitCue(p: Progress, id: string): string | null {
+  const h = timingHabit(p.runs, id)
+  if (!h) return null
+  return h.dir === 'early' ? `You tend to rush this one (about ${h.ms} ms): let each note wait for its click.` : `You tend to drag this one (about ${h.ms} ms): pick right on the click.`
 }
