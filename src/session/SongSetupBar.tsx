@@ -9,7 +9,21 @@ import { amdmSearchUrl, geniusSongUrl } from '../music/lyricsLinks'
 import { TabPicker } from './TabPicker'
 
 /** "Play a song": AI sets up the jam with the song's key, tempo and form (host only). */
-export function SongSetupBar({ song, onPlay, onUpdate, singers = [] }: { song: SongSetup | null; onPlay: (s: SongSetup | null) => void; onUpdate: (s: SongSetup) => void; singers?: string[] }) {
+export function SongSetupBar({
+  song,
+  onPlay,
+  onUpdate,
+  singers = [],
+  onFullSong,
+  fullSongOn = false,
+}: {
+  song: SongSetup | null
+  onPlay: (s: SongSetup | null) => void
+  onUpdate: (s: SongSetup) => void
+  singers?: string[]
+  onFullSong?: () => void
+  fullSongOn?: boolean
+}) {
   const [lyricsOpen, setLyricsOpen] = useState(false)
   const [tabOpen, setTabOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -71,6 +85,11 @@ export function SongSetupBar({ song, onPlay, onUpdate, singers = [] }: { song: S
             <button type="button" className="btn small" onClick={() => setLyricsOpen(true)} title="Words for the singer's screen">
               🎤 Lyrics{song.lyrics?.some(Boolean) ? ' ✓' : ''}
             </button>
+            {onFullSong && (
+              <button type="button" className={`btn small${fullSongOn ? ' on' : ''}`} aria-pressed={fullSongOn} onClick={onFullSong} title="The whole song on the right: chords and words">
+                📄 Full song
+              </button>
+            )}
             <KeyShift song={song} onUpdate={onUpdate} />
             <button type="button" className="link" onClick={() => onPlay(null)}>
               back to free jam

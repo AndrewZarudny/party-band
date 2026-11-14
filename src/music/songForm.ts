@@ -238,3 +238,42 @@ export function songSegments(steps: Step[]): Segment[] {
   }
   return out
 }
+
+/** One entry of the song form on the song sheet: its chords bar by bar (one pass) and the singer's words. */
+export interface SheetSection {
+  formIdx: number
+  name: string
+  solo: boolean
+  bars: string[][] // chord symbols in each 4-beat bar of one pass of the pattern
+  passes: number // how many times that pattern is played
+  lines: string[] // the words, line by line ('' for none)
+}
+
+/**
+ * The whole song for the side sheet, in playing order: the chords as the band plays them (transposed, or the
+ * record's chords when those are used) and the words per section.
+ */
+export function songSheet(steps: Step[], lyrics: string[] | undefined): SheetSection[] {
+  const out: SheetSection[] = []
+  let beatInBar = 0
+  for (const s of steps) {
+    if (s.formIdx < 0) continue
+    let sec = out[out.length - 1]
+    if (!sec || sec.formIdx !== s.formIdx) {
+      sec = { formIdx: s.formIdx, name: s.section, solo: s.solo, bars: [], passes: s.passes ?? 1, lines: (lyrics?.[s.formIdx] ?? '').split('\n').map((l) => l.trim()).filter(Boolean) }
+      out.push(sec)
+      beatInBar = 0
+    }
+    if ((s.pass ?? 0) > 0) continue // the pattern again: shown once, with ×passes
+    let left = s.beats
+    while (left > 0) {
+      if (beatInBar === 0 || !sec.bars.length) sec.bars.push([])
+      const bar = sec.bars[sec.bars.length - 1]
+      if (bar[bar.length - 1] !== s.chord.symbol) bar.push(s.chord.symbol)
+      const take = Math.min(left, 4 - beatInBar)
+      left -= take
+      beatInBar = (beatInBar + take) % 4
+    }
+  }
+  return out
+}

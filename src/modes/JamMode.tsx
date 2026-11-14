@@ -11,7 +11,8 @@ import { loadPinned, savePinned } from '../music/pinned'
 import type { SavedPhrase } from '../music/pinned'
 import { jamMarkers } from '../music/jamMarkers'
 import type { SongSetup, Step } from '../music/songForm'
-import { beatsToNextSection, locate, progressionSteps, segmentAt, soloAt, songSegments, songSteps, totalBeats } from '../music/songForm'
+import { beatsToNextSection, locate, progressionSteps, segmentAt, soloAt, songSegments, songSheet, songSteps, totalBeats } from '../music/songForm'
+import { SongSheet } from '../session/SongSheet'
 import { lyricTimeline } from '../music/lyrics'
 import { SongsPanel } from '../session/SongsPanel'
 import { LyricSync } from '../session/LyricSync'
@@ -628,6 +629,23 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   }, [chords])
 
   const segments = useMemo(() => songSegments(steps), [steps])
+  // The whole song on the right (Songs tab): open or not, remembered.
+  const [sheetOpen, setSheetOpen] = useState(() => {
+    try {
+      return localStorage.getItem('song-sheet') === 'on'
+    } catch {
+      return false
+    }
+  })
+  const showSheet = (on: boolean) => {
+    setSheetOpen(on)
+    try {
+      localStorage.setItem('song-sheet', on ? 'on' : 'off')
+    } catch {
+      /* storage unavailable */
+    }
+  }
+  const sheet = useMemo(() => (song ? songSheet(steps, song.lyrics) : []), [song, steps])
   const setPos = song ? set.indexOf(libKey(song)) : -1
   const nextInSet = setPos >= 0 && setPos + 1 < set.length ? (loadLibrary().find((sg) => libKey(sg) === set[setPos + 1]) ?? null) : null
   // The looped section belongs to its song: another song starts unlooped.
@@ -906,7 +924,7 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   const chordNames = (c: Chord | null) => (c ? c.tones.map((t) => noteName(t, flats)).join(' ') : '')
 
   return (
-    <div className="jam-mode">
+    <div className={`jam-mode${view === 'songs' && song && sheetOpen ? ' with-sheet' : ''}`}>
       <div className="jam-controls">
         {view === 'jam' && (
           <>
@@ -1019,6 +1037,8 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
           historyTick={historyTick}
           onPlay={playSong}
           onPlaySet={playSet}
+          onFullSong={() => showSheet(!sheetOpen)}
+          fullSongOn={sheetOpen}
           onUpdate={(sg) => {
             // A new key for the song (transposed, or a corrected key): the scale and solos follow.
             if (sg.key !== songSel?.key || (sg.transpose ?? 0) !== (songSel?.transpose ?? 0)) {
@@ -1162,6 +1182,21 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
         )}
       </div>
 
+      {view === 'songs' && song && sheetOpen && (
+        <SongSheet
+          title={song.title}
+          artist={song.artist}
+          keyLabel={`${noteName(keyRoot, flats)}${scale.minor ? 'm' : ''}`}
+          capo={song.capo}
+          sheet={sheet}
+          current={segments[segmentAt(segments, songBeat)]?.formIdx ?? -1}
+          onJump={(f) => {
+            const at = segments.find((sg) => sg.formIdx === f)
+            if (at) seek(at.start)
+          }}
+          onClose={() => showSheet(false)}
+        />
+      )}
       {song && (
         <SongProgress
           segments={segments}

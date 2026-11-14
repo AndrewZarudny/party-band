@@ -21,6 +21,9 @@ export function SongsPanel(props: {
   onUpdate: (s: SongSetup) => void
   /** Plays songs back to back: the first is loaded, the next one comes up when it ends. */
   onPlaySet: (songs: SongSetup[]) => void
+  /** Show or hide the whole song on the right. */
+  onFullSong?: () => void
+  fullSongOn?: boolean
   singers: string[]
   historyTick: number
 }) {
@@ -47,7 +50,7 @@ export function SongsPanel(props: {
 
   return (
     <div className="songs-panel">
-      <SongSetupBar song={props.song} onPlay={props.onPlay} onUpdate={props.onUpdate} singers={props.singers} />
+      <SongSetupBar song={props.song} onPlay={props.onPlay} onUpdate={props.onUpdate} singers={props.singers} onFullSong={props.onFullSong} fullSongOn={props.fullSongOn} />
 
       <div className="songs-cols">
         <section className="song-lib">
