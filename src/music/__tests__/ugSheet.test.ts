@@ -20,3 +20,10 @@ describe('a chord sheet from Ultimate Guitar', () => {
     expect(matchLyrics(text, form, new Set(['Solo']))).toEqual(['', 'one', 'two', 'three', 'four', 'Am F', 'five\n\nsix', ''])
   })
 })
+
+describe('a chord line at the top of a part', () => {
+  it('keeps its leading spaces, so its chords stay over the right words', () => {
+    const [verse] = matchLyrics('[Verse]\n            Am   F\n "I will not" -', ['Verse'], new Set())
+    expect(verse).toBe('            Am   F\n "I will not" -')
+  })
+})

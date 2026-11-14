@@ -225,7 +225,8 @@ function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () 
                 .filter((l) => !isHeadingLine(l)) // section headings are for us, not the singer
                 .join('\n')
                 .replace(/\n{3,}/g, '\n\n')
-                .trim()
+                .replace(/^(?:[ \t]*\n)+/, '')
+                .trimEnd()
             : '',
         )
       : matchLyrics(text, song.form, solos)
@@ -244,7 +245,12 @@ function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () 
     setUgBusy(true)
     try {
       const r = (await (
-        await fetch('/api/ug-chords', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: song.title, artist: song.artist, id }) })
+        await fetch('/api/ug-chords', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: song.title, artist: song.artist, id }),
+          signal: AbortSignal.timeout(45000),
+        })
       ).json()) as { versions?: UgVersion[]; sheet?: UgSheet; error?: string }
       setUg({ versions: r.versions ?? [], sheet: r.sheet, error: r.error })
       if (r.sheet) {
@@ -253,7 +259,8 @@ function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () 
         setPlayChords(true)
       }
     } catch (err) {
-      setUg({ versions: [], error: err instanceof Error ? err.message : String(err) })
+      const late = err instanceof DOMException && (err.name === 'TimeoutError' || err.name === 'AbortError')
+      setUg({ versions: [], error: late ? 'Ultimate Guitar did not answer in 45 seconds. Try again in a moment.' : `Couldn't get the chords: ${err instanceof Error ? err.message : String(err)}` })
     } finally {
       setUgBusy(false)
     }

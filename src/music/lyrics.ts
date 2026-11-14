@@ -48,12 +48,15 @@ export function sectionKey(name: string): string {
  * written out once is reused for later choruses. Without headings, paragraphs fill the sung
  * sections (not solos or the intro) in order.
  */
+/** A block's blank lines off both ends; a line's own leading spaces stay (they line chords up over the words). */
+export const trimBlock = (s: string) => s.replace(/^(?:[ \t]*\n)+/, '').trimEnd()
+
 export function matchLyrics(text: string, form: string[], soloSections: Set<string>): string[] {
   const lines = text.replace(/\r/g, '').split('\n')
   const blocks: { key: string | null; text: string }[] = []
   let cur: { key: string | null; lines: string[] } | null = null
   const flush = () => {
-    if (cur && cur.lines.join('').trim()) blocks.push({ key: cur.key, text: cur.lines.join('\n').trim() })
+    if (cur && cur.lines.join('').trim()) blocks.push({ key: cur.key, text: trimBlock(cur.lines.join('\n')) })
   }
   const hasHeadings = lines.some((l) => headingKind(l) !== null)
   for (const line of lines) {
