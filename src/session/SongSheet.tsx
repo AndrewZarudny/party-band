@@ -1,5 +1,5 @@
-// The whole song on the right: every section in playing order with its chords bar by bar and the words, the
-// section playing now lit up and kept in view. Click a section to jump there.
+// The whole song on the right: every section in playing order, the words with the chords over them (chords bar
+// by bar where nobody sings), the section playing now lit up and kept in view. Click a section to jump there.
 import { useEffect, useRef, useState } from 'react'
 import type { SheetSection } from '../music/songForm'
 import { guitarShape } from '../music/parts'
@@ -70,6 +70,20 @@ export function SongSheet({
     list.current?.querySelector('.ss-sec.now')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [current])
 
+  // A chord name you can point at (or tab to) to see how to hold it.
+  const chordName = (c: string) => (
+    <span
+      className="ss-chord"
+      tabIndex={0}
+      onMouseEnter={(ev) => showTip(c, ev.currentTarget)}
+      onMouseLeave={() => setTip(null)}
+      onFocus={(ev) => showTip(c, ev.currentTarget)}
+      onBlur={() => setTip(null)}
+    >
+      {c}
+    </span>
+  )
+
   return (
     <aside className="song-sheet" ref={box} aria-label={`The whole song: ${title}`}>
       <header className="ss-head">
@@ -89,32 +103,32 @@ export function SongSheet({
           <li key={s.formIdx} className={`ss-sec${s.formIdx === current ? ' now' : ''}${s.solo ? ' solo' : ''}`}>
             <button className="ss-name" onClick={() => onJump(s.formIdx)} title="Jump here">
               {s.name}
-              {s.passes > 1 && <span className="ss-x"> ×{s.passes}</span>}
+              {s.passes > 1 && !s.rows.length && <span className="ss-x"> ×{s.passes}</span>}
               {s.solo && <span className="ss-x"> · solo</span>}
             </button>
-            <div className="ss-bars">
-              {s.bars.map((b, i) => (
-                <span key={i} className="ss-bar">
-                  {b.map((c, j) => (
-                    <span
-                      key={j}
-                      className="ss-chord"
-                      tabIndex={0}
-                      onMouseEnter={(ev) => showTip(c, ev.currentTarget)}
-                      onMouseLeave={() => setTip(null)}
-                      onFocus={(ev) => showTip(c, ev.currentTarget)}
-                      onBlur={() => setTip(null)}
-                    >
-                      {c}
-                    </span>
-                  ))}
-                </span>
-              ))}
-            </div>
-            {s.lines.length > 0 && (
+            {s.rows.length > 0 ? (
               <div className="ss-words">
-                {s.lines.map((l, i) => (
-                  <p key={i}>{l}</p>
+                {s.rows.map((row, i) => (
+                  <div key={i} className="ss-line">
+                    {row.map((c, j) => (
+                      <span key={j} className={`ss-chunk${j && !c.text ? ' after' : ''}`}>
+                        {c.chord ? chordName(c.chord) : <span className="ss-gap" aria-hidden />}
+                        <span className="ss-text">{c.text}</span>
+                      </span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="ss-bars">
+                {s.bars.map((b, i) => (
+                  <span key={i} className="ss-bar">
+                    {b.map((c, j) => (
+                      <span key={j} className="ss-in-bar">
+                        {chordName(c)}
+                      </span>
+                    ))}
+                  </span>
                 ))}
               </div>
             )}

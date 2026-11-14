@@ -4,7 +4,9 @@ import { costTag, describeCost, useAiStatus } from '../aiCost'
 import type { SongSetup } from '../music/songForm'
 import { sectionBars } from '../music/songForm'
 import { noteName, parseChord, pc, prefersFlats } from '../music/theory'
-import { matchLyrics } from '../music/lyrics'
+import { matchLyrics, sungLines } from '../music/lyrics'
+import { chordsInWords, hasWordChords, inlineChords, isHeadingLine } from '../music/wordChords'
+import { keyFromChords } from '../music/keyGuess'
 import { amdmSearchUrl, geniusSongUrl } from '../music/lyricsLinks'
 import { TabPicker } from './TabPicker'
 
@@ -111,8 +113,10 @@ export function SongSetupBar({
         <LyricsEditor
           song={song}
           onClose={() => setLyricsOpen(false)}
-          onSave={(lyrics) => {
-            onUpdate({ ...song, lyrics })
+          onSave={(lyrics, wordChords) => {
+            // Chords pasted over the words: the band plays them, and they tell the song's key.
+            const key = wordChords ? keyFromChords(chordsInWords(lyrics)) : null
+            onUpdate({ ...song, lyrics, wordChords, ...(key ? { key: noteName(key.root, prefersFlats(key.root, key.minor)), minor: key.minor } : {}) })
             setLyricsOpen(false)
           }}
         />
@@ -202,7 +206,7 @@ export function SongSetupBar({
 }
 
 /** Paste the song's words (from your songbook or lyrics source); they're matched to the form. */
-function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () => void; onSave: (lyrics: string[]) => void }) {
+function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () => void; onSave: (lyrics: string[], wordChords: boolean) => void }) {
   const [text, setText] = useState(() => (song.lyrics ?? []).map((l, i) => (l ? `[${song.form[i]}]\n${l}` : '')).filter(Boolean).join('\n\n'))
   const solos = new Set(song.sections.filter((s) => s.solo).map((s) => s.name))
   // AI arrangement: line ranges per form entry, applied to the user's own text (the AI returns no words).
@@ -217,13 +221,17 @@ function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () 
           r
             ? lines
                 .slice(r[0] - 1, r[1])
-                .filter((l) => !/^\s*\[[^\]\n]+\]\s*$/.test(l)) // section headings are for us, not the singer
+                .filter((l) => !isHeadingLine(l)) // section headings are for us, not the singer
                 .join('\n')
                 .replace(/\n{3,}/g, '\n\n')
                 .trim()
             : '',
         )
       : matchLyrics(text, song.form, solos)
+  // Chord lines over the words (from a chord site) stay with the words, each chord at its letter.
+  const blocks = matched.map((b) => inlineChords(b.split('\n').filter((l) => !isHeadingLine(l)).join('\n')))
+  const hasChords = blocks.some(hasWordChords)
+  const [playChords, setPlayChords] = useState(song.wordChords ?? true)
   const hasHeadings = /^\s*\[[^\]\n]+\]\s*$/m.test(text)
 
   const arrange = async (t = text) => {
@@ -253,7 +261,8 @@ function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () 
         <h2>🎤 Lyrics for {song.title}</h2>
         <p className="hint">
           Paste the words from your songbook or the lyrics site you use. Headings like <code>[Verse 1]</code>, <code>[Chorus]</code> put each part in the right
-          place; without them, paragraphs fill the sung sections in order. A chorus written once is reused for every chorus.
+          place; without them, paragraphs fill the sung sections in order. A chorus written once is reused for every chorus. Copied from a chord site (AmDm,
+          Ultimate Guitar) with the chords over the words? Keep them: the song sheet shows them where they're written.
         </p>
         <div className="row">
           <a className="btn small" href={geniusSongUrl(song.title, song.artist)} target="_blank" rel="noreferrer">
@@ -302,12 +311,18 @@ function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () 
               <span className="label">
                 {i + 1}. {name}
               </span>{' '}
-              {matched[i] ? matched[i].split('\n')[0] : solos.has(name) ? '(solo)' : '—'}
+              {blocks[i] ? (sungLines(blocks[i])[0] ?? '🎸 chords only') : solos.has(name) ? '(solo)' : '—'}
             </div>
           ))}
         </div>
+        {hasChords && (
+          <label className="row">
+            <input type="checkbox" checked={playChords} onChange={(e) => setPlayChords(e.target.checked)} />
+            🎸 The band plays these chords (instead of the ones it has now), each where it stands over the words
+          </label>
+        )}
         <div className="row">
-          <button className="btn primary" onClick={() => onSave(matched)}>
+          <button className="btn primary" onClick={() => onSave(blocks, hasChords && playChords)}>
             Save lyrics
           </button>
           <button className="btn" onClick={onClose}>

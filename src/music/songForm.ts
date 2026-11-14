@@ -4,6 +4,10 @@ import type { Member } from './band'
 import { soloistFor } from './band'
 import type { Chord } from './theory'
 import { parseChord } from './theory'
+import type { LyricLine } from './lyrics'
+import { lyricTimeline } from './lyrics'
+import type { WordLine } from './wordChords'
+import { hasWordChords, wordAt, wordLines, wordStarts } from './wordChords'
 
 export interface SongSection {
   name: string // "Verse", "Chorus", "Solo"…
@@ -43,6 +47,8 @@ export interface SongSetup {
   formBars?: number[]
   barChords?: string[]
   useRecordedChords?: boolean
+  // The words were pasted with chords over them (from a chord site): the band plays those chords.
+  wordChords?: boolean
 }
 
 export interface Step {
@@ -77,7 +83,7 @@ export function songSteps(song: SongSetup): Step[] {
     const base = { section: sec.name, solo: sec.solo, formIdx, passes }
     let first = true
 
-    if (measured && song.useRecordedChords && song.barChords) {
+    if (measured && song.useRecordedChords && song.barChords && !playsWordChords(song)) {
       // The record's own chords, bar by bar (two chords in a bar get two beats each).
       for (let j = 0; j < measured; j++) {
         const halves = (song.barChords[bar + j] ?? 'N').split('|')
@@ -105,7 +111,116 @@ export function songSteps(song: SongSetup): Step[] {
     }
     bar += measured ?? total / 4
   })
-  return steps
+  return playsWordChords(song) ? chordsFromWords(steps, song) : steps
+}
+
+/** Pasted chords over the words win over the chords the app found on the record. */
+const playsWordChords = (song: SongSetup) => !!song.wordChords && !!song.lyrics?.some(hasWordChords)
+
+/**
+ * When each chord written over a section's words comes in, on the song's beat clock: at the word it stands
+ * over (sung then, by the words' timing), chords after the words spread out until the next line, and a
+ * section written as chords only (an intro, a solo) gets a bar per chord, round and round.
+ */
+export function wordChordEvents(rows: WordLine[], lines: LyricLine[], seg: { start: number; beats: number }): { beat: number; chord: string }[] {
+  const end = seg.start + seg.beats
+  const sung = rows.filter((r) => r.text)
+  const ev: { beat: number; chord: string }[] = []
+  if (!sung.length || lines.length !== sung.length) {
+    const all = rows.flatMap((r) => r.chords.map((c) => c.chord))
+    if (all.length) for (let b = seg.start, i = 0; b < end; b += 4, i++) ev.push({ beat: b, chord: all[i % all.length] })
+    return ev
+  }
+  let k = -1
+  let pending: string[] = []
+  const flush = (from: number, to: number) => {
+    pending.forEach((c, j) => ev.push({ beat: from + (j * Math.max(0, to - from)) / pending.length, chord: c }))
+    pending = []
+  }
+  for (const r of rows) {
+    if (!r.text) {
+      pending.push(...r.chords.map((c) => c.chord))
+      continue
+    }
+    const L = lines[k + 1]
+    const prev = lines[k]
+    flush(prev ? Math.min(prev.end, L.start) : Math.min(seg.start, L.start), L.start)
+    k++
+    for (const c of r.chords) {
+      if (c.at >= r.text.length) pending.push(c.chord)
+      else if (L.words) ev.push({ beat: L.words[Math.min(wordAt(r.text, c.at), L.words.length - 1)], chord: c.chord })
+      else ev.push({ beat: L.start + (c.at / r.text.length) * (L.end - L.start), chord: c.chord })
+    }
+  }
+  flush(Math.min(lines[k].end, end), end)
+  return ev.sort((a, b) => a.beat - b.beat)
+}
+
+/** The song's steps with every section that has chords over its words playing those chords (same lengths). */
+export function chordsFromWords(steps: Step[], song: SongSetup): Step[] {
+  const segs = songSegments(steps)
+  const groups: Step[][] = []
+  for (const s of steps) {
+    if (s.first || !groups.length) groups.push([])
+    groups[groups.length - 1].push(s)
+  }
+  const lines = lyricTimeline({ lyrics: song.lyrics, lyricBeats: song.lyricBeats, lyricWords: song.lyricWords, vocalPhrases: song.vocalPhrases }, segs)
+  const out: Step[] = []
+  let carry: string | null = null
+  segs.forEach((seg, gi) => {
+    const own = groups[gi]
+    const rows = wordLines(song.lyrics?.[seg.formIdx])
+    const ev = rows.some((r) => r.chords.length) ? wordChordEvents(rows, lines.filter((l) => l.formIdx === seg.formIdx), seg) : []
+    if (!ev.length) {
+      out.push(...own)
+      carry = own[own.length - 1]?.chord.symbol ?? carry
+      return
+    }
+    // Each change on the half bar (or the beat, when two land on the same half bar).
+    const changes = new Map<number, string>()
+    let lastQ = -1
+    for (const e of ev) {
+      let q = Math.max(0, Math.round((e.beat - seg.start) / 2) * 2)
+      if (q <= lastQ && changes.size) q = lastQ + 1
+      if (q >= seg.beats) {
+        carry = e.chord
+        continue
+      }
+      changes.set(q, e.chord)
+      lastQ = q
+    }
+    // Where the section's passes start, so the chord strip still shows one pass at a time.
+    const passStarts = new Map<number, number>()
+    let acc = 0
+    for (const s of own) {
+      if (!passStarts.has(s.pass ?? 0)) passStarts.set(s.pass ?? 0, acc)
+      acc += s.beats
+    }
+    const passAt = (b: number) => {
+      let p = 0
+      for (const [pass, at] of passStarts) if (at <= b) p = Math.max(p, pass)
+      return p
+    }
+    const points = [...new Set([0, ...changes.keys(), ...passStarts.values()])].filter((b) => b < seg.beats).sort((a, b) => a - b)
+    let cur = changes.get(0) ?? carry ?? ev[0].chord
+    const mine: Step[] = []
+    points.forEach((b, j) => {
+      cur = changes.get(b) ?? cur
+      const beats = (points[j + 1] ?? seg.beats) - b
+      const chord = parseChord(cur)
+      if (!chord) return
+      const pass = passAt(b)
+      const prev = mine[mine.length - 1]
+      if (prev && prev.chord.symbol === chord.symbol && prev.pass === pass) prev.beats += beats
+      else mine.push({ ...own[0], chord, beats, first: !mine.length, pass })
+    })
+    // A chord the app can't read leaves a gap: those beats go to the chord before.
+    const got = mine.reduce((a, s) => a + s.beats, 0)
+    if (mine.length && got < seg.beats) mine[mine.length - 1].beats += seg.beats - got
+    out.push(...(mine.length ? mine : own))
+    carry = cur
+  })
+  return out
 }
 
 export interface Position {
@@ -239,28 +354,94 @@ export function songSegments(steps: Step[]): Segment[] {
   return out
 }
 
-/** One entry of the song form on the song sheet: its chords bar by bar (one pass) and the singer's words. */
+/** A piece of a sung line with the chord that comes in on its first letter (null: before the first chord). */
+export interface SheetChunk {
+  chord: string | null
+  text: string
+}
+
+/** One entry of the song form on the song sheet: its chords bar by bar (one pass), and its words with the chords over them. */
 export interface SheetSection {
   formIdx: number
   name: string
   solo: boolean
   bars: string[][] // chord symbols in each 4-beat bar of one pass of the pattern
   passes: number // how many times that pattern is played
-  lines: string[] // the words, line by line ('' for none)
+  rows: SheetChunk[][] // the words line by line, chords over them (empty: no words)
+}
+
+function chunksOf(r: WordLine): SheetChunk[] {
+  if (!r.chords.length) return [{ chord: null, text: r.text }]
+  const cs = [...r.chords].sort((a, b) => a.at - b.at)
+  const out: SheetChunk[] = []
+  if (cs[0].at > 0) out.push({ chord: null, text: r.text.slice(0, cs[0].at) })
+  cs.forEach((c, j) => out.push({ chord: c.chord, text: r.text.slice(Math.min(c.at, r.text.length), Math.min(cs[j + 1]?.at ?? r.text.length, r.text.length)) }))
+  return out
+}
+
+/** Puts the chords the band plays over the words, each at the word sung when it comes in. */
+function alignChords(texts: string[], times: { start: number; end: number; words?: number[] }[], events: { beat: number; chord: string }[]): WordLine[] {
+  const rows: WordLine[] = texts.map((text) => ({ text, chords: [] }))
+  const lead: string[] = []
+  for (const e of events) {
+    let k = -1
+    times.forEach((t, j) => {
+      if (t.start <= e.beat + 0.25) k = j
+    })
+    if (k < 0) {
+      lead.push(e.chord)
+      continue
+    }
+    const L = times[k]
+    const text = rows[k].text
+    const starts = wordStarts(text)
+    let at: number
+    if (L.end > L.start && e.beat > L.end + 0.25) at = text.length // after the words, before the next line
+    else if (L.words) {
+      let w = 0
+      L.words.forEach((b, j) => {
+        if (b <= e.beat + 0.25) w = j
+      })
+      at = starts[w] ?? 0
+    } else {
+      const pos = ((e.beat - L.start) / Math.max(0.01, L.end - L.start)) * text.length
+      at = starts.reduce((best, x) => (Math.abs(x - pos) < Math.abs(best - pos) ? x : best), 0)
+    }
+    rows[k].chords.push({ at, chord: e.chord })
+  }
+  return lead.length ? [{ text: '', chords: lead.map((chord) => ({ at: 0, chord })) }, ...rows] : rows
 }
 
 /**
  * The whole song for the side sheet, in playing order: the chords as the band plays them (transposed, or the
- * record's chords when those are used) and the words per section.
+ * record's chords when those are used) and the words per section with the chords over them, as chord sites
+ * write them. Chords pasted over the words are shown where they were written; otherwise each chord sits over
+ * the word sung when it comes in (from the words' timing in `lines`, else spread over the section).
  */
-export function songSheet(steps: Step[], lyrics: string[] | undefined): SheetSection[] {
+export function songSheet(
+  steps: Step[],
+  lyrics: string[] | undefined,
+  opts: { lines?: LyricLine[]; wordChords?: boolean; mapChord?: (symbol: string) => string } = {},
+): SheetSection[] {
   const out: SheetSection[] = []
+  const events = new Map<number, { beat: number; chord: string }[]>()
+  const segStart = new Map<number, { start: number; beats: number }>()
+  let beat = 0
   let beatInBar = 0
   for (const s of steps) {
+    if (s.formIdx >= 0) {
+      const ev = events.get(s.formIdx) ?? []
+      if (ev[ev.length - 1]?.chord !== s.chord.symbol) ev.push({ beat, chord: s.chord.symbol })
+      events.set(s.formIdx, ev)
+      const seg = segStart.get(s.formIdx) ?? { start: beat, beats: 0 }
+      seg.beats += s.beats
+      segStart.set(s.formIdx, seg)
+    }
+    beat += s.beats
     if (s.formIdx < 0) continue
     let sec = out[out.length - 1]
     if (!sec || sec.formIdx !== s.formIdx) {
-      sec = { formIdx: s.formIdx, name: s.section, solo: s.solo, bars: [], passes: s.passes ?? 1, lines: (lyrics?.[s.formIdx] ?? '').split('\n').map((l) => l.trim()).filter(Boolean) }
+      sec = { formIdx: s.formIdx, name: s.section, solo: s.solo, bars: [], passes: s.passes ?? 1, rows: [] }
       out.push(sec)
       beatInBar = 0
     }
@@ -274,6 +455,24 @@ export function songSheet(steps: Step[], lyrics: string[] | undefined): SheetSec
       left -= take
       beatInBar = (beatInBar + take) % 4
     }
+  }
+  const map = opts.mapChord ?? ((c: string) => c)
+  for (const sec of out) {
+    const written = wordLines(lyrics?.[sec.formIdx])
+    if (!written.some((r) => r.text)) continue
+    let rows: WordLine[]
+    if (opts.wordChords && written.some((r) => r.chords.length)) rows = written.map((r) => ({ ...r, chords: r.chords.map((c) => ({ ...c, chord: map(c.chord) })) }))
+    else {
+      const texts = written.filter((r) => r.text).map((r) => r.text)
+      const seg = segStart.get(sec.formIdx)!
+      const timed = opts.lines?.filter((l) => l.formIdx === sec.formIdx) ?? []
+      const times =
+        timed.length === texts.length
+          ? timed
+          : texts.map((_, i) => ({ start: seg.start + (i * seg.beats) / texts.length, end: seg.start + ((i + 1) * seg.beats) / texts.length }))
+      rows = alignChords(texts, times, events.get(sec.formIdx) ?? [])
+    }
+    sec.rows = rows.map(chunksOf)
   }
   return out
 }

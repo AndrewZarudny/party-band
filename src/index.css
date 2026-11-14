@@ -3421,9 +3421,41 @@ code {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.ss-words p {
-  margin: 2px 0;
-  line-height: 1.4;
+.ss-in-bar + .ss-in-bar {
+  margin-left: 6px;
+}
+/* Words with the chords over them, the way chord sites write songs. */
+.ss-words {
+  margin: 6px 0 4px;
+}
+.ss-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  margin: 0 0 6px;
+  line-height: 1.3;
+}
+.ss-chunk {
+  display: inline-flex;
+  flex-direction: column;
+  max-width: 100%;
+}
+.ss-chunk .ss-chord {
+  align-self: flex-start;
+  margin-right: 0.35em;
+  padding: 0 1px;
+  color: var(--chord);
+  font-weight: 700;
+  font-size: 0.92em;
+}
+.ss-chunk.after {
+  margin-left: 0.5em; /* chords played after the last word */
+}
+.ss-gap {
+  min-height: 1.2em;
+}
+.ss-text {
+  white-space: pre-wrap;
 }
 @media (min-width: 1100px) {
   .jam-mode.with-sheet {
@@ -3435,9 +3467,6 @@ code {
   cursor: help;
   padding: 0 2px;
   border-radius: 3px;
-}
-.ss-chord + .ss-chord {
-  margin-left: 6px;
 }
 .ss-chord:hover,
 .ss-chord:focus-visible {

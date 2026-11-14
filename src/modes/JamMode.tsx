@@ -645,7 +645,6 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
       /* storage unavailable */
     }
   }
-  const sheet = useMemo(() => (song ? songSheet(steps, song.lyrics) : []), [song, steps])
   const setPos = song ? set.indexOf(libKey(song)) : -1
   const nextInSet = setPos >= 0 && setPos + 1 < set.length ? (loadLibrary().find((sg) => libKey(sg) === set[setPos + 1]) ?? null) : null
   // The looped section belongs to its song: another song starts unlooped.
@@ -670,6 +669,13 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
     return { lyricBeats, lyricWords }
   }, [song, rec, segments])
   const lyricLines = useMemo(() => lyricTimeline({ lyrics: song?.lyrics, vocalPhrases: song?.vocalPhrases, ...timing }, segments), [song, timing, segments])
+  // The song sheet: chords over the words (pasted chords moved into the key everyone plays in).
+  const sheet = useMemo(() => {
+    if (!song) return []
+    const shift = song.transpose ?? 0
+    const flats = prefersFlats((parseChord(song.key)?.root ?? 0) + shift, song.minor)
+    return songSheet(steps, song.lyrics, { lines: lyricLines, wordChords: song.wordChords, mapChord: (c) => (shift ? transposeChord(c, shift, flats) : c) })
+  }, [song, steps, lyricLines])
 
   // Backing track: by default it plays only the parts nobody in tonight's band covers.
   const [partOverride, setPartOverride] = useState<Partial<Record<BackingPart, boolean>>>({})

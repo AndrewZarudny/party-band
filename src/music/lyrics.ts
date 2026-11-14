@@ -1,6 +1,8 @@
 // Matching pasted lyrics to a song's form. The app never fetches or generates lyrics:
 // the singer's words come from the band (pasted from their own songbook or lyrics source).
 
+import { normChord, stripChords } from './wordChords'
+
 const KINDS = 'intro|verse|pre[\\s-]?chorus|post[\\s-]?chorus|chorus|refrain|hook|bridge|middle 8|breakdown|interlude|solo|outro|coda'
 // A heading looks like a heading: any line in square brackets ("[Verse 2]", "[Guitar Solo]", "[Instrumental]"),
 // "(Chorus)", or just a section name with an optional number and colon ("Chorus:", "Verse 2"). A lyric line that
@@ -10,6 +12,7 @@ const KIND_IN = new RegExp(`\\b(${KINDS})\\b`, 'i')
 /** The section a heading line names (or its text, for labels like "[Instrumental]"), else null. */
 function headingKind(line: string): string | null {
   const bracket = /^\s*\[([^\]\n]+)\]\s*$/.exec(line)
+  if (bracket && normChord(bracket[1])) return null // a chord on a line of its own, not a heading
   if (bracket) return KIND_IN.exec(bracket[1])?.[1] ?? bracket[1].trim()
   const m = PLAIN.exec(line)
   return m ? (m[1] ?? m[2]) : null
@@ -80,8 +83,12 @@ export function matchLyrics(text: string, form: string[], soloSections: Set<stri
   return out
 }
 
-/** The non-empty lines of a section's words. */
-export const sungLines = (words: string | undefined) => (words ?? '').split('\n').filter((l) => l.trim())
+/** The sung lines of a section's words (without chords written over them; lines of chords only are left out). */
+export const sungLines = (words: string | undefined) =>
+  (words ?? '')
+    .split('\n')
+    .map(stripChords)
+    .filter((l) => l.trim())
 
 /** Rough syllable count: vowel groups, at least one per line. */
 const syllables = (line: string) => Math.max(1, (line.toLowerCase().match(/[aeiouyаеёиоуыэюя]+/g) ?? []).length)
