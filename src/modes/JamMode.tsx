@@ -206,6 +206,12 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
     return all.map((x) => ({ ...x, chord: parseChord(transposeChord(x.chord.symbol, shift, flats)) ?? x.chord }))
   }, [song, progChords, beatsPerChord])
   const chords = useMemo(() => steps.map((x) => x.chord), [steps])
+  // A set: songs played back to back (by songKey). The one after the song loaded comes up when it ends.
+  const [set, setSet] = useState<string[]>([])
+  const playSet = (songs: SongSetup[]) => {
+    setSet(songs.map(libKey))
+    playSong(songs[0] ?? null)
+  }
   const playSong = (sg: SongSetup | null) => {
     if (running) stop()
     setSongState(sg)
@@ -607,6 +613,8 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   }, [chords])
 
   const segments = useMemo(() => songSegments(steps), [steps])
+  const setPos = song ? set.indexOf(libKey(song)) : -1
+  const nextInSet = setPos >= 0 && setPos + 1 < set.length ? (loadLibrary().find((sg) => libKey(sg) === set[setPos + 1]) ?? null) : null
   // The looped section belongs to its song: another song starts unlooped.
   const [loop, setLoop] = useState<{ song: string; idx: number } | null>(null)
   const loopIdx = loop && loop.song === songKey && loop.idx < segments.length ? loop.idx : null
@@ -995,6 +1003,7 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
           singers={band.filter((m) => m.instrument === 'vocals').map((m) => m.name)}
           historyTick={historyTick}
           onPlay={playSong}
+          onPlaySet={playSet}
           onUpdate={(sg) => {
             // A new key for the song (transposed, or a corrected key): the scale and solos follow.
             if (sg.key !== songSel?.key || (sg.transpose ?? 0) !== (songSel?.transpose ?? 0)) {
@@ -1144,7 +1153,11 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
           beat={songBeat}
           bpm={bpm}
           ended={ended && !running}
-          onSeek={seek}
+          onSeek={(b) => {
+            // Jumping while a section loops: the loop moves with you.
+            if (loopIdx !== null) setLoop({ song: songKey, idx: Math.max(0, segmentAt(segments, b)) })
+            seek(b)
+          }}
           loopIdx={loopIdx}
           onLoop={(i) => {
             setLoop(i === null ? null : { song: songKey, idx: i })
@@ -1152,6 +1165,27 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
             if (i !== null && segmentAt(segments, songBeat) !== i) seek(segments[i].start)
           }}
         />
+      )}
+      {song && setPos >= 0 && (
+        <div className="set-bar hint">
+          <span>
+            🎶 Set: song {setPos + 1} of {set.length}
+            {nextInSet ? ` · next: ${nextInSet.title}` : ' · the last one'}
+          </span>
+          {nextInSet && ended && !running && (
+            <button className="btn small primary" onClick={() => playSong(nextInSet)} data-pedal="next" title="The next pedal">
+              ▶ Load {nextInSet.title}
+            </button>
+          )}
+          {nextInSet && !(ended && !running) && (
+            <button className="btn small" onClick={() => playSong(nextInSet)} title="Skip to the next song in the set">
+              Skip to it
+            </button>
+          )}
+          <button className="link" onClick={() => setSet([])}>
+            end the set
+          </button>
+        </div>
       )}
 
       <div className="chord-strip">

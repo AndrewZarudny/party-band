@@ -3,6 +3,8 @@ import type { SongSetup } from '../music/songForm'
 import { sectionBars } from '../music/songForm'
 import { clearHistory, loadFavorites, loadHistory, loadLibrary, removeFromLibrary, setFavorite, songKey } from '../music/songLibrary'
 import { SongSetupBar } from './SongSetupBar'
+import { agoText, learnedState, loadSongNote, normTitle, rehearseList, saveSongNote, songStatus } from '../music/songStatus'
+import { loadGoal } from '../lessons/goal'
 
 const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`
 const when = (t: number) => {
@@ -17,10 +19,13 @@ export function SongsPanel(props: {
   song: SongSetup | null
   onPlay: (s: SongSetup | null) => void
   onUpdate: (s: SongSetup) => void
+  /** Plays songs back to back: the first is loaded, the next one comes up when it ends. */
+  onPlaySet: (songs: SongSetup[]) => void
   singers: string[]
   historyTick: number
 }) {
   const [, refresh] = useState(0)
+  const [noteOpen, setNoteOpen] = useState<string | null>(null)
   const [showAll, setShowAll] = useState(false)
   const [favOnly, setFavOnly] = useState(false)
   const favs = loadFavorites()
@@ -31,6 +36,9 @@ export function SongsPanel(props: {
     .map((x) => x.s)
   const shown = favOnly ? library.filter((s) => favs.has(songKey(s))) : library
   const history = loadHistory()
+  const toRehearse = rehearseList(library, history)
+  const goal = loadGoal()
+  const isGoal = (s: SongSetup) => !!goal && normTitle(goal.title) === normTitle(s.title)
   const current = props.song ? songKey(props.song) : ''
   const totalMin = (s: SongSetup) => {
     const beats = s.form.reduce((a, n) => a + (sectionBars(s.sections.find((x) => x.name === n) ?? { name: n, chords: [], solo: false }) * 4), 0)
@@ -57,9 +65,38 @@ export function SongsPanel(props: {
             )}
           </div>
           {!library.length && <p className="hint">Songs you set up appear here, with their lyrics and form changes.</p>}
+          {toRehearse.length > 0 && library.length > 1 && (
+            <div className="rehearse-box">
+              <b>To rehearse</b>
+              <ul>
+                {toRehearse.slice(0, 4).map(({ song: s, st }) => (
+                  <li key={songKey(s)}>
+                    <button className="link" onClick={() => props.onPlay(s)}>
+                      {s.title}
+                    </button>{' '}
+                    <small>{st.rehearse}</small>
+                  </li>
+                ))}
+              </ul>
+              {toRehearse.length > 1 && (
+                <button className="btn small" onClick={() => props.onPlaySet(toRehearse.slice(0, 4).map((x) => x.song))} title="Each one comes up when the one before ends">
+                  ▶ Rehearse {Math.min(4, toRehearse.length)} back to back
+                </button>
+              )}
+            </div>
+          )}
+          {favOnly && shown.length > 1 && (
+            <button className="btn small" onClick={() => props.onPlaySet(shown)} title="Each one comes up when the one before ends">
+              ▶ Play the favourites back to back
+            </button>
+          )}
           <ul>
-            {shown.map((s) => (
-              <li key={songKey(s)} className={songKey(s) === current ? 'on' : ''}>
+            {shown.map((s) => {
+              const st = songStatus(s, history)
+              const learned = learnedState(s.title)
+              const note = loadSongNote(songKey(s))
+              return (
+                <li key={songKey(s)} className={`${songKey(s) === current ? 'on' : ''} ${isGoal(s) ? 'goal' : ''}`}>
                 <button
                   className={`icon-btn fav ${favs.has(songKey(s)) ? 'on' : ''}`}
                   title={favs.has(songKey(s)) ? 'Remove from favourites' : 'Add to favourites'}
@@ -78,6 +115,29 @@ export function SongsPanel(props: {
                     {s.minor ? 'm' : ''} · {s.bpm} BPM · {totalMin(s)}
                     {s.lyrics?.some(Boolean) ? ' · 🎤 lyrics' : ''}
                   </small>
+                  <small className="song-state">
+                    {isGoal(s) && <span className="goal-tag">🎯 your goal song</span>}
+                    {st.lastAt !== null ? `played ${agoText(st.lastAt)} · ${st.finished}/${st.plays} to the end` : 'not played yet'}
+                    {learned?.state === 'ready' && (
+                      <span className="ready-tag" title="Your part: a whole run at full tempo in Learn a song">
+                        🎸 band-ready
+                      </span>
+                    )}
+                    {learned?.state === 'learning' && (
+                      <span title="Your part in Learn a song: parts passed">
+                        🎸 {learned.done}/{learned.total} parts
+                      </span>
+                    )}
+                  </small>
+                  {note && noteOpen !== songKey(s) && <small className="song-note">📝 {note}</small>}
+                </button>
+                <button
+                  className={`icon-btn ${note ? 'on' : ''}`}
+                  title={note ? "Edit the band's notes on this song" : 'Add a note (what to watch, who plays what)'}
+                  aria-pressed={noteOpen === songKey(s)}
+                  onClick={() => setNoteOpen(noteOpen === songKey(s) ? null : songKey(s))}
+                >
+                  📝
                 </button>
                 <button
                   className="icon-btn"
@@ -91,8 +151,21 @@ export function SongsPanel(props: {
                 >
                   ×
                 </button>
+                {noteOpen === songKey(s) && (
+                  <textarea
+                    className="song-note-edit"
+                    autoFocus
+                    defaultValue={note}
+                    placeholder="Notes for this song: the tricky bit, who sings what, a capo…"
+                    onBlur={(e) => {
+                      saveSongNote(songKey(s), e.target.value)
+                      setNoteOpen(null)
+                    }}
+                  />
+                )}
               </li>
-            ))}
+              )
+            })}
           </ul>
         </section>
 

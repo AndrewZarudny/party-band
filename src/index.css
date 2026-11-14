@@ -2731,6 +2731,59 @@ code {
   color: var(--muted);
   font-size: var(--fs-sm);
 }
+.songs-cols li {
+  flex-wrap: wrap;
+}
+.song-lib li.goal {
+  box-shadow: inset 3px 0 0 var(--target-text);
+}
+.song-row .song-state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+.goal-tag,
+.ready-tag {
+  color: var(--target-text);
+  font-weight: 600;
+}
+.song-row .song-note {
+  color: var(--text);
+  font-style: italic;
+  white-space: pre-wrap;
+}
+.song-note-edit {
+  flex-basis: 100%;
+  min-height: 60px;
+  font: inherit;
+  font-size: var(--fs-ui);
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+}
+.rehearse-box {
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+.rehearse-box ul {
+  gap: 2px !important;
+}
+.rehearse-box small {
+  color: var(--muted);
+}
+.set-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
 .hist-main {
   flex: 1;
   display: flex;
