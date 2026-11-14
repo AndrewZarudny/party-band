@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import { engine } from '../audio/engine'
-import { useEngineState, usePitch } from '../audio/hooks'
+import { useEngineState, useLevel, usePitch } from '../audio/hooks'
 import { freqToMidiFloat, midiName, midiToFreq, noteName } from '../music/theory'
 import { TUNINGS, describeTuning, getSongTuning, onSongTuning, tuningLabel } from '../music/tunings'
 
@@ -15,6 +15,7 @@ function savedChoice() {
 export function TunerMode({ onConnect }: { onConnect: () => void }) {
   const e = useEngineState()
   const pitch = usePitch()
+  const level = useLevel()
   const [choice, setChoice] = useState(savedChoice)
   const [song, setSong] = useState(getSongTuning)
   useEffect(() => onSongTuning(() => setSong(getSongTuning())), [])
@@ -126,7 +127,7 @@ export function TunerMode({ onConnect }: { onConnect: () => void }) {
               </span>
             </>
           ) : (
-            'Play one open string'
+            <NoNote level={level} />
           )}
         </div>
       </div>
@@ -140,5 +141,58 @@ export function TunerMode({ onConnect }: { onConnect: () => void }) {
       </div>
       <p className="hint">The amp is muted while you tune. Pluck one string at a time and let it ring.</p>
     </div>
+  )
+}
+
+/** Why no note shows yet: audio paused, no sound on the input (or the guitar on the other input), or sound with no clear note. */
+function NoNote({ level }: { level: number }) {
+  const e = useEngineState()
+  // Input levels change without a render (a silent input stays at exactly 0): look again a few times a second.
+  const [, tick] = useReducer((x: number) => x + 1, 0)
+  useEffect(() => {
+    const t = setInterval(tick, 400)
+    return () => clearInterval(t)
+  }, [])
+  if (e.needsResume)
+    return (
+      <button className="btn primary" onClick={() => void engine.ensureContext()}>
+        Sound is paused: click to start it again
+      </button>
+    )
+  // The engine only looks for a note above this level (see the analysis loop).
+  const heard = level > 0.0012
+  const ch = e.channel === 'auto' ? e.autoPick : e.channel
+  const other = ch === 'left' ? 'right' : ch === 'right' ? 'left' : null
+  const otherLevel = other === 'left' ? e.chLevels[0] : other === 'right' ? e.chLevels[1] : 0
+  const name = (c: 'left' | 'right') => (c === 'left' ? 'Input 1' : 'Input 2')
+  const meter = (
+    <span className="tuner-level" title="What the tuner hears">
+      <i style={{ width: `${Math.min(100, Math.sqrt(level / 0.05) * 100)}%` }} className={heard ? 'on' : ''} />
+    </span>
+  )
+  if (heard)
+    return (
+      <>
+        Play one open string and let it ring{meter}
+        <span className="hz">Hearing sound but no clear note yet: one string at a time, no chords.</span>
+      </>
+    )
+  if (other && otherLevel > 0.002)
+    return (
+      <>
+        Your guitar seems to be on {name(other)}
+        {meter}
+        <button className="btn" onClick={() => engine.setChannel(other)}>
+          Listen to {name(other)}
+        </button>
+      </>
+    )
+  return (
+    <>
+      Play one open string{meter}
+      <span className="hz">
+        {level > 0 ? 'Too quiet to hear a note' : 'No sound from the guitar input'} ({ch === 'mix' ? 'both inputs' : name(ch)}): check the cable, the INST button and the gain knob on the interface.
+      </span>
+    </>
   )
 }
