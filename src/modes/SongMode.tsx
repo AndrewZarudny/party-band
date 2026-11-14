@@ -23,7 +23,7 @@ import type { SongLevels } from '../music/songLevels'
 import { BAND_READY_PCT, MIN_NOTES, PASS_PCT, PASS_SPEED, levelPassed, loadLevels, nextLevel, nextSongSpeed, saveLevels, songSections, withPass } from '../music/songLevels'
 import { hasSavedProgress, loadProgress, saveProgress } from '../lessons/progress'
 import { coachRunEnded, liveCoachOn, setCoachPlaying } from '../lessons/liveCoach'
-import { loadRuns, partTrend, saveRun } from '../music/songRuns'
+import { loadRuns, partTrend, saveRun, weakestPart } from '../music/songRuns'
 
 interface Conversion {
   to: number[] // low → high
@@ -179,6 +179,8 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
   const countRef = useRef<HitCount>({ hit: 0, miss: 0 })
   // The last full pass of the level being played, for the meter under the level buttons.
   const [lastPass, setLastPass] = useState<{ pct: number; passed: boolean } | null>(null)
+  // The part that needs work most (from the run history), worked out after each run and on a new song.
+  const [weakIdx, setWeakIdx] = useState<number | null>(null)
   const [countBeat, setCountBeat] = useState<number | null>(null)
   const finishRef = useRef<() => void>(() => {})
   const autoLevel = useRef(false) // opened from the Lessons session: start on the next level not passed yet
@@ -306,6 +308,12 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
 
   // The song as levels: one per marked section of the tab, then the whole song.
   const sections = useMemo(() => (score ? songSections(score.masterBars.map((mb) => mb.section?.text ?? null)) : []), [score])
+
+  useEffect(() => {
+    const id = entryRef.current?.id
+    const sameTrack = levels?.track === track?.name
+    setWeakIdx(id && sections.length > 1 ? weakestPart(loadRuns(id), sections.length, (i) => (sameTrack ? (levels?.passed[String(i)]?.pct ?? null) : null)) : null)
+  }, [sections, levels, levelNote, track])
 
   /** Plays one level for a pass: only that section, from its first bar, with the count of right notes started again. */
   const startLevel = useCallback(
@@ -956,6 +964,11 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
               {levels?.track === track?.name && levels?.full ? '✓ ' : ''}
               Whole song{levels?.track === track?.name && levels?.ready ? ' · band-ready' : ''}
             </button>
+            {weakIdx !== null && level !== weakIdx && (
+              <button className="btn small" disabled={!ready} onClick={() => startLevel(weakIdx)} title="The part with the lowest recent runs that isn't passed well yet">
+                Practise the weakest: {sections[weakIdx]?.name}
+              </button>
+            )}
             {/* On to the next part (the next pedal); from the last part, the whole song. */}
             {typeof level === 'number' && (
               <button className="btn small" disabled={!ready} onClick={() => startLevel(level + 1 < sections.length ? level + 1 : 'full')} data-pedal="next" title="Next pedal">
