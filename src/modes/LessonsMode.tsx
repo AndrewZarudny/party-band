@@ -35,7 +35,7 @@ import {
   withSongStepsFixed,
   withTodayPlan,
 } from '../lessons/session'
-import { coldRun, coldSpeedFor, reviewBrake } from '../lessons/review'
+import { coldRun, coldSpeedFor, newestCold, reviewBrake } from '../lessons/review'
 import { isJam, tabLevelFor } from '../lessons/listen'
 import { practice } from '../account/activity'
 import { openAccountDialog, useAccount } from '../account/session'
@@ -730,6 +730,10 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
       <ColdStart
         title={lesson.title}
         goal={lesson.goal}
+        last={(() => {
+          const c = newestCold(progress.lessons[lesson.id])
+          return c ? { day: c.d, score: c.score, best: progress.lessons[lesson.id]?.best ?? c.score } : null
+        })()}
         bpm={bpmAt(lesson, speed)}
         speed={speed}
         onStart={() => startRun({ cold: true, quiet: false, shuffle: false, tab: 'hidden', speed, passes: 1 })}

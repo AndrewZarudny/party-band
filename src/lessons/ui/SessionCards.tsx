@@ -117,7 +117,24 @@ export function PainNote({ pain }: { pain: PainLevel | null }) {
 }
 
 /** Before a cold-start test: what it is and why there's no warm-up or tab. */
-export function ColdStart({ title, goal, bpm, speed, onStart, onBack }: { title: string; goal?: string; bpm: number; speed?: number; onStart: () => void; onBack: () => void }) {
+export function ColdStart({
+  title,
+  goal,
+  bpm,
+  speed,
+  last,
+  onStart,
+  onBack,
+}: {
+  title: string
+  goal?: string
+  bpm: number
+  speed?: number
+  /** The last first try and the best ever, for a target and some perspective. */
+  last?: { day: string; score: number; best: number } | null
+  onStart: () => void
+  onBack: () => void
+}) {
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === 'Escape') onBack()
@@ -137,6 +154,11 @@ export function ColdStart({ title, goal, bpm, speed, onStart, onBack }: { title:
         </p>
       )}
       <p>First try, no warm-up, no tab. This shows what stuck since last time, not what you can do after practising.</p>
+      {last && (
+        <p className="sc-facts ls-num">
+          Last first try ({new Date(last.day + 'T12:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}): {last.score}% · your best: {last.best}%
+        </p>
+      )}
       <p className="sc-facts ls-num">
         {bpm} BPM{speed !== undefined && speed < 1 ? ` (${Math.round(speed * 100)}%)` : ''} · no tab
       </p>
