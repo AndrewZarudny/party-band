@@ -41,6 +41,8 @@ import { BandSoundSwitch } from '../components/BandSound'
 import type { KeysVoicing } from '../music/parts'
 import { LooperPanel } from '../components/LooperPanel'
 import { useLooper } from '../audio/looper'
+import { coachRunEnded, liveCoachOn, setCoachActions } from '../lessons/liveCoach'
+import type { CoachActions } from '../lessons/liveCoach'
 import type { JamSummary } from '../music/jamSummary'
 import { emptyJamCounts, jamSummary } from '../music/jamSummary'
 import { setCoachPlaying } from '../lessons/liveCoach'
@@ -249,8 +251,10 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   })
   const backing = useRef<BackingBand | null>(null)
   const [countIn, setCountIn] = useState(0)
-  const settings = useRef({ bpm, beatsPerChord, click, auto, len: chords.length, steps, isSong: !!song, total: totalBeats(steps) })
-  settings.current = { bpm, beatsPerChord, click, auto, len: chords.length, steps, isSong: !!song, total: totalBeats(steps) }
+  // What the jam is over, in words (for the live coach).
+  const words = { keyName: noteName(keyRoot, flats), scaleName: scale.label, chordNames: chords.map((c) => c.symbol) }
+  const settings = useRef({ bpm, beatsPerChord, click, auto, len: chords.length, steps, isSong: !!song, total: totalBeats(steps), ...words })
+  settings.current = { bpm, beatsPerChord, click, auto, len: chords.length, steps, isSong: !!song, total: totalBeats(steps), ...words }
   // Where we are in the song (beats from its start), for the progress bar; and whether it has ended.
   const [songBeat, setSongBeat] = useState(0)
   const [ended, setEnded] = useState(false)
@@ -283,7 +287,16 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
     if (runningRef.current) {
       runningRef.current = false
       jamCounts.current.sec = (performance.now() - jamStartedAt.current) / 1000
-      setJamDone(jamSummary(jamCounts.current))
+      const sum = jamSummary(jamCounts.current)
+      setJamDone(sum)
+      // The live coach, when on, hears about the jam (the same numbers, and what was played over).
+      const st = settings.current
+      if (sum && liveCoachOn())
+        void coachRunEnded({
+          moment: 'the player just stopped a free jam in the Jam tab: improvising over a band or click',
+          jam: { ...sum, pointer: undefined, key: st.keyName, scale: st.scaleName, chords: st.chordNames, bpm: st.bpm },
+          suggestedPointer: sum.pointer,
+        })
     }
     setRunning(false)
     setEighth(null)
@@ -729,6 +742,26 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
       [newPhrase, playFromSet],
     ),
   )
+
+  // What the live coach may do here, while the Jam tab is the one showing.
+  const coachHere = useRef(false)
+  useEffect(() => {
+    if (!active || view !== 'jam') {
+      // Left the Jam tab (it stays mounted): its actions go with it.
+      if (coachHere.current) setCoachActions(() => ({}))
+      coachHere.current = false
+      return
+    }
+    coachHere.current = true
+    const acts: CoachActions = {
+      ...(running ? { stop: { about: 'stop the band', run: () => stop() } } : { start: { about: 'start the band', run: () => void start() } }),
+      slower: { about: `the tempo 5 BPM slower (now ${bpm})`, run: () => setBpm((b) => Math.max(40, b - 5)) },
+      faster: { about: `the tempo 5 BPM faster (now ${bpm})`, run: () => setBpm((b) => Math.min(220, b + 5)) },
+      phrase: { about: 'a new phrase to play', run: () => (setMode ? playFromSet(setIdx + 1) : newPhrase(false)) },
+      ...(!auto ? { 'next-chord': { about: 'on to the next chord', run: () => nextManual(1) } } : {}),
+    }
+    setCoachActions(() => acts)
+  })
 
   // Keyboard: space = start/stop, arrows = change chord, N = new phrase.
   useEffect(() => {
