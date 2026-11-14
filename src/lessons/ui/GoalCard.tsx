@@ -70,17 +70,40 @@ export function GoalCard({ progress, songs, songParts, onOpen, onSong }: { progr
         <i style={{ width: `${Math.round(pace.share * 100)}%` }} />
         <s style={{ left: `${Math.round(pace.due * 100)}%` }} title="Where you'd be on schedule" />
       </div>
-      <div className="ls-then-row">
-        <span className="ls-muted">{STATUS[pace.status]}</span>
-        {path.next && (
-          <button className="ls-btn small primary" onClick={go}>
-            Next: {path.nextLabel}
+      {pace.status === 'done' ? (
+        <div className="ls-then-row">
+          <span>
+            🎸 <b>Goal reached:</b> {goal.title} is band-ready. Play it with the band.
+          </span>
+          <button className="ls-btn small primary" onClick={() => set(null)}>
+            Set the next goal
           </button>
-        )}
-        <button className="ls-btn small ghost" onClick={() => set(null)}>
-          Change goal
-        </button>
-      </div>
+        </div>
+      ) : pace.status === 'past' ? (
+        <div className="ls-then-row">
+          <span className="ls-muted">The date has passed. Keep the song and give it more time:</span>
+          <input type="date" value={by} min={inWeeks(1)} onChange={(ev) => setBy(ev.target.value)} aria-label="New date" />
+          {/* A new date starts the pace again from today; the progress made stays. */}
+          <button className="ls-btn small primary" onClick={() => set({ ...goal, by, setAt: Date.now() })}>
+            Move the date
+          </button>
+          <button className="ls-btn small ghost" onClick={() => set(null)}>
+            Another song
+          </button>
+        </div>
+      ) : (
+        <div className="ls-then-row">
+          <span className="ls-muted">{STATUS[pace.status]}</span>
+          {path.next && (
+            <button className="ls-btn small primary" onClick={go}>
+              Next: {path.nextLabel}
+            </button>
+          )}
+          <button className="ls-btn small ghost" onClick={() => set(null)}>
+            Change goal
+          </button>
+        </div>
+      )}
     </section>
   )
 }
