@@ -392,9 +392,16 @@ export function ResultCard({
               {speedLines(lesson, outcome.speed, pick).map((l) => (
                 <li key={l}>{l}</li>
               ))}
-              {result.passed && outcome.speed.played < 1 && <li>Pass at full tempo for the 3rd star.</li>}
+              {/* The big % is notes hit; stars also need the tempo, so say both numbers plainly. */}
+              {result.passed && outcome.speed.played < 1 && (
+                <li>
+                  The 3rd star needs a pass at full tempo, {bpmAt(lesson, 1)} BPM. This run was {bpmAt(lesson, outcome.speed.played)} BPM ({pct(outcome.speed.played)} speed), so it tops out at 2 stars even with every note hit.
+                </li>
+              )}
               {firstPass && outcome.speed.played < 1 && outcome.review && (
-                <li>Passed at {pct(outcome.speed.played)}, so the next lesson is open. It counts as learned once it's clean from cold at full tempo.</li>
+                <li>
+                  Passed at {pct(outcome.speed.played)} speed, so the next lesson is open. It counts as learned once it's clean from cold at full tempo.
+                </li>
               )}
             </ul>
           )}
