@@ -6,6 +6,7 @@ import { lessonById } from './data'
 import { closestThirdStar, dayKey, isPassed, isPlateau, thirdStar, timingHabit } from './progress'
 import { strugglingList, weekKey } from './review'
 import { goalFacts } from './goal'
+import { loadCheckIns } from './checkin'
 import { loadLevels } from '../music/songLevels'
 
 const DAY = 86_400_000
@@ -60,8 +61,12 @@ export function weeklyFacts(p: Progress, now: Date, name: string | null) {
     thirdStars: [...perLesson.keys()].map((id) => ({ id, t: thirdStar(lessonById(id), p.lessons[id]) })).filter((x) => x.t && x.t.gap <= 8).map((x) => ({ lesson: title(x.id), pointsToGo: x.t!.gap })),
     focusThisWeek: weekFocus(p, now).map((f) => ({ lesson: title(f.id), why: f.why })),
     songGoal: goalFacts((id) => isPassed(p, id), (id) => !!lessonById(id), loadLevels, now),
+    // How the sessions felt to the player, in their own words (the check-ins after each session).
+    checkIns: loadCheckIns()
+      .filter((c) => c.day >= lastWeekKey(now) && c.day < weekKey(dayKey(now)))
+      .map((c) => ({ day: c.day, felt: c.feel === 'easy' ? 'too easy' : c.feel === 'hard' ? 'too hard' : 'about right', note: c.note || null })),
     instruction:
-      'Write the weekly review: what improved last week, what is stuck and what that means, then this week\'s focus, naming the focusThisWeek lessons and why (the plan puts them first all week). "next" is the single most important thing for this week.',
+      'Write the weekly review: what improved last week, what is stuck and what that means, then this week\'s focus, naming the focusThisWeek lessons and why (the plan puts them first all week). If the player left check-ins, say how the week felt to them and answer any note. "next" is the single most important thing for this week.',
   }
 }
 

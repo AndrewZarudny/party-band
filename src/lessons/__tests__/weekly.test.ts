@@ -3,6 +3,7 @@ import type { Lesson, LessonRecord, Progress, SessionDay } from '../types'
 import { newProgress } from '../progress'
 import { lessonById } from '../data'
 import { dismissWeekly, lastWeekKey, weekFocus, weeklyDue, weeklyFacts } from '../weekly'
+import { saveCheckIn } from '../checkin'
 import { at, rec } from './fixtures'
 
 const NOW = at('2026-11-16') // a Monday: last week is 2026-11-09 to 15
@@ -46,5 +47,15 @@ describe('the weekly review', () => {
     dismissWeekly(NOW)
     expect(weeklyDue(p, NOW)).toBe(false)
     expect(weeklyDue({ ...p, sessions: { log: [], before: 0 } }, at('2026-11-23'))).toBe(false)
+  })
+})
+
+describe('the weekly review reads the check-ins', () => {
+  beforeEach(() => localStorage.clear())
+  it("last week's check-ins, in the player's words; not this week's or older ones", () => {
+    saveCheckIn({ day: '2026-11-02', feel: 'easy', note: 'old' })
+    saveCheckIn({ day: '2026-11-10', feel: 'hard', note: 'barre chords hurt' })
+    saveCheckIn({ day: '2026-11-16', feel: 'right', note: 'this week' })
+    expect(weeklyFacts(player(), NOW, null).checkIns).toEqual([{ day: '2026-11-10', felt: 'too hard', note: 'barre chords hurt' }])
   })
 })
