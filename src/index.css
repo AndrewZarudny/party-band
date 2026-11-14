@@ -3257,3 +3257,9 @@ code {
   gap: 8px 12px;
   margin: 8px 0;
 }
+
+/* Learn a song: a part button's best (or last) score and its trend. */
+.song-part-stat {
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}

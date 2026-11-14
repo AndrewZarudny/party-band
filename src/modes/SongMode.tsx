@@ -185,6 +185,8 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
   const [lastPass, setLastPass] = useState<{ pct: number; passed: boolean } | null>(null)
   // The part that needs work most (from the run history), worked out after each run and on a new song.
   const [weakIdx, setWeakIdx] = useState<number | null>(null)
+  // Each part's last runs (from the history): the last score and the direction of the last two.
+  const [partRuns, setPartRuns] = useState<Record<number, { last: number; dir: number }>>({})
   // Then and now: this month's take of the chosen piece, when it's a part of this song (recorded with the track).
   const takeRec = useRef<TakeRecorder | null>(null)
   const [takeOn, setTakeOn] = useState(false)
@@ -328,7 +330,14 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
   useEffect(() => {
     const id = entryRef.current?.id
     const sameTrack = levels?.track === track?.name
-    setWeakIdx(id && sections.length > 1 ? weakestPart(loadRuns(id), sections.length, (i) => (sameTrack ? (levels?.passed[String(i)]?.pct ?? null) : null)) : null)
+    const runs = id ? loadRuns(id) : []
+    setWeakIdx(id && sections.length > 1 ? weakestPart(runs, sections.length, (i) => (sameTrack ? (levels?.passed[String(i)]?.pct ?? null) : null)) : null)
+    const stats: Record<number, { last: number; dir: number }> = {}
+    sections.forEach((_, i) => {
+      const t = partTrend(runs, i, 2)
+      if (t.length) stats[i] = { last: t[t.length - 1], dir: t.length > 1 ? Math.sign(t[1] - t[0]) : 0 }
+    })
+    setPartRuns(stats)
   }, [sections, levels, levelNote, track])
 
   // Which part of this song is the Then & now piece, when its take for this month is still to record.
@@ -1004,9 +1013,23 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
             {sections.map((s, i) => {
               const done = levels?.track === track?.name && !!levels?.passed[String(i)]
               return (
-                <button key={i} className={`btn small${level === i ? ' on' : ''}${done ? ' done' : ''}`} disabled={!ready} onClick={() => startLevel(i)} aria-pressed={level === i} title={`Bars ${s.from + 1}–${s.to + 1}${done ? ', passed' : ''}`}>
+                <button
+                  key={i}
+                  className={`btn small${level === i ? ' on' : ''}${done ? ' done' : ''}`}
+                  disabled={!ready}
+                  onClick={() => startLevel(i)}
+                  aria-pressed={level === i}
+                  title={`Bars ${s.from + 1}–${s.to + 1}${done ? `, passed at ${levels?.passed[String(i)]?.pct}%` : ''}${partRuns[i] ? `, last run ${partRuns[i].last}%` : ''}`}
+                >
                   {done ? '✓ ' : ''}
                   {s.name}
+                  {/* The best pass, else the last run, and which way the last two went. */}
+                  {(done || partRuns[i]) && (
+                    <span className="song-part-stat">
+                      {' '}
+                      {done ? levels?.passed[String(i)]?.pct : partRuns[i].last}%{partRuns[i]?.dir > 0 ? ' ↑' : partRuns[i]?.dir < 0 ? ' ↓' : ''}
+                    </span>
+                  )}
                 </button>
               )
             })}
