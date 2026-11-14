@@ -178,7 +178,8 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
   const [notice, setNotice] = useState<string | null>(null)
   // The live coach doesn't listen during a run or the sync check, so the guitar isn't taken for speech.
   useEffect(() => {
-    setCoachPlaying(screen === 'play' || screen === 'sync')
+    setCoachPlaying('lessons', screen === 'play' || screen === 'sync')
+    return () => setCoachPlaying('lessons', false)
   }, [screen])
   const [pressure, setPressure] = useState(false)
   const [staleEngine] = useState(() => import.meta.env.DEV && !engineHasLessons())

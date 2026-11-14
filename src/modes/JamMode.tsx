@@ -73,8 +73,8 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   const [running, setRunning] = useState(false)
   // The live coach doesn't listen while the band plays.
   useEffect(() => {
-    setCoachPlaying(running)
-    return () => setCoachPlaying(false)
+    setCoachPlaying('jam', running)
+    return () => setCoachPlaying('jam', false)
   }, [running])
   const [chordIdx, setChordIdx] = useState(0)
   const [beatInChord, setBeatInChord] = useState(0)

@@ -141,8 +141,8 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
   const [playing, setPlaying] = useState(false)
   // The live coach doesn't listen while the song plays (it would hear the guitar and the track).
   useEffect(() => {
-    setCoachPlaying(playing)
-    return () => setCoachPlaying(false)
+    setCoachPlaying('song', playing)
+    return () => setCoachPlaying('song', false)
   }, [playing])
   // Account updates from elsewhere wait while the song plays.
   useEffect(() => {

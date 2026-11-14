@@ -11,3 +11,15 @@ describe('the live coach taking an action', () => {
     expect(splitAction('Nice run. Watch bar three.')).toEqual({ say: 'Nice run. Watch bar three.', action: null })
   })
 })
+
+describe('the live coach pauses while anything plays', () => {
+  it('one tab stopping does not switch listening back on while another still plays', async () => {
+    const { getLiveCoach, setCoachPlaying } = await import('../liveCoach')
+    setCoachPlaying('jam', true)
+    setCoachPlaying('lessons', true)
+    setCoachPlaying('lessons', false)
+    expect(getLiveCoach().playing).toBe(true)
+    setCoachPlaying('jam', false)
+    expect(getLiveCoach().playing).toBe(false)
+  })
+})

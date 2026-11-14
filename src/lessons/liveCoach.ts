@@ -183,7 +183,7 @@ function speak(text: string): Promise<void> {
 
 /** Stops the coach mid-sentence. */
 export function hushCoach() {
-  if ('speechSynthesis' in window) speechSynthesis.cancel()
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) speechSynthesis.cancel()
 }
 
 // ---- What the coach can do on the current screen ------------------------------------------------
@@ -279,11 +279,18 @@ export function stopLiveCoach() {
 
 export const setCoachMuted = (muted: boolean) => set({ muted, error: muted ? state.error : null })
 
-/** A run is playing (or the sync check): no listening, so the guitar isn't taken for speech. */
-export function setCoachPlaying(playing: boolean) {
-  if (playing !== state.playing) {
-    if (playing) hushCoach()
-    set({ playing })
+// Who is playing now: Lessons (a run), Learn a song (the track), Jam (the band). Each tab reports for itself, so
+// one tab stopping can't switch listening back on while another still plays.
+const players = new Set<string>()
+
+/** `source` is playing (a run, a song, the band): no listening while any source plays. */
+export function setCoachPlaying(source: string, playing: boolean) {
+  if (playing) players.add(source)
+  else players.delete(source)
+  const any = players.size > 0
+  if (any !== state.playing) {
+    if (any) hushCoach()
+    set({ playing: any })
   }
 }
 
