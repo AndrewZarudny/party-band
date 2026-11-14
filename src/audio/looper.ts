@@ -87,6 +87,7 @@ let gain: GainNode | null = null
 let starting: Promise<AudioWorkletNode | null> | null = null
 let loopStart = 0 // audio time of the loop's first downbeat (bars mode click)
 let clickTimer: number | null = null
+let locked = false // this loop follows the band: the band keeps time, no click of ours
 let countTimer: number | null = null
 
 async function ensure(): Promise<AudioWorkletNode | null> {
@@ -122,6 +123,22 @@ async function ensure(): Promise<AudioWorkletNode | null> {
   return starting
 }
 
+// The band the loop locks to (the Jam tab, while its band plays): the audio time of its beat 0 and its tempo.
+let bandClock: (() => { start: number; bpm: number } | null) | null = null
+export function setLooperBand(get: (() => { start: number; bpm: number } | null) | null) {
+  bandClock = get
+}
+
+/**
+ * Where a bars loop starts: the band's next downbeat (at least `lead` seconds away, for the count-in display),
+ * or null with no band. Pure, for tests: `now` and the band's beat-0 time are on the audio clock.
+ */
+export function nextDownbeat(now: number, band: { start: number; bpm: number }, lead = 0.3, beatsPerBar = 4): number {
+  const bar = (beatsPerBar * 60) / band.bpm
+  const n = Math.ceil((now + lead - band.start) / bar)
+  return band.start + Math.max(0, n) * bar
+}
+
 /** The round trip (guitar in, sound out): the Lessons sync's, else a typical one. */
 function roundTripMs(): number {
   return loadLatency(deviceKey())?.offsetMs ?? defaultOffsetMs()
@@ -138,7 +155,7 @@ function stopClicks() {
 /** Bars mode with the click on: clicks on the loop's beats while it records and plays (accent on bar starts). */
 function startClicks() {
   stopClicks()
-  if (!view.click || view.mode !== 'bars') return
+  if (!view.click || view.mode !== 'bars' || locked) return
   let next = 0 // beat index from loopStart
   clickTimer = window.setInterval(() => {
     const ctx = engine.ctx
@@ -164,10 +181,14 @@ export async function looperMain() {
       send({ type: 'record' })
       return
     }
-    // Bars: a one-bar count-in, then exactly that many bars from the downbeat.
+    // Bars: with the band playing, from its next downbeat at its tempo (it keeps time, no click of ours);
+    // else a one-bar count-in of our own, then exactly that many bars from the downbeat.
+    const band = bandClock?.() ?? null
+    if (band) set({ bpm: band.bpm })
     const b = beatSec()
-    const at = ctx.currentTime + 0.15 + 4 * b
-    for (let k = 0; k < 4; k++) engine.click(at - (4 - k) * b, k === 0, 0.5)
+    const at = band ? nextDownbeat(ctx.currentTime, band) : ctx.currentTime + 0.15 + 4 * b
+    if (!band) for (let k = 0; k < 4; k++) engine.click(at - (4 - k) * b, k === 0, 0.5)
+    locked = !!band
     loopStart = at
     send({ type: 'record', at, seconds: view.bars * 4 * b })
     let left = 4
@@ -249,6 +270,7 @@ export function looperMixdown(): Promise<{ blob: Blob; sec: number } | null> {
 export const looperUndo = () => send({ type: 'undo' })
 export function looperClear() {
   send({ type: 'clear' })
+  locked = false
   stopClicks()
   if (countTimer) window.clearInterval(countTimer)
   countTimer = null

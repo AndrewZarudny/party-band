@@ -21,7 +21,7 @@ const STATUS: Record<string, string> = {
   stopped: 'Stopped',
 }
 
-export function LooperPanel({ jamBpm, startOpen = false }: { jamBpm: number; startOpen?: boolean }) {
+export function LooperPanel({ jamBpm, startOpen = false, bandRunning = false }: { jamBpm: number; startOpen?: boolean; bandRunning?: boolean }) {
   const lp = useLooper()
   const e = useEngineState()
   const [open, setOpenState] = useState(startOpen)
@@ -70,6 +70,15 @@ export function LooperPanel({ jamBpm, startOpen = false }: { jamBpm: number; sta
 
       {!e.running && <p className="hint">Connect your guitar first: the looper records what you play through the amp.</p>}
       {lp.error && <p className="hint looper-err">{lp.error}</p>}
+      {bandRunning && !bars && lp.state === 'idle' && (
+        <p className="hint">
+          The band is playing: in Bars mode your loop starts on its next downbeat and stays in time with it.{' '}
+          <button className="btn small" onClick={() => setLooper({ mode: 'bars', bpm: jamBpm })}>
+            Use Bars
+          </button>
+        </p>
+      )}
+      {bandRunning && bars && lp.state === 'idle' && <p className="hint">Locked to the band: recording starts on its next downbeat, at {jamBpm} BPM.</p>}
 
       <div className="looper-bar" aria-hidden>
         <i style={{ transform: `scaleX(${lp.pos})` }} />

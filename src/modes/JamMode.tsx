@@ -40,7 +40,7 @@ import type { BackingPart } from '../audio/backing'
 import { BandSoundSwitch } from '../components/BandSound'
 import type { KeysVoicing } from '../music/parts'
 import { LooperPanel } from '../components/LooperPanel'
-import { useLooper } from '../audio/looper'
+import { setLooperBand, useLooper } from '../audio/looper'
 import { coachRunEnded, liveCoachOn, setCoachActions } from '../lessons/liveCoach'
 import type { CoachActions } from '../lessons/liveCoach'
 import type { JamSummary } from '../music/jamSummary'
@@ -744,6 +744,13 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   )
 
   // What the live coach may do here, while the Jam tab is the one showing.
+  // While the band plays, a bars loop locks to it (its downbeat and tempo).
+  useEffect(() => {
+    if (!running) return
+    setLooperBand(() => ({ start: clock.current.start, bpm: settings.current.bpm }))
+    return () => setLooperBand(null)
+  }, [running])
+
   const coachHere = useRef(false)
   useEffect(() => {
     if (!active || view !== 'jam') {
@@ -893,7 +900,7 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
       </div>
 
       {view === 'jam' && jamDone && <JamSummaryCard s={jamDone} onClose={() => setJamDone(null)} />}
-      {view === 'jam' && <LooperPanel jamBpm={bpm} />}
+      {view === 'jam' && <LooperPanel jamBpm={bpm} bandRunning={running} />}
 
       {view === 'songs' && (
         <SongsPanel

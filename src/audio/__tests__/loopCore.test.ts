@@ -97,3 +97,13 @@ describe('keeping a loop', () => {
     expect(Math.max(...m)).toBeCloseTo(0.98)
   })
 })
+
+describe('the looper locked to the band', () => {
+  it("starts on the band's next downbeat, with room for the count-in", async () => {
+    const { nextDownbeat } = await import('../looper')
+    // Band from 10 s at 120 BPM: a bar every 2 s.
+    expect(nextDownbeat(13.0, { start: 10, bpm: 120 })).toBeCloseTo(14)
+    expect(nextDownbeat(13.8, { start: 10, bpm: 120 })).toBeCloseTo(16) // 14 is too close
+    expect(nextDownbeat(9.0, { start: 10, bpm: 120 })).toBeCloseTo(10) // in the band's count-in: its first downbeat
+  })
+})
