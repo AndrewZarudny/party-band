@@ -57,6 +57,8 @@ It writes `fretwise-account.tgz` (your progress, settings, songs and your passwo
 
 The coach in Lessons is written by Claude through Claude Code on this computer, on your Claude subscription (no API key). Click **AI teacher** at the top of the app, then **Sign in with Claude**: the Claude sign-in page opens in your browser, and the app notices when you're done. If the page shows a code instead, paste it into the app. It's the same sign-in Claude Code uses in the terminal. Claude Code must be installed ([claude.com/claude-code](https://claude.com/claude-code)).
 
+**Live coach** (🎙 at the bottom right, in every tab): a coach you talk to. It answers out loud after each lesson run and each judged run in Learn a song (from the app's measurements: score, timing, the hardest bar), and you can just ask it things. It hears you through Chrome's speech recognition and the Mac's default microphone (set that to the MacBook mic in System Settings, Sound), stops listening while anything plays, and has Mute, Stop and End. Ask it to "go again", "slower", "loop bars 3 and 4" or "next" and it does it. Your spoken questions go to Google to become text (the guitar never does); replies come from Claude Haiku through Claude Code, in about 3 seconds. The voice is the Mac's best English one: a Premium or Enhanced voice (System Settings, Accessibility, Spoken Content, the ⓘ next to System voice) sounds much better.
+
 ## Find a song (AI search)
 
 Click **🔍 Find a song** and describe the song any way you like, e.g. "the solo from Hotel California". Claude works out which song you mean and searches Ultimate Guitar and Songsterr for Guitar Pro versions you can download. Open one and click its download button. Fretwise watches your **Downloads** folder and imports new Guitar Pro files automatically.
@@ -287,6 +289,35 @@ Chords are checked from the sound's note content, so a slightly wrong shape cost
 - **Record yourself**: record your guitar sound (after the amp and effects), with or without the band, and listen back. The last 5 takes and their notes stay in this browser only.
 
 No guitar connected? Every game takes keys instead: Space for a right answer or a beat, X for a wrong one, S to skip, R to hear a phrase again, and note buttons in the note and ear games.
+
+## Practising
+
+How a practice day works, and what the app does with how you play.
+
+**The Lessons home**, top to bottom: today's plan with its **Play** button, then (after the session) **How was today?**, the coach's note, the weekly review, your song goal, Then & now and your closest third star.
+
+**Today's plan** adapts to you:
+- **Warm-up**: the lesson where your timing leans most (you rush or drag it by 30 ms or more), with a cue for that direction; else your top trouble spot; else an easy one.
+- **First tries** (cold starts) show what the lesson asks, your last first try and your best. Stuck in the run? **Peek** shows the tab for 3 s.
+- **Review brake**: when 3 or more lessons fail their first tries, new lessons wait; the home screen names them and says how many more must pass. A first try at the 2-star mark counts as passed.
+- **Plateaus**: 12 runs without a new best rests a lesson from mixed practice for 3 days, and its page suggests what to change.
+- **Song block**: your goal song first; parts you haven't passed, then each part with the song in Learn a song. Song parts you've earned join mixed practice and come back for first tries.
+- **Loop jam**: long jams give 8 minutes to jamming over your own loop (the looper set to 2 bars at the jam's tempo, A and D, the jam's box).
+- **How was today?** after a session: too hard and the next session skips new material; too easy and it adds a new lesson. A note goes to the coach.
+
+**After a run**: **▶ Hear bar N** plays your hardest bar as you played it, then as written. Lessons with a timing habit say so on their page and as a cue while the run starts.
+
+**Your songs** each have a path: learn the parts, play each with the song (Learn a song levels), the whole song, then **band-ready**: one run of the whole song at full tempo with 85% of the notes. Hover a song for the steps and where it still breaks. **Your goal**: a song and a date; the card shows ahead, on track or behind, and the plan works on it. Drop-tuned songs (Drop D, C♯, C) become lessons too, played in Drop D: **Open the Tuner** has the tuning ready.
+
+**Weekly review**: on the first visit of a week the coach looks back at last week (what improved, what's stuck, your check-ins) and names two focus lessons; mixed practice puts them first all week.
+
+**Then & now**: pick a short piece; once a month record a take of it (kept in this browser). From the second month play the first and the latest back to back.
+
+**Ear training** can use licks from your own songs (**From your songs** in Call and response).
+
+**Looper** (Jam tab): **Free** (press to start, press again to close the loop) or **Bars** (a count-in, then exactly that many bars, on the beat). Overdub layers, Undo, Stop / Play, Clear, and **Keep as a take** (saved in Record yourself). Overdubs line up using your Tap In sync.
+
+**Foot pedal**: a Bluetooth page turner. Page Down is the main pedal (Start, Again, Play, Record / Overdub, Play / Pause in Learn a song), Page Up the next (next step, next pair, next part, Peek during a run, Stop / Play on the looper). On a MacBook: fn + ↓ and fn + ↑. Teach it other keys in Lessons, Settings, Foot pedal.
 
 ## Accounts
 
