@@ -318,8 +318,11 @@ export function LessonMap({
   const lv = levelFor(progress.xp)
   const current = nextLesson(progress)
   // Review brake (plan section 4): no new lesson is suggested, but every open lesson on the map still opens.
-  const stuck = strugglingList(progress).length
+  const stuckIds = strugglingList(progress)
+  const stuck = stuckIds.length
   const brake = stuck >= REVIEW_BRAKE
+  // Clean first tries still needed before new lessons come back (the brake holds at REVIEW_BRAKE or more).
+  const toLift = stuck - (REVIEW_BRAKE - 1)
   const currentLesson = current && !brake ? lessonById(current) : undefined
   const earned = Object.keys(progress.achievements).length
   // Today's session leads the home screen and Continue is one quiet line under it.
@@ -395,7 +398,16 @@ export function LessonMap({
 
       {brake && (
         <p className="sc-quiet-note ls-brake-note" role="status">
-          Review first: {stuck} lessons aren't sticking yet. New ones will be suggested once a few pass their cold start. Any open lesson on the map still plays.
+          Review first: {stuck} lessons aren't sticking yet:{' '}
+          {stuckIds.map((id, i) => (
+            <span key={id}>
+              {i > 0 && ', '}
+              <button className="ls-link" onClick={() => onOpen(id)}>
+                {lessonById(id)?.title ?? id}
+              </button>
+            </span>
+          ))}
+          . New lessons come back once <b className="ls-num">{toLift}</b> more of them {toLift === 1 ? 'passes its' : 'pass their'} first try (clean, or at 2 stars); your plan puts their first tries first. Any open lesson on the map still plays.
         </p>
       )}
 
