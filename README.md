@@ -285,12 +285,13 @@ Phrases you've played move to the right under **Earlier**. Pin any phrase (📌)
 
 ## Tuner
 
-A needle that highlights the nearest string, for standard, drop, lowered and open tunings (DADGAD, open G/D/E). It defaults to the tuning the open song needs, including after a conversion. The amp is muted while you tune.
+A needle that highlights the nearest string, for standard, drop, lowered and open tunings (DADGAD, open G/D/E). It defaults to the tuning the open song needs, including after a conversion. The amp is muted while you tune. Down to Drop B. When no note shows, it says why under the dial, with a level meter: no sound on the input (check the cable, INST and gain), the guitar on the other input (one click switches), sound but no clear note, or paused audio.
 
 ## Lessons
 
 A path from "I can strum a bit on acoustic" to jamming freely on electric: 36 short lessons in 8 worlds (electric basics and muting, single notes, rhythm, power chords and riffs, the minor pentatonic, bends/slides/hammer-ons, call and response, freestyle over the band). Every world ends with a boss lesson.
 
+- **▶ See it played**: each fortnight of the 12-week plan (on the Lessons home and in the plan) links a YouTube lesson that shows what it sounds like when it's done, from the boogie shuffle in weeks 1–2 to the three-chorus 12-bar jam in weeks 11–12.
 - **Your dino, Pebble**, starts as an egg and grows one stage each time you beat a world's boss (9 stages). It reacts while you play. Name it on the first visit.
 - **Today's session** (top of the Lessons home) is a 20 or 30 minute set: warm-up, a cold-start test, new material, changes or a mix, ear work, and a jam to finish. Each row is a block that runs until its minutes are played: after every run the main button is **Again** while the block has time left, then **Next** for the next block, and you can move on early. A clean cold start ends its block at once; a slipped one stays open for a few runs with the tab. Jam blocks play several times through in one run (about 5 minutes at most). When the session is done and your daily minutes aren't, the card offers one more block (a jam first).
 - **Your own songs in the course.** Put Guitar Pro tab files in a `songs` folder in the project (git-ignored) or drop them into Learn a song. They join your library with artist and title taken from the file name, and open converted to standard tuning. Every part of a song (Intro, Verse 1, ...) becomes a lesson on the runway, placed in a course week under **From your songs**, easier parts first; they open with their week. The daily session adds a 5-minute **Song** block on the next part you haven't passed. In Learn a song, the **Levels** row plays one part on a loop with the count-in on screen and shows how much of it you got right; 70% of the notes at 70% speed or faster passes it.

@@ -477,6 +477,15 @@
   color: var(--muted);
   font-size: var(--fs-ui);
 }
+.lessons .ls-world-video {
+  font-size: var(--fs-ui);
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.lessons .ls-world-video:hover {
+  text-decoration: underline;
+}
 .lessons .ls-world-stars {
   margin-left: auto;
   font-size: var(--fs-body);

@@ -17,6 +17,8 @@ export interface PlanWeek {
   lessons: string[]
   checkpoint: string
   check: (p: Progress, stats: SkillStats) => CheckState
+  /** A YouTube lesson that shows what this fortnight sounds like when it's done. */
+  video: { id: string; title: string; by: string }
 }
 
 export const BEND_OK_CENTS = 30 // heuristic: bends "in tune" when the median of the last 10 is within 30 cents
@@ -40,6 +42,7 @@ export const PLAN_WEEKS: PlanWeek[] = [
     stage: 1,
     lessons: PLAN_LESSONS[0],
     checkpoint: 'One full 12-bar shuffle rhythm in A at 60 BPM without stopping',
+    video: { id: '8Hh9HbrM2_E', title: 'Easy Blues Shuffle', by: 'Relax and Learn Guitar' },
     check: (p) => (cleanCold(p, 'w3-07', 60) ? 'met' : passed(p, 'w3-07') || cleanInSession(p, 'w3-07', 60) ? 'partial' : 'open'),
   },
   {
@@ -49,6 +52,7 @@ export const PLAN_WEEKS: PlanWeek[] = [
     stage: 2,
     lessons: PLAN_LESSONS[1],
     checkpoint: 'One-minute changes baseline per chord pair; shuffle at 70 BPM',
+    video: { id: 'f8cGLZJlMtQ', title: '12-bar blues in A with A7, D7 and E7', by: 'Green Hills Guitar Studio' },
     check: (p, s) =>
       halves(
         CORE_PAIRS.every((k) => pairBest(s, k) !== undefined),
@@ -62,6 +66,7 @@ export const PLAN_WEEKS: PlanWeek[] = [
     stage: 3,
     lessons: PLAN_LESSONS[2],
     checkpoint: 'Box 1 in 8ths at 70 BPM up and down; licks over the 12-bar',
+    video: { id: 'hAuPpjcpZSU', title: 'Your first blues solo: 8 licks in A minor pentatonic', by: 'Marc Guitar' },
     check: (p) => halves(cleanCold(p, 'w5-11', 70), passed(p, 'w5-07')),
   },
   {
@@ -71,6 +76,7 @@ export const PLAN_WEEKS: PlanWeek[] = [
     stage: 4,
     lessons: PLAN_LESSONS[3],
     checkpoint: 'Bends in tune; echo 2-bar phrases at the first attempt for most of a set',
+    video: { id: 'WLmorVNkkzU', title: 'How to add bends, slides and vibrato', by: 'Marc Seal, Elixir Strings' },
     check: (p, s) => {
       const bends = p.runs
         .filter((r) => r.bend !== null)
@@ -89,6 +95,7 @@ export const PLAN_WEEKS: PlanWeek[] = [
     stage: 5,
     lessons: PLAN_LESSONS[4],
     checkpoint: 'One-minute changes in the 40s on core pairs, heading for 60',
+    video: { id: 'e1JCFZISTG8', title: 'Mixing major and minor pentatonic in the blues', by: 'Marc Guitar' },
     check: (_p, s) => {
       const ok = CORE_PAIRS.filter((k) => (pairBest(s, k) ?? 0) >= CHANGES_MID).length
       return ok === CORE_PAIRS.length ? 'met' : ok > 0 ? 'partial' : 'open'
@@ -101,6 +108,7 @@ export const PLAN_WEEKS: PlanWeek[] = [
     stage: 6,
     lessons: PLAN_LESSONS[5],
     checkpoint: '3 choruses (rhythm, solo, rhythm) at 70–80 BPM without stopping, recorded',
+    video: { id: 'EGaQ0KLtxhk', title: 'A 12-bar blues solo in A pentatonic box 1 with bends', by: 'Blues Guitar Unleashed' },
     check: (p, s) => {
       const run = p.runs.some((r) => r.id === 'w8-12' && r.bpm >= 70 && r.bpm <= 80 && r.jam?.silentBars === 0)
       const take = s.history.some((e) => e.game === 'record' && e.score >= TAKE_SEC)

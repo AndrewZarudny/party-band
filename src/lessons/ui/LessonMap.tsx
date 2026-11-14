@@ -15,7 +15,7 @@ import { loadStats } from '../../skills/store'
 import { ACHIEVEMENTS } from '../achievements'
 import { partsOf, songPath, weakSpots } from '../../music/songPath'
 import type { SongLevels } from '../../music/songLevels'
-import { pace } from '../weeks'
+import { PLAN_WEEKS, pace } from '../weeks'
 import { CoachCard, WeeklyReview } from './CoachCard'
 import { ThenAndNow } from './ThenAndNow'
 import { GoalCard } from './GoalCard'
@@ -215,6 +215,8 @@ function StageRow({ stage, progress, current, onOpen, parts = [] }: { stage: Sta
   const gate = stage.weeks && i > 0 ? checkpointOf(STAGES[i - 1]) : null
   const lockText = !stage.weeks ? `Opens with ${weeksLabel(STAGES[1]).toLowerCase()}` : gate ? `Pass ${lessonById(gate)?.title ?? gate} to open` : ''
   const node = (id: string, n: number, extra: boolean) => <PathNode key={id} id={id} mark={n} extra={extra} progress={progress} current={current} onOpen={onOpen} />
+  // What this stage sounds like when it's done: the plan's video for its fortnight.
+  const video = stage.weeks ? PLAN_WEEKS.find((w) => w.stage === stage.id)?.video : undefined
   return (
     <section className={`ls-world ${open ? 'open' : 'locked'} ${stage.weeks ? '' : 'extras'}`} aria-labelledby={`ls-s${stage.id}`}>
       <header className="ls-world-head">
@@ -225,6 +227,11 @@ function StageRow({ stage, progress, current, onOpen, parts = [] }: { stage: Sta
           </span>
         </h3>
         <span className="ls-world-skill">{stage.skill}</span>
+        {video && (
+          <a className="ls-world-video" href={`https://www.youtube.com/watch?v=${video.id}`} target="_blank" rel="noreferrer" title={`${video.title} · ${video.by}`}>
+            ▶ See it played
+          </a>
+        )}
         {max > 0 && (
           <span className="ls-world-stars ls-num" aria-label={`${got} of ${max} stars`}>
             <StarGlyph /> {got}/{max}

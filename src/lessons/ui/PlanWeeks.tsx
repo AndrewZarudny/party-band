@@ -52,6 +52,12 @@ export function PlanWeeks({ progress: p, onBack, onOpen }: { progress: Progress;
                 {now && <span className="mt-chip now">Now</span>}
               </div>
               <p>{w.focus}</p>
+              <p className="mt-video">
+                <a href={`https://www.youtube.com/watch?v=${w.video.id}`} target="_blank" rel="noreferrer">
+                  ▶ See it played: {w.video.title}
+                </a>
+                <span className="ls-muted"> · {w.video.by}</span>
+              </p>
               <ul className="mt-links">
                 {w.lessons.map((id) => {
                   const l = lessonById(id)
