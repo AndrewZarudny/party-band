@@ -1,5 +1,5 @@
-// Matching pasted lyrics to a song's form. The app never fetches or generates lyrics:
-// the singer's words come from the band (pasted from their own songbook or lyrics source).
+// Matching a song's words to its form. The words come from the band: pasted from their songbook or lyrics
+// source, or a chord sheet read from Ultimate Guitar when they ask for it. The app never generates lyrics.
 
 import { normChord, stripChords } from './wordChords'
 
@@ -11,14 +11,26 @@ const PLAIN = new RegExp(`^\\s*(?:\\(\\s*(${KINDS})\\b[^)\\n]*\\)|(${KINDS})(?:\
 const KIND_IN = new RegExp(`\\b(${KINDS})\\b`, 'i')
 /** The section a heading line names (or its text, for labels like "[Instrumental]"), else null. */
 function headingKind(line: string): string | null {
-  const bracket = /^\s*\[([^\]\n]+)\]\s*$/.exec(line)
+  const bracket = /^\s*\[([^\]\n]+)\]\s*:?\s*$/.exec(line)
   if (bracket && normChord(bracket[1])) return null // a chord on a line of its own, not a heading
   if (bracket) return KIND_IN.exec(bracket[1])?.[1] ?? bracket[1].trim()
   const m = PLAIN.exec(line)
   return m ? (m[1] ?? m[2]) : null
 }
 
+// Section names on Russian chord sites.
+const RU: [RegExp, string][] = [
+  [/^припев/, 'chorus'],
+  [/^куплет/, 'verse'],
+  [/^вступлени/, 'intro'],
+  [/^(проигрыш|соло)/, 'solo'],
+  [/^(кода|концовк|окончани)/, 'outro'],
+  [/^бридж/, 'bridge'],
+]
+
 export function sectionKey(name: string): string {
+  const ru = name.toLowerCase().replace(/[^а-яё]/g, '')
+  for (const [re, key] of RU) if (re.test(ru)) return key
   const k = name.toLowerCase().replace(/[^a-z]/g, '')
   if (k.startsWith('prechorus')) return 'prechorus'
   if (k.startsWith('postchorus')) return 'postchorus'
@@ -26,6 +38,7 @@ export function sectionKey(name: string): string {
   if (k.startsWith('verse')) return 'verse'
   if (k.startsWith('bridge') || k.startsWith('middle')) return 'bridge'
   if (k.startsWith('outro') || k.startsWith('coda')) return 'outro'
+  if (k.includes('solo') || k.startsWith('instrumental') || k.startsWith('interlude')) return 'solo'
   return k
 }
 
@@ -60,10 +73,16 @@ export function matchLyrics(text: string, form: string[], soloSections: Set<stri
   const out: string[] = form.map(() => '')
   if (hasHeadings) {
     let from = 0
+    // A part the form has no place for (a third verse in a form with two) is sung with the next part that has one.
+    let over = ''
     for (const b of blocks) {
       const i = form.findIndex((name, j) => j >= from && sectionKey(name) === b.key)
-      if (i < 0) continue
-      out[i] = b.text
+      if (i < 0) {
+        over = over ? `${over}\n\n${b.text}` : b.text
+        continue
+      }
+      out[i] = over ? `${over}\n\n${b.text}` : b.text
+      over = ''
       from = i + 1
     }
     // Repeated sections without their own text (usually the chorus) reuse the last one.

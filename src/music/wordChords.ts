@@ -5,12 +5,18 @@
 //
 // Pasted text like that is kept with each chord inline at its letter, ChordPro style: "[E]«Я не вернусь», - [Am]так…".
 // Chords on a line of their own (between lines, or after the last word) stay as a line of chords: "[F] [Dm] [E]".
-import { parseChord } from './theory'
+import { parseChord, transposeChord } from './theory'
 
 /** A chord name as written on chord sites, or null when it isn't one. Russian sites write B as H (Hm = Bm). */
 export function normChord(token: string): string | null {
   const s = token.trim().replace(/^H/, 'B')
-  return s && parseChord(s) ? s : null
+  if (!s) return null
+  if (parseChord(s)) return s
+  // A chord the app has no shape for (C7b9, Gadd11, A7(#5)): its plain major or minor, so it still plays.
+  const m = /^([A-G][#b]?)((?:maj|min|dim|aug|sus|add|[mM+°ø\d#b()/,-])*)$/.exec(s)
+  if (!m) return null
+  const plain = m[1] + (/^m(?!aj)|^min/.test(m[2]) ? 'm' : '')
+  return parseChord(plain) ? plain : null
 }
 
 // Marks that can sit on a chord line without making it words: bar lines, repeats, dashes, brackets.
@@ -134,4 +140,13 @@ export function wordAt(text: string, at: number): number {
   for (let i = 0; i < starts.length; i++) if (starts[i] <= at) w = i
   if (text[at] === ' ' && w + 1 < starts.length) w++
   return w
+}
+
+/** Every chord in the words moved n semitones (a sheet written for a capo, played as it sounds). */
+export function shiftWordChords(words: string, n: number): string {
+  if (!n) return words
+  return words.replace(/\[([^\]\n]+)\]/g, (all, c: string) => {
+    const k = normChord(c)
+    return k ? `[${transposeChord(k, n, /^[A-G]b/.test(k))}]` : all
+  })
 }

@@ -13,6 +13,7 @@ import type { Cost, Feature, ModelId } from './ai'
 import { aiError, aiVia, costSummary, getClient, runJson } from './ai'
 import { handleSession, isLocal } from './session'
 import { accountsReady, closeAccounts, handleAccounts } from './accounts'
+import { chordSheet, searchChords } from './ultimateGuitar'
 
 const GP_EXT = /\.(gp|gp3|gp4|gp5|gpx|gp7|gp8|musicxml|mxl|nam|zip)$/i
 const DOWNLOADS = path.join(os.homedir(), 'Downloads')
@@ -754,6 +755,22 @@ export function fretwiseServer(): Plugin {
           json(res, 200, await arrangeLyrics(body, body.model))
         } catch (err) {
           json(res, 500, { error: String(err) })
+        }
+      })
+
+      // A song's chord sheet from Ultimate Guitar: its public Chords versions, and the sheet of the best one
+      // (or of the version asked for).
+      server.middlewares.use('/api/ug-chords', async (req, res) => {
+        if (req.method !== 'POST') return json(res, 405, { error: 'POST only' })
+        try {
+          const body = JSON.parse(await readBody(req)) as { title?: string; artist?: string; id?: number }
+          if (!body.title?.trim()) return json(res, 400, { error: 'No song title' })
+          const versions = await searchChords(body.title.trim().slice(0, 200), (body.artist ?? '').trim().slice(0, 200))
+          const v = versions.find((x) => x.id === body.id) ?? versions[0]
+          if (!v) return json(res, 200, { versions, error: `Ultimate Guitar has no chords for “${body.title}” yet.` })
+          json(res, 200, { versions, sheet: await chordSheet(v) })
+        } catch (err) {
+          json(res, 200, { error: `Couldn't read Ultimate Guitar: ${err instanceof Error ? err.message : String(err)}` })
         }
       })
 

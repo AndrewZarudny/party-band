@@ -5,10 +5,11 @@ import type { SongSetup } from '../music/songForm'
 import { sectionBars } from '../music/songForm'
 import { noteName, parseChord, pc, prefersFlats } from '../music/theory'
 import { matchLyrics, sungLines } from '../music/lyrics'
-import { chordsInWords, hasWordChords, inlineChords, isHeadingLine } from '../music/wordChords'
+import { chordsInWords, hasWordChords, inlineChords, isHeadingLine, shiftWordChords } from '../music/wordChords'
 import { keyFromChords } from '../music/keyGuess'
 import { amdmSearchUrl, geniusSongUrl } from '../music/lyricsLinks'
 import { TabPicker } from './TabPicker'
+import type { UgSheet, UgVersion } from '../../server/ultimateGuitar'
 
 /** "Play a song": AI sets up the jam with the song's key, tempo and form (host only). */
 export function SongSetupBar({
@@ -229,10 +230,34 @@ function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () 
         )
       : matchLyrics(text, song.form, solos)
   // Chord lines over the words (from a chord site) stay with the words, each chord at its letter.
-  const blocks = matched.map((b) => inlineChords(b.split('\n').filter((l) => !isHeadingLine(l)).join('\n')))
+  // A sheet written for a capo: its chords moved up to how the song sounds.
+  const [capo, setCapo] = useState(0)
+  const blocks = matched.map((b) => shiftWordChords(inlineChords(b.split('\n').filter((l) => !isHeadingLine(l)).join('\n')), capo))
   const hasChords = blocks.some(hasWordChords)
   const [playChords, setPlayChords] = useState(song.wordChords ?? true)
   const hasHeadings = /^\s*\[[^\]\n]+\]\s*$/m.test(text)
+
+  // The song's chord sheet from Ultimate Guitar (its best-rated public Chords version, or the one picked).
+  const [ug, setUg] = useState<{ versions: UgVersion[]; sheet?: UgSheet; error?: string } | null>(null)
+  const [ugBusy, setUgBusy] = useState(false)
+  const loadUg = async (id?: number) => {
+    setUgBusy(true)
+    try {
+      const r = (await (
+        await fetch('/api/ug-chords', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: song.title, artist: song.artist, id }) })
+      ).json()) as { versions?: UgVersion[]; sheet?: UgSheet; error?: string }
+      setUg({ versions: r.versions ?? [], sheet: r.sheet, error: r.error })
+      if (r.sheet) {
+        setText(r.sheet.text)
+        setCapo(r.sheet.capo)
+        setPlayChords(true)
+      }
+    } catch (err) {
+      setUg({ versions: [], error: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setUgBusy(false)
+    }
+  }
 
   const arrange = async (t = text) => {
     if (!t.trim()) return
@@ -268,8 +293,11 @@ function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () 
           <a className="btn small" href={geniusSongUrl(song.title, song.artist)} target="_blank" rel="noreferrer">
             🔎 Genius
           </a>
+          <button className="btn small primary" disabled={ugBusy} onClick={() => void loadUg()} title="The words with the chords over them, from the best-rated Chords version on Ultimate Guitar">
+            {ugBusy ? 'Reading Ultimate Guitar…' : '🎸 Chords from Ultimate Guitar'}
+          </button>
           <a className="btn small" href={amdmSearchUrl(song.title, song.artist)} target="_blank" rel="noreferrer">
-            🎸 AmDm
+            AmDm
           </a>
           <button
             className="btn small"
@@ -304,6 +332,30 @@ function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () 
           {arrangeInfo && <> · {arrangeInfo}</>}
           {aiRanges && aiRanges.text === text && ' · arranged by AI'}
         </p>
+        {ug?.error && <p className="hint">{ug.error}</p>}
+        {ug?.sheet && (
+          <p className="hint">
+            From Ultimate Guitar:{' '}
+            <a href={ug.sheet.url} target="_blank" rel="noreferrer">
+              {ug.sheet.artist} – {ug.sheet.song}
+            </a>
+            {ug.versions.length > 1 ? (
+              <>
+                {' '}
+                <select value={ug.sheet.id} disabled={ugBusy} onChange={(e) => void loadUg(Number(e.target.value))}>
+                  {ug.versions.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      Version {v.version} · ★{v.rating} ({v.votes} votes)
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              ` · ★${ug.versions[0]?.rating ?? ''} (${ug.versions[0]?.votes ?? 0} votes)`
+            )}
+            . The best-rated Chords version is picked; UG's “Official” versions are part of its paid Pro plan.
+          </p>
+        )}
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={12} placeholder={'[Verse 1]\n…\n\n[Chorus]\n…'} />
         <div className="lyrics-map">
           {song.form.map((name, i) => (
@@ -319,6 +371,13 @@ function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () 
           <label className="row">
             <input type="checkbox" checked={playChords} onChange={(e) => setPlayChords(e.target.checked)} />
             🎸 The band plays these chords (instead of the ones it has now), each where it stands over the words
+          </label>
+        )}
+        {hasChords && (
+          <label className="row hint">
+            Capo on this chord sheet:
+            <input type="number" min={0} max={11} value={capo} onChange={(e) => setCapo(Math.max(0, Math.min(11, Math.round(Number(e.target.value)) || 0)))} style={{ width: 52 }} />
+            {capo > 0 && `the chords are moved up ${capo} to how the song sounds`}
           </label>
         )}
         <div className="row">

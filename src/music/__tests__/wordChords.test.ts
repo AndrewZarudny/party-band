@@ -30,3 +30,15 @@ describe('chords written over the words', () => {
     expect(chordsInWords([inlineChords(SITE)])).toEqual(['E', 'Am', 'F', 'Dm', 'F', 'Dm', 'F', 'Dm', 'E', 'Bm', 'E'])
   })
 })
+
+describe('chord names from chord sites', () => {
+  it('reads unusual chords as their plain major or minor, and words as words', async () => {
+    const { normChord } = await import('../wordChords')
+    expect(normChord('Fmaj7')).toBe('Fmaj7')
+    expect(normChord('C/E')).toBe('C/E')
+    expect(normChord('C7b9')).toBe('C')
+    expect(normChord('Am7(b5)')).toBe('Am')
+    expect(normChord('Hello')).toBeNull()
+    expect(normChord('Ah')).toBeNull()
+  })
+})
