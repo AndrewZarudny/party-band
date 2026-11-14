@@ -115,7 +115,17 @@ Each player gets a card for the current chord:
 - Credits: the e-piano samples (Greg Sullivan, CC BY 3.0) and the groove data (Magenta Groove MIDI Dataset, CC BY 4.0) require attribution. It is shown under **Guitar & tone → Backing band → Credits** and in [CREDITS.md](CREDITS.md). The drums and bass are CC0.
 - To rebuild the samples or grooves from the original packs, see [scripts/samples/README.md](scripts/samples/README.md). The code is in `src/audio/backing.ts` and `src/audio/sampler/`.
 
-Keys: `Space` start/stop, `←`/`→` change chord (turn off Auto-advance to follow the band by hand), `N` new phrase.
+Keys: `Space` start/stop, `←`/`→` change chord (turn off Auto-advance to follow the band by hand), `N` new phrase. Foot pedal: the main pedal starts and stops the band (or works the looper while it's open), the next pedal asks for a new phrase.
+
+**After each jam** a summary shows the time, the notes you played, how many were chord tones, scale notes or outside the scale, the phrases you played and one pointer for next time, against your last five jams. While the band plays, the app also times your pick attacks against its beat (as in Lessons, corrected by your Tap In sync; swung off-beats and 16ths are left out) and says when you were 20 ms or more ahead of it (rushing) or behind it (dragging). The jams are kept (the last 60) and go into the coach's weekly review.
+
+**Phrases: Made up / From your songs.** From your songs uses licks from your own song parts that fit the scale you're jamming in, ending on a chord tone when one does; with none that fit, it says so and makes them up.
+
+**Your goal song** (the goal in Lessons): **Jam over its chords** once it's set up in Songs (from its tab).
+
+**Live coach in Jam**: it hears each jam's summary, and you can ask it to start or stop the band, go slower or faster (5 BPM), give a new phrase or move to the next chord.
+
+**Looper with the band**: with the band playing, a Bars loop starts on the band's next downbeat at its tempo and stays in time with it (no extra click). **Keep as a take** saves the loop to Record yourself.
 
 ### Songs tab
 
