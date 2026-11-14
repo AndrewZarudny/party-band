@@ -20,7 +20,7 @@ import type { BeatLike } from '../music/tunings'
 import { TUNINGS, describeTuning, isUniformShift, refinger, setSongTuning, tuningLabel } from '../music/tunings'
 import { holdReload, practice } from '../account/activity'
 import type { SongLevels } from '../music/songLevels'
-import { BAND_READY_PCT, MIN_NOTES, PASS_PCT, PASS_SPEED, levelPassed, loadLevels, nextLevel, saveLevels, songSections, withPass } from '../music/songLevels'
+import { BAND_READY_PCT, MIN_NOTES, PASS_PCT, PASS_SPEED, levelPassed, loadLevels, nextLevel, nextSongSpeed, saveLevels, songSections, withPass } from '../music/songLevels'
 import { hasSavedProgress, loadProgress, saveProgress } from '../lessons/progress'
 import { coachRunEnded, liveCoachOn, setCoachPlaying } from '../lessons/liveCoach'
 
@@ -154,6 +154,14 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
     }
   }, [playing])
   const [speed, setSpeed] = useState(100)
+  // Auto speed in levels: passes earn the tempo 5% at a time, a rough run steps back (on by default).
+  const [autoSpeed, setAutoSpeed] = useState(() => {
+    try {
+      return localStorage.getItem('song-auto-speed') !== '0'
+    } catch {
+      return true
+    }
+  })
   const [metronome, setMetronome] = useState(false)
   const metroLevel = useEngineState().metronomeLevel
   const [countIn, setCountIn] = useState(true)
@@ -378,6 +386,10 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
     }
     const passed = levelPassed(hit, miss, speed)
     setLastPass({ pct, passed })
+    // Auto speed: the next round's tempo from this one (shown in the level note).
+    const nextSpeed = autoSpeed && total >= MIN_NOTES ? nextSongSpeed(speed, pct, passed) : speed
+    if (nextSpeed !== speed) setSpeed(nextSpeed)
+    const speedNote = nextSpeed > speed ? ` Next round at ${nextSpeed}% speed.` : nextSpeed < speed ? ` Next round slower, at ${nextSpeed}%.` : ''
     // The live coach, when on, hears about the run: the numbers of this part (or the whole song).
     if (liveCoachOn())
       void coachRunEnded({
@@ -396,7 +408,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
           ? `${name}: no notes heard. Connect the guitar and play along.`
           : speed < PASS_SPEED
             ? `${name}: ${pct}% of the notes at ${speed}% speed. A pass needs ${PASS_SPEED}% speed or faster.`
-            : `${name}: ${pct}% of the notes. ${PASS_PCT}% passes it. Slow it down and go again.`,
+            : `${name}: ${pct}% of the notes. ${PASS_PCT}% passes it.${speedNote || ' Slow it down and go again.'}`,
       )
       return
     }
@@ -421,7 +433,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
           : pct < BAND_READY_PCT
             ? ` Band-ready at ${BAND_READY_PCT}%: ${BAND_READY_PCT - pct} more to go at this tempo.`
             : ''
-    setLevelNote(`${name} passed: ${pct}% of the notes at ${speed}% speed.${lv === 'full' ? fullNote : after === null ? ' Every part is passed: now the whole song.' : ` Next: ${sections[after].name}.`}`)
+    setLevelNote(`${name} passed: ${pct}% of the notes at ${speed}% speed.${lv === 'full' ? fullNote : after === null ? ' Every part is passed: now the whole song.' : ` Next: ${sections[after].name}.`}${speedNote}`)
   }
 
   // Render the chosen track and pick its tone.
@@ -889,6 +901,18 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
             <Toggle on={countIn} set={setCountIn} label="Count-in" />
             <Toggle on={muteMine} set={setMuteMine} label="Mute my part" />
             <Toggle on={waitMode} set={setWaitMode} label="Wait for me" />
+            <Toggle
+              on={autoSpeed}
+              set={(v) => {
+                setAutoSpeed(v)
+                try {
+                  localStorage.setItem('song-auto-speed', v ? '1' : '0')
+                } catch {
+                  /* storage unavailable */
+                }
+              }}
+              label="Auto speed"
+            />
             <button className="btn small" onClick={() => setNotation(notation === 'Tab' ? 'ScoreTab' : 'Tab')}>
               {notation === 'Tab' ? 'Tab only' : 'Notes + tab'}
             </button>

@@ -134,3 +134,13 @@ export function saveLevels(songId: string, l: SongLevels): void {
     /* storage unavailable */
   }
 }
+
+/**
+ * Auto speed for a level, as lessons earn their tempo: a pass under full speed goes 5% faster, a run with under
+ * half the notes 10% slower (not under 50%), anything else stays. Speeds in percent.
+ */
+export function nextSongSpeed(speed: number, pct: number, passed: boolean): number {
+  if (passed && speed < 100) return Math.min(100, speed + 5)
+  if (pct < 50 && speed > 50) return Math.max(50, speed - 10)
+  return speed
+}
