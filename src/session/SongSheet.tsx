@@ -1,7 +1,29 @@
 // The whole song on the right: every section in playing order with its chords bar by bar and the words, the
 // section playing now lit up and kept in view. Click a section to jump there.
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { SheetSection } from '../music/songForm'
+import { guitarShape } from '../music/parts'
+import { parseChord } from '../music/theory'
+import { chordFingering } from '../lessons/fingering'
+import { ChordDiagram } from '../components/PartViews'
+
+/** How to hold a chord: its box with finger numbers, beside the sheet while the pointer is on its name. */
+function ChordTip({ symbol, at }: { symbol: string; at: { x: number; y: number } }) {
+  const chord = parseChord(symbol)
+  if (!chord) return null
+  const shape = guitarShape(chord)
+  const f = chordFingering(shape.frets)
+  const played = shape.frets.filter((x) => x > 0)
+  const low = played.length ? Math.min(...played) : 0
+  return (
+    <div className="chord-tip" role="tooltip" style={{ left: at.x, top: at.y }}>
+      <ChordDiagram shape={shape} name={symbol} size={1.1} fingers={f.fingers} />
+      <p className="hint">
+        {f.barre ? `Barre fret ${f.barre.fret} with your index finger. ` : low > 4 ? `Starts at fret ${low}. ` : ''}Numbers are fingers: 1 index … 4 pinky. × = don't play, ○ = open string.
+      </p>
+    </div>
+  )
+}
 
 export function SongSheet({
   title,
@@ -23,6 +45,14 @@ export function SongSheet({
   onClose: () => void
 }) {
   const list = useRef<HTMLOListElement>(null)
+  const [tip, setTip] = useState<{ symbol: string; x: number; y: number } | null>(null)
+  // The tip sits just left of the sheet, level with the chord (inside the window).
+  const showTip = (symbol: string, el: HTMLElement) => {
+    const r = el.getBoundingClientRect()
+    const left = box.current?.getBoundingClientRect().left ?? r.left
+    const W = 190
+    setTip({ symbol, x: Math.max(8, left - W - 10), y: Math.min(window.innerHeight - 260, Math.max(8, r.top - 40)) })
+  }
   const box = useRef<HTMLElement>(null)
   // Right under the app's top bar, however tall it is (it wraps in a narrow window).
   useEffect(() => {
@@ -65,7 +95,19 @@ export function SongSheet({
             <div className="ss-bars">
               {s.bars.map((b, i) => (
                 <span key={i} className="ss-bar">
-                  {b.join(' ')}
+                  {b.map((c, j) => (
+                    <span
+                      key={j}
+                      className="ss-chord"
+                      tabIndex={0}
+                      onMouseEnter={(ev) => showTip(c, ev.currentTarget)}
+                      onMouseLeave={() => setTip(null)}
+                      onFocus={(ev) => showTip(c, ev.currentTarget)}
+                      onBlur={() => setTip(null)}
+                    >
+                      {c}
+                    </span>
+                  ))}
                 </span>
               ))}
             </div>
@@ -79,6 +121,7 @@ export function SongSheet({
           </li>
         ))}
       </ol>
+      {tip && <ChordTip symbol={tip.symbol} at={tip} />}
     </aside>
   )
 }

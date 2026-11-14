@@ -3430,3 +3430,37 @@ code {
     padding-right: 390px;
   }
 }
+
+.ss-chord {
+  cursor: help;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+.ss-chord + .ss-chord {
+  margin-left: 6px;
+}
+.ss-chord:hover,
+.ss-chord:focus-visible {
+  background: rgb(var(--accent-rgb) / 0.2);
+  outline: none;
+}
+.chord-tip {
+  position: fixed;
+  z-index: 40;
+  width: 190px;
+  padding: 10px 10px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.chord-tip svg {
+  display: block;
+  margin: 0 auto;
+}
+.chord-tip .hint {
+  margin: 6px 0 0;
+  font-size: 0.78em;
+  line-height: 1.35;
+}
