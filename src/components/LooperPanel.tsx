@@ -2,7 +2,8 @@
 // Stop/Play (the second pedal), Undo, Clear. Free length, or a number of bars at a tempo with a count-in.
 import { useState } from 'react'
 import { useEngineState } from '../audio/hooks'
-import { looperClear, looperMain, looperSecond, looperUndo, setLooper, useLooper } from '../audio/looper'
+import { looperClear, looperMain, looperMixdown, looperSecond, looperUndo, setLooper, useLooper } from '../audio/looper'
+import { addTake } from '../skills/takes'
 
 const MAIN: Record<string, string> = {
   idle: '● Record',
@@ -24,6 +25,14 @@ export function LooperPanel({ jamBpm, startOpen = false }: { jamBpm: number; sta
   const lp = useLooper()
   const e = useEngineState()
   const [open, setOpen] = useState(startOpen)
+  const [kept, setKept] = useState<string | null>(null)
+  // The loop as it sounds now, saved as a take in Record yourself (Lessons, Skills), where it can be played back.
+  const keep = async () => {
+    const got = await looperMixdown()
+    if (!got) return setKept("Couldn't save the loop.")
+    await addTake({ id: `loop-${Date.now()}`, at: Date.now(), blob: got.blob, sec: got.sec, band: null, note: `A loop: ${lp.layers} layer${lp.layers > 1 ? 's' : ''}` })
+    setKept('Kept. Find it in Lessons, Skills, Record yourself.')
+  }
   const bars = lp.mode === 'bars'
   const busy = lp.state !== 'idle'
   const barsRecording = bars && lp.state === 'recording'
@@ -76,7 +85,11 @@ export function LooperPanel({ jamBpm, startOpen = false }: { jamBpm: number; sta
         <button className="btn ghost" onClick={looperClear} disabled={!busy}>
           Clear
         </button>
+        <button className="btn" onClick={() => void keep()} disabled={lp.layers < 1 || lp.state === 'recording'}>
+          Keep as a take
+        </button>
       </div>
+      {kept && <p className="hint">{kept}</p>}
 
       <div className="looper-opts">
         <div className="seg-group" role="radiogroup" aria-label="Loop length">

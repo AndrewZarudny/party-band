@@ -95,6 +95,16 @@ export class LoopCore {
     this.state = 'idle'
   }
 
+  /** The loop as one track: every layer summed, gently limited so stacked overdubs don't clip. Empty with no loop. */
+  mix(): Float32Array {
+    const out = new Float32Array(this.len)
+    for (const l of this.layers) for (let i = 0; i < this.len; i++) out[i] += l[i]
+    let peak = 0
+    for (let i = 0; i < out.length; i++) peak = Math.max(peak, Math.abs(out[i]))
+    if (peak > 0.98) for (let i = 0; i < out.length; i++) out[i] *= 0.98 / peak
+    return out
+  }
+
   /** Where playback is, 0–1 (for the UI); 0 when nothing plays. */
   progress(at: number): number {
     if (!this.len || (this.state !== 'playing' && this.state !== 'overdubbing')) return 0

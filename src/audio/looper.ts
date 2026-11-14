@@ -29,6 +29,7 @@ class Looper extends AudioWorkletProcessor {
       else if (m.type === 'stop') c.stop();
       else if (m.type === 'undo') c.undo();
       else if (m.type === 'clear') c.clear();
+      else if (m.type === 'mix') { const data = c.mix(); this.port.postMessage({ mix: data, rate: sampleRate }, [data.buffer]); return; }
       this.report();
     };
   }
@@ -94,8 +95,14 @@ async function ensure(): Promise<AudioWorkletNode | null> {
       const url = URL.createObjectURL(new Blob([PROCESSOR], { type: 'application/javascript' }))
       await ctx.audioWorklet.addModule(url).finally(() => URL.revokeObjectURL(url))
       const n = new AudioWorkletNode(ctx, 'looper', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], channelCount: 1, channelCountMode: 'explicit' })
-      n.port.onmessage = (e: MessageEvent<{ state: LoopState; layers: number; len: number; pos: number }>) =>
+      n.port.onmessage = (e: MessageEvent<{ state: LoopState; layers: number; len: number; pos: number; mix?: Float32Array; rate?: number }>) => {
+        if (e.data.mix) {
+          mixWaiter?.(e.data.mix, e.data.rate ?? 48000)
+          mixWaiter = null
+          return
+        }
         set({ state: e.data.state, layers: e.data.layers, lenSec: e.data.len, pos: e.data.pos })
+      }
       gain = ctx.createGain()
       gain.gain.value = view.volume
       engine.output?.connect(n)
@@ -196,6 +203,45 @@ export async function looperSecond() {
     send({ type: 'stop' })
     stopClicks()
   }
+}
+
+let mixWaiter: ((data: Float32Array, rate: number) => void) | null = null
+
+/** A mono 16-bit WAV file of `data` (−1…1) at `rate`. */
+export function wavBlob(data: Float32Array, rate: number): Blob {
+  const buf = new ArrayBuffer(44 + data.length * 2)
+  const v = new DataView(buf)
+  const str = (o: number, t: string) => [...t].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)))
+  str(0, 'RIFF')
+  v.setUint32(4, 36 + data.length * 2, true)
+  str(8, 'WAVE')
+  str(12, 'fmt ')
+  v.setUint32(16, 16, true)
+  v.setUint16(20, 1, true) // PCM
+  v.setUint16(22, 1, true) // mono
+  v.setUint32(24, rate, true)
+  v.setUint32(28, rate * 2, true)
+  v.setUint16(32, 2, true)
+  v.setUint16(34, 16, true)
+  str(36, 'data')
+  v.setUint32(40, data.length * 2, true)
+  for (let i = 0; i < data.length; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, data[i])) * 0x7fff, true)
+  return new Blob([buf], { type: 'audio/wav' })
+}
+
+/** The loop as it sounds now (all layers), as a WAV file and its length; null with no loop. */
+export function looperMixdown(): Promise<{ blob: Blob; sec: number } | null> {
+  if (!node || !view.layers) return Promise.resolve(null)
+  return new Promise((resolve) => {
+    mixWaiter = (data, rate) => resolve(data.length ? { blob: wavBlob(data, rate), sec: data.length / rate } : null)
+    send({ type: 'mix' })
+    window.setTimeout(() => {
+      if (mixWaiter) {
+        mixWaiter = null
+        resolve(null)
+      }
+    }, 3000)
+  })
 }
 
 export const looperUndo = () => send({ type: 'undo' })

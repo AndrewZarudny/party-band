@@ -82,3 +82,18 @@ describe('the looper', () => {
     expect(c.len).toBe(0)
   })
 })
+
+describe('keeping a loop', () => {
+  it('the mix is every layer summed, limited so stacked overdubs never clip', () => {
+    const c = new LoopCore(1000)
+    c.record(0)
+    run(c, 0, 4, () => 0.6)
+    c.close(4)
+    c.overdub()
+    run(c, 4, 8, () => 0.6)
+    c.play(8)
+    const m = c.mix()
+    expect(m.length).toBe(4)
+    expect(Math.max(...m)).toBeCloseTo(0.98)
+  })
+})
