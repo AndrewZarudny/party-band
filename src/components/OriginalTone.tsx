@@ -5,7 +5,7 @@ import { addGear, getCurrentSong, linkToCurrentSong, loadPresets, savePreset, se
 import type { T3kModel } from '../tone3000/client'
 import { captureKindFor, downloadModel, getClientId, getTone, listModels, loadToneInPopup } from '../tone3000/client'
 import type { Cost } from '../aiCost'
-import { describeCost, usd, useAiStatus } from '../aiCost'
+import { costTag, describeCost, usd, useAiStatus } from '../aiCost'
 
 interface Match {
   toneId: string
@@ -177,11 +177,13 @@ export function OriginalTone({ onReady, needKey }: { onReady: (name: string) => 
         <>
           <button className="btn primary" disabled={!!busy} onClick={() => void find()}>
             ✨ Get original tone for “{song.title}”
-            {status?.ai && <span className="cost-tag">~{usd(status.estimates['original-tone'])}</span>}
+            {costTag(status, status?.estimates['original-tone'] ?? 0) && <span className="cost-tag">{costTag(status, status?.estimates['original-tone'] ?? 0)}</span>}
           </button>
           {status?.ai && (
             <p className="hint cost-line">
-              {status.models['original-tone']} + tone3000.com search · about {usd(status.estimates['original-tone'])}, free if asked again · this month {usd(status.monthUsd)}
+              {status.via === 'claude-code'
+                ? 'Opus 5.5 through Claude Code, on your Claude subscription, + tone3000.com search'
+                : `${status.models['original-tone']} + tone3000.com search · about ${usd(status.estimates['original-tone'])}, free if asked again · this month ${usd(status.monthUsd)}`}
             </p>
           )}
         </>

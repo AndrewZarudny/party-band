@@ -5,12 +5,15 @@
 // - low effort and a cap on web searches per call
 // - identical requests are answered from a disk cache for free
 // - every call's cost is computed from the API's usage report and logged
+import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import Anthropic from '@anthropic-ai/sdk'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
-import type { z } from 'zod'
+import { z } from 'zod'
+import { claudeEnv, claudePath } from './claudeCode'
 
 export type ModelId = 'claude-haiku-5-5' | 'claude-sonnet-5-5' | 'claude-opus-5-5'
 
@@ -138,6 +141,107 @@ function priceOf(model: string, u: Anthropic.Beta.BetaUsage): number {
   )
 }
 
+/**
+ * How the AI features run on this computer: through Claude Code on the player's Claude subscription (Opus, no
+ * API key, no per-call cost), else the API client (a key or an `ant` sign-in), else not at all.
+ */
+export function aiVia(): 'claude-code' | 'api' | null {
+  if (claudePath()) return 'claude-code'
+  return getClient() ? 'api' : null
+}
+
+const CC_MODEL = 'Opus 5.5 (Claude subscription)'
+
+/** The schema for Claude Code's --json-schema: without the "$schema" draft line, which it can't resolve. */
+function jsonSchemaOf(schema: z.ZodType): Record<string, unknown> {
+  const { $schema: _drop, ...rest } = z.toJSONSchema(schema) as Record<string, unknown>
+  void _drop
+  return rest
+}
+const SIGN_IN = "Claude Code isn't signed in on this computer. Click AI teacher at the top and sign in with your Claude account."
+
+/**
+ * One request through Claude Code in headless mode, on Opus: web search only (no other tools, no project
+ * settings, nothing saved), the answer as JSON matching the schema. The URLs its searches returned are collected
+ * from the stream, so callers can keep only links that really came back from the web.
+ */
+function runViaClaudeCode<S extends z.ZodType>(call: JsonCall<S>): Promise<{ data: z.infer<S>; seen: Set<string>; searches: number }> {
+  return new Promise((resolve, reject) => {
+    const bin = claudePath()
+    if (!bin) return reject(new Error('Claude Code is not installed on this computer.'))
+    const search = call.maxSearches > 0
+    const system = `${call.system}${search ? `\n\nUse the WebSearch tool at most ${call.maxSearches} times, and only for these sites: ${call.searchDomains.join(', ')} (pass them as allowed_domains). Use only URLs that appear in your search results.` : ''}\n\nAnswer with the JSON object only.`
+    const args = [
+      '-p',
+      '--model', 'opus',
+      '--effort', 'low',
+      '--output-format', 'stream-json',
+      '--verbose',
+      '--json-schema', JSON.stringify(jsonSchemaOf(call.schema)),
+      '--system-prompt', system,
+      '--tools', search ? 'WebSearch' : '',
+      ...(search ? ['--allowedTools', 'WebSearch'] : []),
+      '--strict-mcp-config',
+      '--setting-sources', '',
+      '--no-session-persistence',
+    ]
+    const child = spawn(bin, args, { env: claudeEnv(), cwd: os.tmpdir(), stdio: ['pipe', 'pipe', 'pipe'] })
+    const seen = new Set<string>()
+    let searches = 0
+    let result: { text: string; structured: unknown; isError: boolean } | null = null
+    let buf = ''
+    let errText = ''
+    const timer = setTimeout(() => child.kill(), 240_000)
+    const urlsIn = (v: unknown) => {
+      for (const m of JSON.stringify(v ?? '').matchAll(/https?:\/\/[^\s"'\\)\]]+/g)) seen.add(m[0].replace(/\/$/, ''))
+    }
+    child.stdout.on('data', (d) => {
+      buf += d
+      let i
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i)
+        buf = buf.slice(i + 1)
+        let o: { type?: string; message?: { content?: unknown }; result?: unknown; structured_output?: unknown; is_error?: boolean }
+        try {
+          o = JSON.parse(line)
+        } catch {
+          continue
+        }
+        const content = Array.isArray(o.message?.content) ? (o.message.content as { type?: string; name?: string; content?: unknown }[]) : []
+        for (const b of content) {
+          if (o.type === 'assistant' && b.type === 'tool_use' && b.name === 'WebSearch') searches++
+          if (o.type === 'user' && b.type === 'tool_result') urlsIn(b.content)
+        }
+        if (o.type === 'result') result = { text: String(o.result ?? ''), structured: o.structured_output, isError: !!o.is_error }
+      }
+    })
+    child.stderr.on('data', (d) => (errText = (errText + d).slice(-2000)))
+    child.on('error', (err) => {
+      clearTimeout(timer)
+      reject(err)
+    })
+    child.on('close', (code) => {
+      clearTimeout(timer)
+      if (!result) return reject(new Error(code ? `Claude Code stopped (${code}). ${errText.trim().split('\n').at(-1) ?? ''}`.trim() : 'Claude Code took too long to answer.'))
+      if (result.isError) return reject(new Error(/log ?in|auth|expired/i.test(result.text) ? SIGN_IN : result.text || 'Claude could not answer.'))
+      let raw = result.structured
+      if (raw === undefined) {
+        const a = result.text.indexOf('{')
+        const b = result.text.lastIndexOf('}')
+        try {
+          raw = a >= 0 && b > a ? JSON.parse(result.text.slice(a, b + 1)) : undefined
+        } catch {
+          raw = undefined
+        }
+      }
+      const parsed = call.schema.safeParse(raw)
+      if (!parsed.success) return reject(new Error("Couldn't read the AI's answer."))
+      resolve({ data: parsed.data, seen, searches })
+    })
+    child.stdin.end(call.user)
+  })
+}
+
 export interface JsonCall<S extends z.ZodType> {
   feature: Feature
   model: ModelId
@@ -159,17 +263,28 @@ export interface JsonResult<T> {
 export async function runJson<S extends z.ZodType>(call: JsonCall<S>): Promise<JsonResult<z.infer<S>>> {
   // The prompt's hash is part of the key, so editing a prompt never serves answers from the old one.
   const promptHash = createHash('sha1').update(call.system).digest('hex').slice(0, 8)
-  const key = `${call.feature}|${call.model}|${promptHash}|${call.cacheKey.toLowerCase().trim()}`
+  const via = aiVia()
+  const key = `${call.feature}|${via === 'claude-code' ? 'claude-code-opus' : call.model}|${promptHash}|${call.cacheKey.toLowerCase().trim()}`
   const cache = readJson<Record<string, { at: number; data: unknown; seen: string[]; usd: number }>>(CACHE_FILE, {})
   const hit = cache[key]
   if (hit && Date.now() - hit.at < CACHE_DAYS * 86_400_000) {
-    const cost: Cost = { usd: 0, model: MODEL_LABEL[call.model], searches: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cached: true }
+    const cost: Cost = { usd: 0, model: via === 'claude-code' ? CC_MODEL : MODEL_LABEL[call.model], searches: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cached: true }
     logCost(call.feature, cost)
     return { data: hit.data as z.infer<S>, seenUrls: new Set(hit.seen), cost }
   }
 
+  // Claude Code on this computer: Opus on the player's subscription, nothing to pay per call.
+  if (via === 'claude-code') {
+    const { data, seen, searches } = await runViaClaudeCode(call)
+    const cost: Cost = { usd: 0, model: CC_MODEL, searches, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cached: false }
+    logCost(call.feature, cost)
+    cache[key] = { at: Date.now(), data, seen: [...seen], usd: 0 }
+    writeJson(CACHE_FILE, cache)
+    return { data, seenUrls: seen, cost }
+  }
+
   const c = getClient()
-  if (!c) throw new Error('AI is off: sign in with `ant auth login`, or add ANTHROPIC_API_KEY to .env.local, and restart.')
+  if (!c) throw new Error('AI is off: install Claude Code on this computer and sign in (AI teacher at the top).')
   // Haiku uses the basic web search tool; Sonnet/Opus get the newer one with result filtering.
   const search =
     call.model === 'claude-haiku-5-5'

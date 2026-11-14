@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Cost } from '../aiCost'
-import { describeCost, usd, useAiStatus } from '../aiCost'
+import { costTag, describeCost, useAiStatus } from '../aiCost'
 import type { SongSetup } from '../music/songForm'
 import { sectionBars } from '../music/songForm'
 import { noteName, parseChord, pc, prefersFlats } from '../music/theory'
@@ -57,7 +57,7 @@ export function SongSetupBar({ song, onPlay, onUpdate, singers = [] }: { song: S
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="e.g. Wonderwall Oasis, Zombie, Knockin' on Heaven's Door" />
         <button className="btn small primary" disabled={busy || !query.trim() || status?.ai === false}>
           {busy ? 'Setting up…' : 'Set up'}
-          {status?.ai && !busy && <span className="cost-tag">~{usd(status.estimates['song-setup'] ?? 0.02)}</span>}
+          {!busy && costTag(status, status?.estimates['song-setup'] ?? 0.02) && <span className="cost-tag">{costTag(status, status?.estimates['song-setup'] ?? 0.02)}</span>}
         </button>
         <button type="button" className="btn small" onClick={() => setTabOpen(true)} title="Sections, chords, strum and words from a Guitar Pro tab you downloaded (free)">
           🎼 From a tab
@@ -98,7 +98,7 @@ export function SongSetupBar({ song, onPlay, onUpdate, singers = [] }: { song: S
           }}
         />
       )}
-      {status?.ai === false && <p className="hint">Add ANTHROPIC_API_KEY to .env.local to set up songs with AI.</p>}
+      {status?.ai === false && <p className="hint">Install Claude Code on this computer and sign in (AI teacher at the top) to set up songs with AI.</p>}
       {error && <div className="error">{error}</div>}
       {preview && (
         <div className="song-preview">
@@ -263,7 +263,7 @@ function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () 
           </button>
           <button className="btn small" disabled={arranging || !text.trim()} onClick={() => void arrange()} title="AI maps your text onto the song's sections (it returns line numbers only)">
             {arranging ? 'Arranging…' : '✨ Arrange with AI'}
-            {!arranging && aiStatus?.ai && <span className="cost-tag">~{usd(aiStatus.estimates['lyrics-arrange'] ?? 0.002)}</span>}
+            {!arranging && costTag(aiStatus, aiStatus?.estimates['lyrics-arrange'] ?? 0.002) && <span className="cost-tag">{costTag(aiStatus, aiStatus?.estimates['lyrics-arrange'] ?? 0.002)}</span>}
           </button>
         </div>
         <p className="hint">

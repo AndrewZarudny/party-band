@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Cost } from '../aiCost'
-import { describeCost, usd, useAiStatus } from '../aiCost'
+import { costTag, describeCost, usd, useAiStatus } from '../aiCost'
 
 interface FoundTab {
   title: string
@@ -65,18 +65,19 @@ export function SongFinder({ onClose, onPicked }: { onClose: () => void; onPicke
         />
         <button className="btn primary" disabled={loading || !query.trim()}>
           {loading ? 'Searching…' : 'Search'}
-          {aiOn && status && !loading && <span className="cost-tag">~{usd(status.estimates['song-search'])}</span>}
+          {aiOn && status && !loading && costTag(status, status.estimates['song-search']) && <span className="cost-tag">{costTag(status, status.estimates['song-search'])}</span>}
         </button>
       </form>
       {aiOn && status && (
         <p className="hint cost-line">
-          AI search with {status.models['song-search']} · about {usd(status.estimates['song-search'])} per new search, repeat searches are free · this month {usd(status.monthUsd)}
+          {status.via === 'claude-code'
+            ? 'AI search with Opus 5.5 through Claude Code, on your Claude subscription · repeat searches are instant'
+            : `AI search with ${status.models['song-search']} · about ${usd(status.estimates['song-search'])} per new search, repeat searches are free · this month ${usd(status.monthUsd)}`}
         </p>
       )}
       {aiOn === false && (
         <p className="hint">
-          AI search is off. Add <code>ANTHROPIC_API_KEY=…</code> to <code>.env.local</code> in the app folder and restart <code>npm run dev</code>. You still get search links
-          below.
+          AI search is off: install Claude Code on this computer and sign in (AI teacher at the top). You still get search links below.
         </p>
       )}
       {loading && <p className="hint">Claude is identifying the song and looking for Guitar Pro versions (about 10–30 s)…</p>}

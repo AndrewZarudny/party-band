@@ -10,7 +10,7 @@ import { endCoach, tellCoach } from './liveCoach'
 import { cancelClaudeLogin, claudeEnv, claudePath, claudeStatus, sendClaudeLoginCode, startClaudeLogin } from './claudeCode'
 import { z } from 'zod'
 import type { Cost, Feature, ModelId } from './ai'
-import { aiError, costSummary, getClient, runJson } from './ai'
+import { aiError, aiVia, costSummary, getClient, runJson } from './ai'
 import { handleSession, isLocal } from './session'
 import { accountsReady, closeAccounts, handleAccounts } from './accounts'
 
@@ -123,7 +123,7 @@ function coachViaClaudeCode(user: string): Promise<{ message: string; next: stri
     const env = claudeEnv()
     const child = spawn(
       bin,
-      ['-p', '--output-format', 'json', '--system-prompt', `${COACH_SYSTEM}\n\nAnswer with one JSON object and nothing else: {"message": "...", "next": "..."}.`, '--json-schema', COACH_JSON_SCHEMA],
+      ['-p', '--model', 'opus', '--output-format', 'json', '--system-prompt', `${COACH_SYSTEM}\n\nAnswer with one JSON object and nothing else: {"message": "...", "next": "..."}.`, '--json-schema', COACH_JSON_SCHEMA],
       { cwd: os.tmpdir(), env, stdio: ['pipe', 'pipe', 'pipe'] },
     )
     let out = ''
@@ -183,7 +183,7 @@ function searchLinks(q: string) {
 
 async function aiSearch(query: string, model?: string): Promise<SearchResult & { cost?: Cost }> {
   const base: SearchResult = { ai: false, artist: '', title: query, tabs: [], searchLinks: searchLinks(query) }
-  if (!getClient()) return { ...base, error: 'AI search is off: add ANTHROPIC_API_KEY to .env.local and restart.' }
+  if (!aiVia()) return { ...base, error: 'AI search is off: install Claude Code on this computer and sign in (AI teacher at the top).' }
   try {
     const { data, seenUrls, cost } = await runJson({
       feature: 'song-search',
@@ -301,7 +301,7 @@ const SongSchema = z.object({
 })
 
 async function songSetup(query: string, model?: string) {
-  if (!getClient()) return { error: 'Add ANTHROPIC_API_KEY to .env.local and restart to use this.' }
+  if (!aiVia()) return { error: 'Install Claude Code on this computer and sign in (AI teacher at the top) to use this.' }
   try {
     const { data, cost } = await runJson({
       feature: 'song-setup',
@@ -355,7 +355,7 @@ const ArrangeSchema = z.object({
 })
 
 async function arrangeLyrics(req: { title: string; artist: string; form: string[]; solo: string[]; text: string }, model?: string) {
-  if (!getClient()) return { error: 'Add ANTHROPIC_API_KEY to .env.local and restart to use this.' }
+  if (!aiVia()) return { error: 'Install Claude Code on this computer and sign in (AI teacher at the top) to use this.' }
   const lines = req.text.replace(/\r/g, '').split('\n').slice(0, 400)
   const numbered = lines.map((l, i) => `${i + 1}| ${l}`).join('\n')
   const form = req.form.map((n, i) => `${i + 1}. ${n}${req.solo.includes(n) ? ' (instrumental solo)' : ''}`).join('\n')
@@ -420,7 +420,7 @@ const toneIdFromUrl = (url: string) => /tone3000\.com\/tones\/(?:[^/?#]*?-)?(\d+
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Number.isFinite(v) ? v : lo))
 
 async function originalTone(req: { artist: string; title: string; track: string; cues?: string[]; model?: string }): Promise<OriginalTone> {
-  if (!getClient()) return { ai: false, error: 'Add ANTHROPIC_API_KEY to .env.local and restart to use this.' }
+  if (!aiVia()) return { ai: false, error: 'Install Claude Code on this computer and sign in (AI teacher at the top) to use this.' }
   const user = `Song: "${req.title}" by ${req.artist}\nGuitar part: "${req.track}"${req.cues?.length ? `\nNotes from the tab file: ${req.cues.slice(0, 30).join('; ')}` : ''}`
   try {
     const { data, seenUrls, cost } = await runJson({
@@ -624,7 +624,19 @@ export function fretwiseServer(): Plugin {
         next()
       })
 
-      server.middlewares.use('/api/ai-status', (_req, res) => json(res, 200, { ai: !!getClient(), ...costSummary(MODELS) }))
+      server.middlewares.use('/api/ai-status', (_req, res) => {
+        const via = aiVia()
+        // Through Claude Code every feature runs on Opus, on the player's subscription: nothing to pay per call.
+        const sum = costSummary(MODELS)
+        const free = via === 'claude-code'
+        json(res, 200, {
+          ai: !!via,
+          via,
+          ...sum,
+          estimates: free ? Object.fromEntries(Object.keys(sum.estimates).map((k) => [k, 0])) : sum.estimates,
+          models: free ? Object.fromEntries(Object.keys(sum.models).map((k) => [k, 'Opus 5.5'])) : sum.models,
+        })
+      })
 
       // Signing in to Claude Code from the app (this computer only): the AI teacher runs on the Claude subscription.
       server.middlewares.use('/api/claude/status', async (_req, res) => json(res, 200, await claudeStatus()))

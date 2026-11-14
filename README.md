@@ -63,29 +63,24 @@ The coach in Lessons is written by Claude through Claude Code on this computer, 
 
 Click **🔍 Find a song** and describe the song any way you like, e.g. "the solo from Hotel California". Claude works out which song you mean and searches Ultimate Guitar and Songsterr for Guitar Pro versions you can download. Open one and click its download button. Fretwise watches your **Downloads** folder and imports new Guitar Pro files automatically.
 
-AI search needs an Anthropic API key. Put it in `.env.local` in this folder (git ignores that file), then restart `npm run dev`:
+AI search, like every AI feature, runs through Claude Code on this computer (see **AI features** below). Without it you still get direct search links.
 
-```
-ANTHROPIC_API_KEY=sk-ant-...
-```
+## AI features
 
-Without a key you still get direct search links.
+Every AI feature runs through **Claude Code on this computer, on Opus 5.5, on your Claude subscription**: no API key and nothing to pay per call. Sign in once with **AI teacher** at the top.
 
-## AI features and their cost
+| Feature | What Claude does | Typical time |
+|---|---|---|
+| 🔍 Find a song | Works out the song, up to 3 web searches on Ultimate Guitar and Songsterr | ~15–30 s |
+| ✨ Get original tone (🎸 panel) | The recorded rig, up to 4 searches on tone3000.com for matching captures | ~20–30 s |
+| Set up a song, ✨ Arrange lyrics (Songs tab) | Chords and sections from Ultimate Guitar; lyrics onto the sections | ~10–30 s |
+| Coach notes (Lessons) | A short note from your practice numbers | ~10 s |
 
-| Feature | Model | Typical cost | Repeat |
-|---|---|---|---|
-| 🔍 Find a song | Claude Haiku 5.5 + up to 3 web searches | ~$0.02 | free (cached) |
-| ✨ Get original tone (🎸 panel) | Claude Haiku 5.5 + up to 4 tone3000.com searches | ~$0.02 | free (cached) |
+Claude Code runs headless with only the web search tool (no other tools, none of your projects' settings, nothing saved), and its answers come back as JSON checked against a schema. Links are kept only when they really came back from a search. The same question is answered from `.cache/ai-results.json` for 60 days, instantly. The live coach uses Haiku for speed (about 3 s a reply).
 
-Each AI button shows the estimate before you click and the actual cost afterwards (computed from the API's usage report), plus this month's total. How cost is kept down:
-- **Model choice by measurement.** Both features were run on Haiku 5.5, Sonnet 5.5 and Opus 5.5. Haiku gave equally good matches (e.g. 3 Rectifier captures + 3 Mesa 4x12 IRs for Numb) at about ¼ of Opus's cost; Sonnet cost more and found less.
-- **Result cache:** the same question is answered from `.cache/ai-results.json` for 60 days at no cost. Changing a prompt invalidates its old answers.
-- **Structured JSON output** (schema-validated), so answers are compact and never need re-asking.
-- **Prompt caching** on the tools + system prompt; the multi-step search loop reads the cached prefix.
-- **Low effort and capped searches.** Web searches ($0.01 each) are now most of the cost.
+Downloading a capture from TONE3000 is separate: it needs a TONE3000 client ID (the 🎸 panel asks for it the first time), TONE3000's own key, not Anthropic's.
 
-Spend is logged in `.cache/ai-ledger.json`.
+Without Claude Code the app falls back to the Anthropic API when `.env.local` has `ANTHROPIC_API_KEY` (or after `ant auth login`); then the AI buttons show a cost estimate and the actual cost, logged in `.cache/ai-ledger.json`.
 
 ## Learn a song
 
