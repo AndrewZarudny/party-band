@@ -993,6 +993,22 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
               {levels?.track === track?.name && levels?.full ? '✓ ' : ''}
               Whole song{levels?.track === track?.name && levels?.ready ? ' · band-ready' : ''}
             </button>
+            {/* Band-ready in one click: the whole song, full tempo, your part muted (the band plays), with a count-in. */}
+            {levels?.track === track?.name && !levels?.ready && (!!levels?.full || (sections.length > 0 && nextLevel(levels, sections.length) === null)) && level !== 'full' && (
+              <button
+                className="btn small primary"
+                disabled={!ready}
+                onClick={() => {
+                  setSpeed(100)
+                  setMuteMine(true)
+                  setCountIn(true)
+                  startLevel('full')
+                  setLevelNote(`Band-ready attempt: the whole song at full tempo, your part muted. ${BAND_READY_PCT}% of the notes in one run makes it. Press Play.`)
+                }}
+              >
+                Try band-ready
+              </button>
+            )}
             {hardBar && (
               <button className="btn small" disabled={!ready} onClick={loopHardBar} title={`${hardBar.misses} misses in bar ${hardBar.bar + 1}`}>
                 Loop bars {hardBar.bar + 1}–{hardBar.bar + 2} slowly
