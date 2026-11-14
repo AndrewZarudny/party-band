@@ -13,7 +13,7 @@ export interface LiveCoachState {
   /** What the microphone is hearing right now, before it is sent. */
   heard: string
   /** The conversation so far, newest last. */
-  log: { who: 'you' | 'coach'; text: string }[]
+  log: { who: 'you' | 'coach'; text: string; about?: string }[]
   error: string | null
 }
 
@@ -104,7 +104,14 @@ export function subscribeLiveCoach(fn: () => void) {
 export const getLiveCoach = () => state
 export const liveCoachOn = () => state.on
 
-const addLog = (who: 'you' | 'coach', text: string) => set({ log: [...state.log, { who, text }].slice(-20) })
+const addLog = (who: 'you' | 'coach', text: string, about?: string) => set({ log: [...state.log, { who, text, about }].slice(-20) })
+
+/** Which run a reply is about ("Numb: Intro · 100% at 94 BPM"), so a reply to an earlier run can't pass for this one. */
+export function runLabel(facts: unknown): string | undefined {
+  const r = (facts as { run?: { lesson?: unknown; scorePercent?: unknown; bpm?: unknown } } | null)?.run
+  if (!r || typeof r.lesson !== 'string') return undefined
+  return [r.lesson, typeof r.scorePercent === 'number' ? `${r.scorePercent}%` : null, typeof r.bpm === 'number' ? `at ${r.bpm} BPM` : null].filter(Boolean).join(' · ').replace(/% · at/, '% at')
+}
 
 // ---- Listening ----------------------------------------------------------------------------------
 
@@ -294,7 +301,7 @@ async function ask(kind: 'run' | 'player', text: string, facts?: unknown): Promi
   if (!reply || !state.on) return reply
   const { say, action } = splitAction(reply)
   const act = action ? actionsNow()[action.name] : undefined
-  addLog('coach', say + (act ? ` (${action?.name}${action?.arg ? ' ' + action.arg : ''})` : ''))
+  addLog('coach', say + (act ? ` (${action?.name}${action?.arg ? ' ' + action.arg : ''})` : ''), kind === 'run' ? runLabel(facts) : undefined)
   await speak(say)
   // The action after the words, so the player hears what's about to happen.
   if (act && state.on) act.run(action?.arg)

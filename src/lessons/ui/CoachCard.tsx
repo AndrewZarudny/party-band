@@ -13,6 +13,8 @@ import { coachRunEnded, liveCoachOn } from '../liveCoach'
 import { dismissWeekly, saveWeekly, savedWeekly, weeklyDue, weeklyFacts } from '../weekly'
 
 const asked = new Set<string>() // keys already requested on this page load, so a re-render never asks twice
+/** Each run's coach request on this page load, shared by every showing of its result card. */
+const runAsked = new Map<string, Promise<CoachNote | { off: string } | null>>()
 
 export function CoachCard({ progress, moment }: { progress: Progress; moment: CoachMoment }) {
   const [now] = useState(() => new Date())
@@ -134,23 +136,21 @@ export function RunCoach({ lesson, result, outcome, block }: { lesson: Lesson; r
     const kept = savedCoach(key)
     // eslint-disable-next-line react-hooks/set-state-in-effect -- a new run: show its saved note (or none) before asking for a new one
     setNote(kept)
-    if (kept || asked.has(key)) return
-    asked.add(key)
+    if (kept) return
+    // One request per run, shared: a card shown again (or React mounting it twice) waits for the same answer
+    // instead of staying on "Looking at your run…".
+    let req = runAsked.get(key)
+    if (!req) {
+      const facts = runFacts(lesson, result, outcome, { name: account?.name ?? null, block })
+      // The live coach is on: it says its note out loud, and the card shows the same words.
+      req = liveCoachOn()
+        ? coachRunEnded(facts).then((reply) => (reply ? { message: reply, next: '' } : null))
+        : fetchCoach(key, facts)
+      runAsked.set(key, req)
+    }
     let live = true
     setBusy(true)
-    const facts = runFacts(lesson, result, outcome, { name: account?.name ?? null, block })
-    // The live coach is on: it says its note out loud, and the card shows the same words.
-    if (liveCoachOn()) {
-      void coachRunEnded(facts).then((reply) => {
-        if (!live) return
-        setBusy(false)
-        if (reply) setNote({ message: reply, next: '' })
-      })
-      return () => {
-        live = false
-      }
-    }
-    void fetchCoach(key, facts).then((n) => {
+    void req.then((n) => {
       if (!live) return
       setBusy(false)
       if (n && 'off' in n) setOff(n.off)

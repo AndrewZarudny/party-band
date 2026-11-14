@@ -81,6 +81,7 @@ export function LiveCoachBar() {
         <ol className="lc-log">
           {s.log.slice(-6).map((l, i) => (
             <li key={`${s.log.length}-${i}`} className={l.who}>
+              {l.about && <small className="lc-about">About your run: {l.about}</small>}
               {l.text}
             </li>
           ))}

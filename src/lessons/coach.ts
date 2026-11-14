@@ -95,7 +95,14 @@ export function runFacts(lesson: Lesson, r: LessonResult, o: ApplyOutcome, x: { 
       notes: counts,
       timing: r.meanErrMs === null ? null : { averageMsLateIsPositive: Math.round(r.meanErrMs), spreadMs: r.spreadMs },
       hardestBar: r.hardestBar === null ? null : r.hardestBar + 1,
-      chords: r.chordStats ? { rangTrue: r.chordStats.ok, soundedOff: r.chordStats.wrong, unclear: r.chordStats.unsure } : null,
+      chords: r.chordStats
+        ? {
+            rangTrue: r.chordStats.ok,
+            soundedOff: r.chordStats.wrong,
+            appCouldNotJudge: r.chordStats.unsure,
+            note: 'appCouldNotJudge means the app could not hear them well enough to judge: not a mistake, say nothing about them. Only soundedOff chords were played badly.',
+          }
+        : null,
       bendCentsOff: r.bendCents ?? null,
       jam: r.improv ? { scoresOutOf100: Object.fromEntries(Object.entries(r.improv.metrics).map(([k, v]) => [k, Math.round(v ?? 0)])), tips: r.improv.tips } : null,
       firstTryFromColdToday: o.cold ? { clean: o.cold.clean, bpm: o.cold.bpm } : null,
