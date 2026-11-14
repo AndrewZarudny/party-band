@@ -347,7 +347,10 @@ export function LessonIntro({
         <div className="ls-start">
           {lesson.tuning && (
             <p className="ls-warn">
-              Tune to <b>{describeTuning(lesson.tuning)}</b> ({tuningLabel(lesson.tuning)}) first. The Tuner tab has it ready.
+              Tune to <b>{describeTuning(lesson.tuning)}</b> ({tuningLabel(lesson.tuning)}) first.{' '}
+              <button className="ls-btn small" onClick={() => window.dispatchEvent(new Event('fretwise-open-tuner'))}>
+                Open the Tuner
+              </button>
             </p>
           )}
           <InputPicker prefs={prefs} onPrefs={onPrefs} />

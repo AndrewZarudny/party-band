@@ -33,6 +33,21 @@ export default function App() {
       /* storage unavailable */
     }
   }
+  // A lesson in another tuning sends the player to the Tuner (it has the lesson's tuning ready).
+  useEffect(() => {
+    const toTuner = () => {
+      setMode('tune')
+      try {
+        localStorage.setItem('mode', 'tune')
+        // On the song's tuning (the lesson's), not whatever the Tuner was left on.
+        localStorage.setItem('tuner-tuning', 'song')
+      } catch {
+        /* storage unavailable */
+      }
+    }
+    window.addEventListener('fretwise-open-tuner', toTuner)
+    return () => window.removeEventListener('fretwise-open-tuner', toTuner)
+  }, [])
   // The header button already shows the active tone's name.
   const onToneLabel = useCallback(() => {}, [])
   const showSong = useCallback(() => setMode('song'), [])
