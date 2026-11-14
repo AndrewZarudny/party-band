@@ -3248,3 +3248,12 @@ code {
 .jam-summary p {
   margin: 6px 0 0;
 }
+
+/* Jam: where the suggested phrases come from (made up, or licks from your songs). */
+.jam-phrase-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 8px 0;
+}

@@ -41,6 +41,7 @@ import { BandSoundSwitch } from '../components/BandSound'
 import type { KeysVoicing } from '../music/parts'
 import { LooperPanel } from '../components/LooperPanel'
 import { setLooperBand, useLooper } from '../audio/looper'
+import { pickLick, songLicksIn } from '../music/songLicks'
 import { coachRunEnded, liveCoachOn, setCoachActions } from '../lessons/liveCoach'
 import type { CoachActions } from '../lessons/liveCoach'
 import type { JamSummary } from '../music/jamSummary'
@@ -77,6 +78,15 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   const [position, setPosition] = useState<number | null>(null)
   const [running, setRunning] = useState(false)
   const looper = useLooper()
+  // Phrases made up, or licks from your own songs that fit the scale (worked out when switched on).
+  const [fromSongs, setFromSongs] = useState(() => {
+    try {
+      return localStorage.getItem('jam-phrases-from-songs') === '1'
+    } catch {
+      return false
+    }
+  })
+  const [songLicks, setSongLicks] = useState<FretPos[][]>([])
   // This jam in numbers (notes against chord and scale, phrases played), shown when the band stops.
   const jamCounts = useRef(emptyJamCounts())
   const jamStartedAt = useRef(0)
@@ -662,13 +672,33 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
     setPtr(0)
   }, [])
 
+  // The song licks that fit the scale: worked out when "From your songs" is on, and again when the key changes.
+  useEffect(() => {
+    if (!fromSongs) return
+    let live = true
+    void songLicksIn(scalePcs).then((l) => live && setSongLicks(l))
+    return () => {
+      live = false
+    }
+  }, [fromSongs, scalePcs])
+  const pickSource = (on: boolean) => {
+    setFromSongs(on)
+    try {
+      localStorage.setItem('jam-phrases-from-songs', on ? '1' : '0')
+    } catch {
+      /* storage unavailable */
+    }
+  }
+
   const newPhrase = useCallback(
     (towardsNext: boolean) => {
       if (!chord) return
       const target = towardsNext && nextChord ? nextChord.tones : chord.tones
-      showPhrase({ id: `ph${Date.now()}${Math.random().toString(36).slice(2, 6)}`, notes: makePhrase(box, scalePcs, chord.tones, target, PHRASE_LEN), chord: chord.symbol })
+      // From your songs: a lick that fits the scale, ending on a tone of the chord it aims for.
+      const lick = fromSongs ? pickLick(songLicks, target) : null
+      showPhrase({ id: `ph${Date.now()}${Math.random().toString(36).slice(2, 6)}`, notes: lick ?? makePhrase(box, scalePcs, chord.tones, target, PHRASE_LEN), chord: chord.symbol })
     },
-    [box, scalePcs, chord, nextChord, showPhrase],
+    [box, scalePcs, chord, nextChord, showPhrase, fromSongs, songLicks],
   )
 
   const playFromSet = useCallback(
@@ -687,10 +717,10 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   const makeFor = useCallback(
     (c: Chord): SavedPhrase => ({
       id: `ph${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
-      notes: makePhrase(boxNotes(scalePcs, c.tones, pos === 0 ? 0 : pos - 1), scalePcs, c.tones, c.tones, PHRASE_LEN),
+      notes: (fromSongs ? pickLick(songLicks, c.tones) : null) ?? makePhrase(boxNotes(scalePcs, c.tones, pos === 0 ? 0 : pos - 1), scalePcs, c.tones, c.tones, PHRASE_LEN),
       chord: c.symbol,
     }),
-    [scalePcs, pos],
+    [scalePcs, pos, fromSongs, songLicks],
   )
 
   // On every chord change: play the prepared phrase if it was made for this chord, then prepare
@@ -1152,6 +1182,19 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
               ? 'Your solo: follow the green notes, or play your own lines using the highlighted notes.'
               : `${soloist ? `${soloist.name} is soloing` : 'Rhythm time'}: keep practising the lines quietly, or use the chord tones for fills.`}
           </span>
+        </div>
+        <div className="jam-phrase-source">
+          <div className="seg-group" role="radiogroup" aria-label="Phrases">
+            <button className={`seg ${!fromSongs ? 'on' : ''}`} role="radio" aria-checked={!fromSongs} onClick={() => pickSource(false)}>
+              Made up
+            </button>
+            <button className={`seg ${fromSongs ? 'on' : ''}`} role="radio" aria-checked={fromSongs} onClick={() => pickSource(true)}>
+              From your songs
+            </button>
+          </div>
+          {fromSongs && (
+            <span className="hint">{songLicks.length ? `${songLicks.length} licks from your songs fit ${noteName(keyRoot, flats)} ${scale.label}` : `None of your songs' licks fit ${noteName(keyRoot, flats)} ${scale.label}: made-up phrases instead.`}</span>
+          )}
         </div>
         <PhraseBoard
           upcoming={nextShown}
