@@ -874,7 +874,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
               ))}
             </select>
             <TuningPicker orig={origTuning} conversion={conversion} onChange={chooseTuning} />
-            <button className="btn primary" disabled={!ready || waitMode} onClick={() => apiRef.current?.playPause()}>
+            <button className="btn primary" disabled={!ready || waitMode} onClick={() => apiRef.current?.playPause()} data-pedal="go" title="Main pedal">
               {playing ? '❚❚ Pause' : '▶ Play'}
             </button>
             <button className="btn" disabled={!ready} onClick={() => apiRef.current?.stop()}>
@@ -926,6 +926,12 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
               {levels?.track === track?.name && levels?.full ? '✓ ' : ''}
               Whole song{levels?.track === track?.name && levels?.ready ? ' · band-ready' : ''}
             </button>
+            {/* On to the next part (the next pedal); from the last part, the whole song. */}
+            {typeof level === 'number' && (
+              <button className="btn small" disabled={!ready} onClick={() => startLevel(level + 1 < sections.length ? level + 1 : 'full')} data-pedal="next" title="Next pedal">
+                Next part ›
+              </button>
+            )}
             {level !== null && (
               <button className="link" onClick={() => startLevel(null)}>
                 free play
