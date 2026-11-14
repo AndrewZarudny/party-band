@@ -93,7 +93,10 @@ export function isStruggling(lesson: Lesson | undefined, rec: LessonRecord | und
   const g = retentionGap(rec)
   if (g.coldClean === null) return false
   if (g.coldClean && rec.review.coldSpeed !== undefined) return false
-  return !g.coldClean || (g.gap !== null && g.gap > REVIEW_DROP_BPM)
+  // Not clean, but a first try at the 2-star mark is sticking: it fell short of clean on a few unsure chords or
+  // notes, not on memory (seen in real data: an 87% cold Power Pair with 10 of 16 chords judged unsure).
+  if (!g.coldClean) return (newestCold(rec)?.score ?? 0) < lesson.stars[1]
+  return g.gap !== null && g.gap > REVIEW_DROP_BPM
 }
 
 /** Struggling items, lowest newest cold score first, then map order. */

@@ -1,13 +1,13 @@
-// The live coach's bar in Lessons: turn it on, see whether it's listening, mute it, read what was said.
+// The live coach's bar, in every tab: turn it on, see whether it's listening, mute it, read what was said.
 import { useState, useSyncExternalStore } from 'react'
-import type { Progress } from '../types'
+import { useDailyGoal } from '../../practice/goal'
 import { canListen, getLiveCoach, hushCoach, setCoachMuted, startLiveCoach, stopLiveCoach, subscribeLiveCoach } from '../liveCoach'
 import { coachFacts } from '../coach'
 import { loadStats } from '../../skills/store'
 import { useAccount } from '../../account/session'
 import { getPracticeSnapshot } from '../../practice/log'
 import { practiceDaySec } from '../../practice/data'
-import { dayKey } from '../progress'
+import { dayKey, loadProgress } from '../progress'
 
 const STATUS: Record<string, string> = {
   listening: 'Listening',
@@ -17,7 +17,9 @@ const STATUS: Record<string, string> = {
   muted: 'Mic off',
 }
 
-export function LiveCoachBar({ progress, goalMin }: { progress: Progress; goalMin: number }) {
+/** The live coach, in any tab: it starts from the saved progress, so Learn a song and Jam can use it too. */
+export function LiveCoachBar() {
+  const goalMin = useDailyGoal()
   const s = useSyncExternalStore(subscribeLiveCoach, getLiveCoach)
   const { account } = useAccount()
   const [open, setOpen] = useState(true)
@@ -29,7 +31,7 @@ export function LiveCoachBar({ progress, goalMin }: { progress: Progress; goalMi
           className="lc-start"
           onClick={() => {
             const now = new Date()
-            startLiveCoach(coachFacts(progress, loadStats(), now, 'open', { name: account?.name ?? null, todaySec: practiceDaySec(getPracticeSnapshot(), dayKey(now)), goalMin }))
+            startLiveCoach(coachFacts(loadProgress(), loadStats(), now, 'open', { name: account?.name ?? null, todaySec: practiceDaySec(getPracticeSnapshot(), dayKey(now)), goalMin }))
           }}
           title="A coach you can talk to: it speaks after each run and answers what you ask"
         >

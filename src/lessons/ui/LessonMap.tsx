@@ -367,11 +367,16 @@ export function LessonMap({
         </p>
       )}
 
-      {onSong && <GoalCard progress={progress} songs={songs} songParts={songParts} onOpen={onOpen} onSong={onSong} />}
-      <WeeklyReview progress={progress} />
-      <ThenAndNow progress={progress} />
-      <CoachCard progress={progress} moment={setDone ? 'done' : 'open'} />
+
+      {/* Today first: the plan and its Play button, right under the dino. Then how it went, then the rest. */}
+      {showSet && (
+        <TodayCard progress={progress} plan={plan} onStep={onPlanStep} onSwap={onPlanSwap} onSkip={onPlanSkip} onToday={onToday} onPain={onPain} onPressure={onPressure} onExtra={onPlanExtra} />
+      )}
       {setDone && <CheckInCard />}
+      <CoachCard progress={progress} moment={setDone ? 'done' : 'open'} />
+      <WeeklyReview progress={progress} />
+      {onSong && <GoalCard progress={progress} songs={songs} songParts={songParts} onOpen={onOpen} onSong={onSong} />}
+      <ThenAndNow progress={progress} />
       {star3 && (
         <p className="sc-quiet-note ls-star3-goal">
           Closest third star: <b>{star3.title}</b>, {star3.gap > 0 ? `${star3.gap}% to go at full tempo` : 'the score is there, now at full tempo'}.{' '}
@@ -417,9 +422,6 @@ export function LessonMap({
         </div>
       )}
 
-      {showSet && (
-        <TodayCard progress={progress} plan={plan} onStep={onPlanStep} onSwap={onPlanSwap} onSkip={onPlanSkip} onToday={onToday} onPain={onPain} onPressure={onPressure} onExtra={onPlanExtra} />
-      )}
 
       {showSet && <PocketCard open={pocketOpen(progress, now)} pair={pair} onPick={onPocket} />}
 

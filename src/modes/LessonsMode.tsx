@@ -65,10 +65,8 @@ import { ColdStart, MentalCard } from '../lessons/ui/SessionCards'
 import { ProgressScreen } from '../lessons/ui/ProgressScreen'
 import { lessonsStartScreen, onOpenProgress, progressAsked, progressShown } from '../practice/progressLink'
 import { PlanWeeks } from '../lessons/ui/PlanWeeks'
-import { LiveCoachBar } from '../lessons/ui/LiveCoachBar'
 import { setCoachActions, setCoachPlaying } from '../lessons/liveCoach'
 import type { CoachActions } from '../lessons/liveCoach'
-import { useDailyGoal } from '../practice/goal'
 import { BasicsSheet } from '../lessons/ui/teach/BasicsSheet'
 import { LoopScreen } from '../lessons/ui/LoopScreen'
 import { HeatScreen } from '../lessons/ui/HeatScreen'
@@ -178,7 +176,6 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
   const [songs, setSongs] = useState<MapSong[] | null>(null)
   const [songParts, setSongParts] = useState<MapSongPart[] | null>(null) // null until the songs are read // null until the library is read
   const [notice, setNotice] = useState<string | null>(null)
-  const goalMin = useDailyGoal()
   // The live coach doesn't listen during a run or the sync check, so the guitar isn't taken for speech.
   useEffect(() => {
     setCoachPlaying(screen === 'play' || screen === 'sync')
@@ -916,10 +913,11 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
   useEffect(() => {
     setCoachActions(() => coachActions)
   })
+  // Leaving Lessons: the coach can't press its buttons from another tab.
+  useEffect(() => () => setCoachActions(() => ({})), [])
 
   return (
     <div className={`lessons screen-${screen}`}>
-      {screen !== 'welcome' && <LiveCoachBar progress={progress} goalMin={goalMin} />}
       {staleEngine && (
         <p className="ls-banner" role="status">
           Audio engine changed: reload the page.

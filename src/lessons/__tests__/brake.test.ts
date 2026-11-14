@@ -70,6 +70,9 @@ describe('struggling items', () => {
   it('needs a failed newest cold, or a clean one far under the best before it; learned and untested items are not counted', () => {
     const l = lessonById(ITEMS[0])!
     expect(isStruggling(l, failing(20))).toBe(true)
+    // Not clean but at the 2-star mark (a few unsure chords, not memory): sticking. Under it: not.
+    expect(isStruggling(l, failing(l.stars[1]))).toBe(false)
+    expect(isStruggling(l, failing(l.stars[1] - 1))).toBe(true)
     // No cold test yet: nothing says it's failing.
     expect(isStruggling(l, rec({ passedAt: 1, review: firstReview(1) }))).toBe(false)
     // Learned: never struggling.

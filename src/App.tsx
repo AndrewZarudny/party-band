@@ -10,6 +10,7 @@ import { LessonsMode } from './modes/LessonsMode'
 import { AudioPanel, AudioStatus } from './components/AudioPanel'
 import { AccountMenu } from './account/ui/AccountMenu'
 import { AiTeacher } from './components/AiTeacher'
+import { LiveCoachBar } from './lessons/ui/LiveCoachBar'
 import { ThemeToggle } from './components/ThemeToggle'
 import { onOpenProgress } from './practice/progressLink'
 
@@ -129,6 +130,8 @@ export default function App() {
           </div>
         )}
       </main>
+      {/* The live coach: one conversation for the whole app, from Lessons to Learn a song and Jam. */}
+      <LiveCoachBar />
       {panel && <AudioPanel onClose={() => setPanel(false)} t3kResult={t3kResult} onT3kDone={clearT3k} />}
     </div>
   )

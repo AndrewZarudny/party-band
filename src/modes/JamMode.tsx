@@ -40,6 +40,7 @@ import type { BackingPart } from '../audio/backing'
 import { BandSoundSwitch } from '../components/BandSound'
 import type { KeysVoicing } from '../music/parts'
 import { LooperPanel } from '../components/LooperPanel'
+import { setCoachPlaying } from '../lessons/liveCoach'
 
 interface Played {
   midi: number
@@ -70,6 +71,11 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   const [auto, setAuto] = useState<boolean>((prefs.auto as boolean) ?? true)
   const [position, setPosition] = useState<number | null>(null)
   const [running, setRunning] = useState(false)
+  // The live coach doesn't listen while the band plays.
+  useEffect(() => {
+    setCoachPlaying(running)
+    return () => setCoachPlaying(false)
+  }, [running])
   const [chordIdx, setChordIdx] = useState(0)
   const [beatInChord, setBeatInChord] = useState(0)
   const [phrase, setPhrase] = useState<FretPos[]>([])

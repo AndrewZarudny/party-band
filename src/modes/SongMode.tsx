@@ -22,6 +22,7 @@ import { holdReload, practice } from '../account/activity'
 import type { SongLevels } from '../music/songLevels'
 import { BAND_READY_PCT, MIN_NOTES, PASS_PCT, PASS_SPEED, levelPassed, loadLevels, nextLevel, saveLevels, songSections, withPass } from '../music/songLevels'
 import { hasSavedProgress, loadProgress, saveProgress } from '../lessons/progress'
+import { coachRunEnded, liveCoachOn, setCoachPlaying } from '../lessons/liveCoach'
 
 interface Conversion {
   to: number[] // low → high
@@ -138,6 +139,11 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
   const [ready, setReady] = useState(false)
   const [loadPct, setLoadPct] = useState(0)
   const [playing, setPlaying] = useState(false)
+  // The live coach doesn't listen while the song plays (it would hear the guitar and the track).
+  useEffect(() => {
+    setCoachPlaying(playing)
+    return () => setCoachPlaying(false)
+  }, [playing])
   // Account updates from elsewhere wait while the song plays.
   useEffect(() => {
     holdReload('song', playing)
@@ -372,6 +378,18 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
     }
     const passed = levelPassed(hit, miss, speed)
     setLastPass({ pct, passed })
+    // The live coach, when on, hears about the run: the numbers of this part (or the whole song).
+    if (liveCoachOn())
+      void coachRunEnded({
+        moment: 'the player just played a part of a song in Learn a song (play along with the tab)',
+        song: entryRef.current?.title ?? null,
+        part: name,
+        notesHitPercent: pct,
+        speedPercent: speed,
+        passed,
+        passMark: `${PASS_PCT}% of the notes at ${PASS_SPEED}% speed or faster`,
+        bandReady: lv === 'full' ? `${BAND_READY_PCT}% in one run of the whole song at full tempo` : null,
+      })
     if (!passed) {
       setLevelNote(
         total < MIN_NOTES
