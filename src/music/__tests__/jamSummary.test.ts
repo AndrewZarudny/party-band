@@ -36,3 +36,23 @@ describe('jams over time', () => {
     expect(loadJamHistory()[0].at).toBe(2)
   })
 })
+
+describe('timing against the band', () => {
+  it('each attack against the nearest 8th note of the band, in ms', async () => {
+    const { gridOffsetMs } = await import('../jamSummary')
+    // Beat 0 at 10 s, 0.5 s a beat: 8th notes every 0.25 s.
+    expect(gridOffsetMs(10.27, 10, 0.5)).toBe(20) // 20 ms after the 8th at 10.25
+    expect(gridOffsetMs(10.48, 10, 0.5)).toBe(-20) // 20 ms before the beat at 10.5
+    // Swung: off-beats land late on purpose, so only the beats are the grid.
+    expect(gridOffsetMs(10.48, 10, 0.5, true)).toBe(-20)
+    expect(gridOffsetMs(10.33, 10, 0.5, true)).toBeNull() // a swung off-beat: left out
+    expect(gridOffsetMs(10.125, 10, 0.5)).toBeNull() // a 16th between 8ths: left out
+  })
+  it('the average lean, said only when it is 20 ms or more, from 8 attacks or more', async () => {
+    const { bandTiming } = await import('../jamSummary')
+    expect(bandTiming(Array(8).fill(-45))?.text).toBe('you were about 45 ms ahead of the band (rushing)')
+    expect(bandTiming(Array(8).fill(30))?.text).toMatch(/behind the band/)
+    expect(bandTiming(Array(8).fill(5))?.text).toBeNull()
+    expect(bandTiming(Array(7).fill(-45))).toBeNull()
+  })
+})

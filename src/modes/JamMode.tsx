@@ -46,7 +46,9 @@ import { loadGoal } from '../lessons/goal'
 import { coachRunEnded, liveCoachOn, setCoachActions } from '../lessons/liveCoach'
 import type { CoachActions } from '../lessons/liveCoach'
 import type { JamSummary } from '../music/jamSummary'
-import { againstUsual, emptyJamCounts, jamSummary, loadJamHistory, saveJam } from '../music/jamSummary'
+import { againstUsual, bandTiming, emptyJamCounts, gridOffsetMs, jamSummary, loadJamHistory, saveJam } from '../music/jamSummary'
+import { AudioClock } from '../lessons/clock'
+import { defaultOffsetMs, deviceKey, loadLatency } from '../lessons/calibration'
 import { setCoachPlaying } from '../lessons/liveCoach'
 
 interface Played {
@@ -92,7 +94,7 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   const jamCounts = useRef(emptyJamCounts())
   const jamStartedAt = useRef(0)
   const runningRef = useRef(false)
-  const [jamDone, setJamDone] = useState<{ s: JamSummary; usual: ReturnType<typeof againstUsual> } | null>(null)
+  const [jamDone, setJamDone] = useState<{ s: JamSummary; usual: ReturnType<typeof againstUsual>; timing: ReturnType<typeof bandTiming> } | null>(null)
   // The live coach doesn't listen while the band plays.
   useEffect(() => {
     setCoachPlaying('jam', running)
@@ -299,16 +301,18 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
       runningRef.current = false
       jamCounts.current.sec = (performance.now() - jamStartedAt.current) / 1000
       const sum = jamSummary(jamCounts.current)
+      const timing = bandTiming(bandOffsets.current)
       // Against your usual (the jams before this one), then kept with them.
       const usual = sum ? againstUsual(sum, loadJamHistory()) : null
       if (sum) saveJam(sum)
-      setJamDone(sum ? { s: sum, usual } : null)
+      setJamDone(sum ? { s: sum, usual, timing } : null)
       // The live coach, when on, hears about the jam (the same numbers, and what was played over).
       const st = settings.current
       if (sum && liveCoachOn())
         void coachRunEnded({
           moment: 'the player just stopped a free jam in the Jam tab: improvising over a band or click',
           jam: { ...sum, pointer: undefined, key: st.keyName, scale: st.scaleName, chords: st.chordNames, bpm: st.bpm },
+          timingAgainstBand: timing ? { averageMsLateIsPositive: timing.meanMs, attacks: timing.n } : null,
           yourUsual: usual ? { chordTonesPercent: usual.chordPct, outsidePercent: usual.outPct, overJams: usual.jams, thisOneBetter: usual.better } : null,
           suggestedPointer: sum.pointer,
         })
@@ -779,6 +783,29 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   )
 
   // What the live coach may do here, while the Jam tab is the one showing.
+  // Timing against the band: each pick attack (as in Lessons: its audio time, less the round trip from Tap In)
+  // against the nearest 8th note of the band.
+  const bandOffsets = useRef<number[]>([])
+  const feelRef = useRef(feel)
+  feelRef.current = feel
+  useEffect(() => {
+    if (!running || !engine.ctx) return
+    bandOffsets.current = []
+    const aclock = new AudioClock(engine.ctx)
+    const rt = (loadLatency(deviceKey())?.offsetMs ?? defaultOffsetMs()) / 1000
+    let last = -1
+    return engine.onset.on((on) => {
+      if (on.ratio < 1.6) return
+      const t = aclock.now() - on.ageSec - rt
+      if (t - last < 0.09) return // a ringing note re-triggers: one attack per 90 ms
+      last = t
+      const c = clock.current
+      if (t < c.start) return // the count-in
+      const off = gridOffsetMs(t, c.start, 60 / settings.current.bpm, feelRef.current.swing)
+      if (off !== null) bandOffsets.current.push(off)
+    })
+  }, [running])
+
   // While the band plays, a bars loop locks to it (its downbeat and tempo).
   useEffect(() => {
     if (!running) return
@@ -935,7 +962,7 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
       </div>
 
       {view === 'jam' && <GoalSongBar current={songSel} onPlay={playSong} />}
-      {view === 'jam' && jamDone && <JamSummaryCard s={jamDone.s} usual={jamDone.usual} onClose={() => setJamDone(null)} />}
+      {view === 'jam' && jamDone && <JamSummaryCard s={jamDone.s} usual={jamDone.usual} timing={jamDone.timing} onClose={() => setJamDone(null)} />}
       {view === 'jam' && <LooperPanel jamBpm={bpm} bandRunning={running} />}
 
       {view === 'songs' && (
@@ -1260,7 +1287,7 @@ function nextSectionName(steps: Step[], i: number) {
 }
 
 /** The jam just played, in numbers, with one pointer for next time. */
-function JamSummaryCard({ s, usual, onClose }: { s: JamSummary; usual: ReturnType<typeof againstUsual>; onClose: () => void }) {
+function JamSummaryCard({ s, usual, timing, onClose }: { s: JamSummary; usual: ReturnType<typeof againstUsual>; timing: ReturnType<typeof bandTiming>; onClose: () => void }) {
   const min = Math.floor(s.sec / 60)
   return (
     <section className="jam-summary" aria-label="Your jam">
@@ -1275,6 +1302,11 @@ function JamSummaryCard({ s, usual, onClose }: { s: JamSummary; usual: ReturnTyp
         </button>
       </header>
       <p>{s.pointer}</p>
+      {timing?.text && (
+        <p>
+          Timing: {timing.text}. {timing.meanMs < 0 ? 'Let each note wait for the drums.' : 'Pick right on the beat; have the next fret ready early.'}
+        </p>
+      )}
       {usual && (
         <p className="hint">
           Your last {usual.jams === 1 ? 'jam' : `${usual.jams} jams`}: {usual.chordPct}% chord tones, {usual.outPct}% outside.{usual.better ? ' This one was better.' : ''}

@@ -83,3 +83,25 @@ export function againstUsual(s: JamSummary, before: JamRecord[]): { chordPct: nu
   const better = s.outPct < outPct - 2 || (s.outPct <= outPct + 2 && s.chordPct > chordPct + 2)
   return { chordPct, outPct, jams: last.length, better }
 }
+
+// ---- Timing against the band -------------------------------------------------------------------------
+
+/**
+ * How far an attack at audio time `t` is from the nearest 8th note of a band whose beat 0 is at `start`, in ms
+ * (+ = late). A swung band plays its off-beats late on purpose: then only the beats themselves are the grid.
+ */
+export function gridOffsetMs(t: number, start: number, secPerBeat: number, swing = false): number | null {
+  const e = swing ? secPerBeat : secPerBeat / 2
+  const k = Math.round((t - start) / e)
+  const off = t - (start + k * e)
+  // Clearly between grid points (a 16th, a swung off-beat): not meant for the grid, left out.
+  return Math.abs(off) > 0.3 * e ? null : Math.round(off * 1000)
+}
+
+/** The average lean against the band, from 8 or more attacks; null with fewer. */
+export function bandTiming(offsets: number[]): { meanMs: number; n: number; text: string | null } | null {
+  if (offsets.length < 8) return null
+  const meanMs = Math.round(offsets.reduce((a, o) => a + o, 0) / offsets.length)
+  const text = meanMs <= -20 ? `you were about ${-meanMs} ms ahead of the band (rushing)` : meanMs >= 20 ? `you were about ${meanMs} ms behind the band (dragging)` : null
+  return { meanMs, n: offsets.length, text }
+}
