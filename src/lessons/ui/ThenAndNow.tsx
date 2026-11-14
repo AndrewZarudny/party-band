@@ -2,7 +2,8 @@
 // first take next to the latest. Progress on guitar is slow day to day; heard across months it is plain.
 import { useEffect, useRef, useState } from 'react'
 import type { Progress } from '../types'
-import { lessonById } from '../data'
+import { lessonById, madeLessons } from '../data'
+import { loadGoal } from '../goal'
 import { isPassed } from '../progress'
 import { useEngineState } from '../../audio/hooks'
 import { TakeRecorder } from '../../skills/recorder'
@@ -11,15 +12,24 @@ import { addMilestone, listMilestones, loadPiece, milestoneDue, monthKey, savePi
 
 const monthName = (key: string) => new Date(`${key}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
 
-/** Pieces to choose from: passed lessons and song parts with notes to play, most recently played first. */
+/**
+ * Pieces to choose from: the goal song's parts first (passed or not: a goal part shows the most change), then
+ * passed lessons and song parts with notes to play, most recently played first.
+ */
 function pieces(p: Progress): { id: string; title: string }[] {
-  return Object.entries(p.lessons)
+  const goal = loadGoal()
+  const goalParts = goal
+    ? madeLessons()
+        .filter((l) => l.id.startsWith(`song:${goal.songId}:`))
+        .map((l) => ({ id: l.id, title: l.title }))
+    : []
+  const rest = Object.entries(p.lessons)
     .filter(([id]) => isPassed(p, id))
     .map(([id, r]) => ({ id, l: lessonById(id), last: r.lastPlayed }))
     .filter((x) => x.l && x.l.type !== 'sync' && x.l.type !== 'improv')
     .sort((a, b) => b.last - a.last)
-    .slice(0, 10)
     .map((x) => ({ id: x.id, title: x.l!.title }))
+  return [...goalParts, ...rest.filter((x) => !goalParts.some((g) => g.id === x.id))].slice(0, 12)
 }
 
 function play(blob: Blob): Promise<void> {
