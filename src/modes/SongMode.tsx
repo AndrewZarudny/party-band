@@ -24,6 +24,9 @@ import { BAND_READY_PCT, MIN_NOTES, PASS_PCT, PASS_SPEED, levelPassed, loadLevel
 import { hasSavedProgress, loadProgress, saveProgress } from '../lessons/progress'
 import { coachRunEnded, liveCoachOn, setCoachPlaying } from '../lessons/liveCoach'
 import { loadRuns, partTrend, saveRun, weakestPart, worstBar } from '../music/songRuns'
+import { TakeRecorder } from '../skills/recorder'
+import type { Milestone } from '../skills/milestones'
+import { addMilestone, listMilestones, loadPiece, milestoneDue, monthKey } from '../skills/milestones'
 
 interface Conversion {
   to: number[] // low → high
@@ -164,7 +167,8 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
     }
   })
   const [metronome, setMetronome] = useState(false)
-  const metroLevel = useEngineState().metronomeLevel
+  const engineNow = useEngineState()
+  const metroLevel = engineNow.metronomeLevel
   const [countIn, setCountIn] = useState(true)
   const [muteMine, setMuteMine] = useState(false)
   const [notation, setNotation] = useState<'Tab' | 'ScoreTab'>('Tab')
@@ -181,6 +185,15 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
   const [lastPass, setLastPass] = useState<{ pct: number; passed: boolean } | null>(null)
   // The part that needs work most (from the run history), worked out after each run and on a new song.
   const [weakIdx, setWeakIdx] = useState<number | null>(null)
+  // Then and now: this month's take of the chosen piece, when it's a part of this song (recorded with the track).
+  const takeRec = useRef<TakeRecorder | null>(null)
+  const [takeOn, setTakeOn] = useState(false)
+  const [takeNote, setTakeNote] = useState('')
+  const [milestones, setMilestones] = useState<Milestone[] | null>(null)
+  useEffect(() => {
+    void listMilestones().then(setMilestones)
+  }, [])
+  const [takePart, setTakePart] = useState<number | null>(null)
   // The bar with the most misses in the last run, for a slow loop of just that spot.
   const [hardBar, setHardBar] = useState<{ bar: number; misses: number; speed: number } | null>(null)
   const [countBeat, setCountBeat] = useState<number | null>(null)
@@ -317,6 +330,14 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
     const sameTrack = levels?.track === track?.name
     setWeakIdx(id && sections.length > 1 ? weakestPart(loadRuns(id), sections.length, (i) => (sameTrack ? (levels?.passed[String(i)]?.pct ?? null) : null)) : null)
   }, [sections, levels, levelNote, track])
+
+  // Which part of this song is the Then & now piece, when its take for this month is still to record.
+  useEffect(() => {
+    const piece = loadPiece()
+    const prefix = entryRef.current ? `song:${entryRef.current.id}:` : null
+    const i = piece && prefix && piece.startsWith(prefix) ? Number(piece.slice(prefix.length)) : -1
+    setTakePart(i >= 0 && i < sections.length && milestones && (takeOn || milestoneDue(milestones, piece, new Date())) ? i : null)
+  }, [sections, milestones, takeOn])
 
   /** Plays one level for a pass: only that section, from its first bar, with the count of right notes started again. */
   const startLevel = useCallback(
@@ -993,6 +1014,41 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
               {levels?.track === track?.name && levels?.full ? '✓ ' : ''}
               Whole song{levels?.track === track?.name && levels?.ready ? ' · band-ready' : ''}
             </button>
+            {takePart !== null && sections[takePart] && (takeOn ? (
+              <button
+                className="btn small primary"
+                onClick={async () => {
+                  const r = takeRec.current
+                  takeRec.current = null
+                  setTakeOn(false)
+                  const got = r ? await r.stop() : null
+                  const piece = loadPiece()
+                  if (!got || !piece) return setTakeNote('Nothing was recorded.')
+                  await addMilestone({ id: `m-${Date.now()}`, month: monthKey(new Date()), at: Date.now(), pieceId: piece, pieceTitle: `${shownSong.title}: ${sections[takePart].name}`, blob: got.blob, sec: got.sec })
+                  setMilestones(await listMilestones())
+                  setTakeNote("Kept: this month's take is in Then & now on the Lessons home.")
+                }}
+              >
+                ■ Stop and keep
+              </button>
+            ) : (
+              <button
+                className="btn small"
+                disabled={!ready || !engineNow.running}
+                onClick={async () => {
+                  startLevel(takePart)
+                  const r = new TakeRecorder()
+                  await r.start(null, false)
+                  takeRec.current = r
+                  setTakeOn(true)
+                  setTakeNote(`Recording this month's take of ${sections[takePart].name}: press Play and play it through.`)
+                }}
+                title={engineNow.running ? 'For Then & now on the Lessons home' : 'Connect your guitar first'}
+              >
+                ● Record this month's take of {sections[takePart].name}
+              </button>
+            ))}
+            {takeNote && <span className="song-levels-note">{takeNote}</span>}
             {/* Band-ready in one click: the whole song, full tempo, your part muted (the band plays), with a count-in. */}
             {levels?.track === track?.name && !levels?.ready && (!!levels?.full || (sections.length > 0 && nextLevel(levels, sections.length) === null)) && level !== 'full' && (
               <button
