@@ -91,7 +91,9 @@ export function ToneBuilder({ t3kResult, onT3kDone }: { t3kResult: SelectResult 
       <div className="row spread">
         <h3>Tone</h3>
         <label className="toggle-inline">
-          <input type="checkbox" checked={e.hearAmp} onChange={(ev) => engine.setHearAmp(ev.target.checked)} /> Hear amp
+          {/* Ticked only when the amp really plays: a temporary mute shows here, and ticking lifts it. */}
+          <input type="checkbox" checked={e.ampOn} onChange={(ev) => engine.setHearAmp(ev.target.checked)} /> Hear amp
+          {e.hearAmp && !e.ampOn && <span className="hint"> (muted {e.mutedFor.has('tuner') ? 'while the Tuner is open' : 'for the mic in Lessons'})</span>}
         </label>
       </div>
 

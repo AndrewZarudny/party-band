@@ -281,6 +281,8 @@ export class GuitarEngine {
       // NAM captures are trained at 48 kHz; the browser resamples the interface if it runs higher.
       this.ctx = new AudioContext({ latencyHint: 'interactive', sampleRate: 48000 })
       this.ctx.addEventListener('statechange', () => {
+        // Running again after Chrome or macOS paused it: set the amp level afresh, so it never comes back silent.
+        if (this.ctx?.state === 'running' && this.out) this.out.gain.setValueAtTime(this.ampOn ? 1 : 0, this.ctx.currentTime)
         this.state.emit()
         // The app never pauses audio itself: when Chrome or macOS does (another app took the audio, the output
         // changed), start it again. If Chrome wants a click first, the "click anywhere" bar shows.
@@ -468,18 +470,38 @@ export class GuitarEngine {
     this.state.emit()
   }
 
-  /** A temporary mute or unmute that isn't saved; restore with setAmpOn(engine.hearAmp). */
-  setAmpOn(on: boolean) {
-    this.ampOn = on
-    if (this.out && this.ctx) this.out.gain.setTargetAtTime(on ? 1 : 0, this.ctx.currentTime, 0.02)
+  /**
+   * Temporary mutes, by who asked (the Tuner, a lesson on a mic). Each one is lifted on its own, so one screen's
+   * "unmute" can't undo another's mute, and a forgotten one can't leave the amp silent behind a ticked Hear amp.
+   */
+  readonly mutedFor = new Set<string>()
+
+  /** Mute the amp for `reason` while `on`; the amp plays when Hear amp is on and nothing mutes it. */
+  muteFor(reason: string, on: boolean) {
+    if (on) this.mutedFor.add(reason)
+    else this.mutedFor.delete(reason)
+    this.applyAmp()
+  }
+
+  private applyAmp() {
+    this.ampOn = this.hearAmp && this.mutedFor.size === 0
+    if (this.out && this.ctx) {
+      const g = this.out.gain
+      const t = this.ctx.currentTime
+      // Start the glide from where the gain is now, with nothing older still scheduled.
+      g.cancelScheduledValues(t)
+      g.setValueAtTime(g.value, t)
+      g.setTargetAtTime(this.ampOn ? 1 : 0, t, 0.02)
+    }
     this.state.emit()
   }
 
-  /** The "Hear amp" switch: saved for this browser and applied now. */
+  /** The "Hear amp" switch: saved for this browser and applied now. Switching it on lifts any temporary mute. */
   setHearAmp(on: boolean) {
     this.hearAmp = on
     saveHearAmp(on)
-    this.setAmpOn(on)
+    if (on) this.mutedFor.clear()
+    this.applyAmp()
   }
 
   setTone(t: Tone) {

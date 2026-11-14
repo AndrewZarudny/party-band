@@ -34,8 +34,8 @@ export function TunerMode({ onConnect }: { onConnect: () => void }) {
 
   // Tune silently: the amp sound would only get in the way. Leaving goes back to the player's Hear amp choice.
   useEffect(() => {
-    engine.setAmpOn(false)
-    return () => engine.setAmpOn(engine.hearAmp)
+    engine.muteFor('tuner', true)
+    return () => engine.muteFor('tuner', false)
   }, [])
 
   // Nearest open string, judged against the exact detected frequency.
