@@ -40,3 +40,46 @@ export function jamSummary(c: JamCounts): JamSummary | null {
         : `Good balance: ${chordPct}% chord tones, only ${outPct}% outside. Next time, leave more space between phrases.`
   return { notes, chordPct, scalePct: 100 - chordPct - outPct, outPct, phrases: c.phrases, sec: Math.round(c.sec), pointer }
 }
+
+// ---- Jams over time -------------------------------------------------------------------------------------
+
+export interface JamRecord {
+  at: number
+  notes: number
+  chordPct: number
+  outPct: number
+  sec: number
+}
+
+const KEY = 'jam-history'
+
+export function loadJamHistory(): JamRecord[] {
+  try {
+    const a = JSON.parse(localStorage.getItem(KEY) ?? '[]') as JamRecord[]
+    return Array.isArray(a) ? a.filter((r) => r && typeof r.at === 'number' && typeof r.outPct === 'number') : []
+  } catch {
+    return []
+  }
+}
+
+/** Keeps a jam's numbers (the last 60). */
+export function saveJam(s: JamSummary, at = Date.now()) {
+  const all = [...loadJamHistory(), { at, notes: s.notes, chordPct: s.chordPct, outPct: s.outPct, sec: s.sec }].slice(-60)
+  try {
+    localStorage.setItem(KEY, JSON.stringify(all))
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** This jam against the average of the ones before it (up to 5); null with none before. */
+export function againstUsual(s: JamSummary, before: JamRecord[]): { chordPct: number; outPct: number; jams: number; better: boolean } | null {
+  const last = before.slice(-5)
+  if (!last.length) return null
+  const avg = (f: (r: JamRecord) => number) => Math.round(last.reduce((a, r) => a + f(r), 0) / last.length)
+  const chordPct = avg((r) => r.chordPct)
+  const outPct = avg((r) => r.outPct)
+  // Better: fewer notes outside, or as few outside and more chord tones.
+  const better = s.outPct < outPct - 2 || (s.outPct <= outPct + 2 && s.chordPct > chordPct + 2)
+  return { chordPct, outPct, jams: last.length, better }
+}

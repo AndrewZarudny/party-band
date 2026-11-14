@@ -45,7 +45,7 @@ import { pickLick, songLicksIn } from '../music/songLicks'
 import { coachRunEnded, liveCoachOn, setCoachActions } from '../lessons/liveCoach'
 import type { CoachActions } from '../lessons/liveCoach'
 import type { JamSummary } from '../music/jamSummary'
-import { emptyJamCounts, jamSummary } from '../music/jamSummary'
+import { againstUsual, emptyJamCounts, jamSummary, loadJamHistory, saveJam } from '../music/jamSummary'
 import { setCoachPlaying } from '../lessons/liveCoach'
 
 interface Played {
@@ -91,7 +91,7 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   const jamCounts = useRef(emptyJamCounts())
   const jamStartedAt = useRef(0)
   const runningRef = useRef(false)
-  const [jamDone, setJamDone] = useState<JamSummary | null>(null)
+  const [jamDone, setJamDone] = useState<{ s: JamSummary; usual: ReturnType<typeof againstUsual> } | null>(null)
   // The live coach doesn't listen while the band plays.
   useEffect(() => {
     setCoachPlaying('jam', running)
@@ -298,13 +298,17 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
       runningRef.current = false
       jamCounts.current.sec = (performance.now() - jamStartedAt.current) / 1000
       const sum = jamSummary(jamCounts.current)
-      setJamDone(sum)
+      // Against your usual (the jams before this one), then kept with them.
+      const usual = sum ? againstUsual(sum, loadJamHistory()) : null
+      if (sum) saveJam(sum)
+      setJamDone(sum ? { s: sum, usual } : null)
       // The live coach, when on, hears about the jam (the same numbers, and what was played over).
       const st = settings.current
       if (sum && liveCoachOn())
         void coachRunEnded({
           moment: 'the player just stopped a free jam in the Jam tab: improvising over a band or click',
           jam: { ...sum, pointer: undefined, key: st.keyName, scale: st.scaleName, chords: st.chordNames, bpm: st.bpm },
+          yourUsual: usual ? { chordTonesPercent: usual.chordPct, outsidePercent: usual.outPct, overJams: usual.jams, thisOneBetter: usual.better } : null,
           suggestedPointer: sum.pointer,
         })
     }
@@ -929,7 +933,7 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
         </button>
       </div>
 
-      {view === 'jam' && jamDone && <JamSummaryCard s={jamDone} onClose={() => setJamDone(null)} />}
+      {view === 'jam' && jamDone && <JamSummaryCard s={jamDone.s} usual={jamDone.usual} onClose={() => setJamDone(null)} />}
       {view === 'jam' && <LooperPanel jamBpm={bpm} bandRunning={running} />}
 
       {view === 'songs' && (
@@ -1254,7 +1258,7 @@ function nextSectionName(steps: Step[], i: number) {
 }
 
 /** The jam just played, in numbers, with one pointer for next time. */
-function JamSummaryCard({ s, onClose }: { s: JamSummary; onClose: () => void }) {
+function JamSummaryCard({ s, usual, onClose }: { s: JamSummary; usual: ReturnType<typeof againstUsual>; onClose: () => void }) {
   const min = Math.floor(s.sec / 60)
   return (
     <section className="jam-summary" aria-label="Your jam">
@@ -1269,6 +1273,11 @@ function JamSummaryCard({ s, onClose }: { s: JamSummary; onClose: () => void }) 
         </button>
       </header>
       <p>{s.pointer}</p>
+      {usual && (
+        <p className="hint">
+          Your last {usual.jams === 1 ? 'jam' : `${usual.jams} jams`}: {usual.chordPct}% chord tones, {usual.outPct}% outside.{usual.better ? ' This one was better.' : ''}
+        </p>
+      )}
     </section>
   )
 }
