@@ -52,6 +52,7 @@ import { loadStats, onSkillRound } from '../skills/store'
 import type { MapSong, MapSongPart } from '../lessons/ui/LessonMap'
 import { partsOf, songPath } from '../music/songPath'
 import { loadGoal } from '../lessons/goal'
+import { recentMove } from '../music/songRuns'
 import { lastCheckIn } from '../lessons/checkin'
 import { LessonMap } from '../lessons/ui/LessonMap'
 import { LessonIntro } from '../lessons/ui/LessonIntro'
@@ -260,7 +261,7 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
           .map((sp, i) => ({ id: sp.id, song: sp.song, part: sp.part, stage: weeks[Math.min(weeks.length - 1, Math.floor(i / per))] as number }))
         if (!live) return
         setSongParts(placed)
-        setSongs(all.map((x) => ({ id: x.id, title: x.title, levels: loadLevels(x.id), ...levelCount(loadLevels(x.id)) })).sort((a, b) => a.title.localeCompare(b.title)))
+        setSongs(all.map((x) => ({ id: x.id, title: x.title, levels: loadLevels(x.id), recent: recentMove(x.id), ...levelCount(loadLevels(x.id)) })).sort((a, b) => a.title.localeCompare(b.title)))
       } catch {
         if (!live) return
         setSongParts([])

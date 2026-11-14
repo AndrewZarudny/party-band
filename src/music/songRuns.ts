@@ -67,6 +67,19 @@ export function worstBar(bars: number[]): { bar: number; misses: number } | null
   return best && best.misses >= 2 ? best : null
 }
 
+/** One song's busiest part in the last 7 days and where its score moved ("Solo: 60% → 78%"); null with no runs. */
+export function recentMove(songId: string, now = Date.now()): string | null {
+  const runs = loadRuns(songId).filter((r) => r.at >= now - 7 * 86_400_000)
+  if (!runs.length) return null
+  const byPart = new Map<string, SongRun[]>()
+  for (const r of runs) {
+    const name = r.partName ?? (r.part === 'full' ? 'Whole song' : `Part ${Number(r.part) + 1}`)
+    byPart.set(name, [...(byPart.get(name) ?? []), r])
+  }
+  const [part, rs] = [...byPart.entries()].sort((a, b) => b[1].length - a[1].length)[0]
+  return rs.length > 1 ? `${part}: ${rs[0].pct}% → ${rs[rs.length - 1].pct}% this week` : `${part}: ${rs[0].pct}% this week`
+}
+
 /**
  * Work in Learn a song between two times, across every song: per song, the runs, the parts played and passed,
  * and each part's first and last score in the window (to show where it moved). Songs with no runs are left out.

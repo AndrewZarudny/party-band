@@ -40,3 +40,19 @@ describe('song work across songs', () => {
     expect(songWork(10, 20)).toEqual([{ song: 'ZOMBIE', runs: 3, passes: 2, parts: [{ part: 'Solo', runs: 2, firstPct: 60, lastPct: 78 }, { part: 'Intro', runs: 1, firstPct: 90, lastPct: 90 }] }])
   })
 })
+
+describe("a song's recent move", () => {
+  beforeEach(() => localStorage.clear())
+  it('its busiest part this week, first and last score', async () => {
+    const { recentMove } = await import('../songRuns')
+    const day = 86_400_000
+    const now = 30 * day
+    const r = (at: number, partName: string, pct: number) => ({ at, part: 0, partName, pct, speed: 80, passed: false })
+    saveRun('z', r(now - 10 * day, 'Solo', 20)) // over a week ago
+    saveRun('z', r(now - 2 * day, 'Solo', 60))
+    saveRun('z', r(now - day, 'Intro', 90))
+    saveRun('z', r(now - day, 'Solo', 78))
+    expect(recentMove('z', now)).toBe('Solo: 60% → 78% this week')
+    expect(recentMove('none', now)).toBeNull()
+  })
+})

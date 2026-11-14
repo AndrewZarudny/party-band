@@ -171,6 +171,8 @@ export interface MapSong {
   total: number
   full: boolean
   levels: SongLevels | null
+  /** Learn a song this week: the busiest part and where it moved. */
+  recent?: string | null
 }
 
 export interface MapSongPart {
@@ -468,7 +470,7 @@ export function LessonMap({
                     <button
                       className={`ls-node ${path.next ? 'open' : 'done'}`}
                       onClick={open}
-                      title={[...path.steps.map((st) => `${st.done ? '✓' : '·'} ${st.label} (${st.detail})`), ...(weak.length ? [`Still breaks: ${weak.join(', ')}`] : [])].join('\n')}
+                      title={[...path.steps.map((st) => `${st.done ? '✓' : '·'} ${st.label} (${st.detail})`), ...(weak.length ? [`Still breaks: ${weak.join(', ')}`] : []), ...(sg.recent ? [sg.recent] : [])].join('\n')}
                       aria-label={`${sg.title}: song path ${path.done} of ${path.steps.length}${path.nextLabel ? `, next: ${path.nextLabel}` : ', done'}`}
                     >
                       <span className="ls-node-pick">
@@ -481,6 +483,7 @@ export function LessonMap({
                           {path.done}/{path.steps.length}
                         </span>{' '}
                         · {path.next ? path.nextLabel : 'Band-ready ✓'}
+                        {sg.recent && <span className="ls-muted"> · {sg.recent}</span>}
                       </span>
                     </button>
                   </li>
