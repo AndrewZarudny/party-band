@@ -94,6 +94,17 @@ Spend is logged in `.cache/ai-ledger.json`.
 - The tone is picked from the track's instrument and the artist. Adjust it, then click **Save tone** so the app remembers it for that song and track.
 - **Wait for me** pauses on each note until you play it. **Mute my part** plays only the backing tracks. Drag across bars to loop them.
 
+**Levels** (one per part of the tab, then the whole song) are how you learn it:
+- Each part button shows its best pass (or last run) and which way the last two runs went, for example *Chorus 78% ↑*.
+- **Auto speed** (on by default): a passed part plays its next round 5% faster, a run with under half the notes 10% slower (not under 50%). The note says so, along with your last runs ("Your last 5 runs: 58% → 72%").
+- After a rough run, **Loop bars 14–15 slowly** loops the bar where you missed most, and the one after it, 15% slower.
+- **Practise the weakest** jumps to the part that needs it most (lowest recent runs, not passed well yet).
+- **Try band-ready** sets up the attempt that finishes a song's path: the whole song, full tempo, your part muted so the band plays around you, a count-in. 85% of the notes in one run makes it band-ready.
+- **Next part ›** (or the next foot pedal) moves on; the main pedal plays and pauses.
+- When your Then & now piece is a part of this song, **Record this month's take** records it as you play along.
+
+Every judged run is kept per song (the last 300). The Lessons song path shows this week's progress ("Solo: 60% → 78% this week"), and the coach's notes and weekly review read it. Note: Learn a song judges which notes you hit, not their timing. The track plays from its own audio clock, which can't be lined up exactly with the guitar input, so a timing number would be guesswork.
+
 ## Jam
 
 1. **Tonight's band → Edit band.** Add each player with their instrument (electric, acoustic, keys/synth, bass, drums). Mark yourself as **me**, the player the app listens to.
