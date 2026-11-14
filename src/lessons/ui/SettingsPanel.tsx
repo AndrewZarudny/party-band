@@ -302,6 +302,11 @@ function PedalSettings() {
         <>
           {row('go', 'Main pedal', 'Start, Again, Play')}
           {row('next', 'Next pedal', 'Next step or pair')}
+          <p className="ls-muted ls-pedal-hint">
+            No pedal yet? On a MacBook, fn + ↓ is Page Down (the main pedal) and fn + ↑ is Page Up (the next).
+            {[...pedal.go, ...pedal.next].some((k) => k === 'ArrowLeft' || k === 'ArrowRight') &&
+              ' Arrow keys as pedals take over ← and → in Jam, where they step through the chords.'}
+          </p>
         </>
       )}
     </div>
