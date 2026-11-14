@@ -56,3 +56,13 @@ describe("the band's notes on a song", () => {
     expect(loadSongNote('numb|band')).toBe('')
   })
 })
+
+describe('band rehearsal in a week', () => {
+  it('plays and plays to the end per song, minutes, and what to rehearse; null with nothing', async () => {
+    const { rehearsalWork } = await import('../songStatus')
+    const h = [log('Numb', 3, true), log('Numb', 4, false), log('Creep', 20, true)]
+    const w = rehearsalWork(h, [song('Numb'), song('Creep')], now - 7 * DAY, now)
+    expect(w).toEqual({ minutes: 3, songs: [{ song: 'Numb', plays: 2, toTheEnd: 1 }], toRehearse: ['Creep (not played for 20 days)'] })
+    expect(rehearsalWork([], [], 0, now)).toBeNull()
+  })
+})

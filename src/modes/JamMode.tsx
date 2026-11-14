@@ -94,7 +94,7 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   const jamCounts = useRef(emptyJamCounts())
   const jamStartedAt = useRef(0)
   const runningRef = useRef(false)
-  const [jamDone, setJamDone] = useState<{ s: JamSummary; usual: ReturnType<typeof againstUsual>; timing: ReturnType<typeof bandTiming> } | null>(null)
+  const [jamDone, setJamDone] = useState<{ s: JamSummary | null; usual: ReturnType<typeof againstUsual>; timing: ReturnType<typeof bandTiming>; song?: SongRunEnd } | null>(null)
   // The live coach doesn't listen while the band plays.
   useEffect(() => {
     setCoachPlaying('jam', running)
@@ -272,8 +272,8 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   const [countIn, setCountIn] = useState(0)
   // What the jam is over, in words (for the live coach).
   const words = { keyName: noteName(keyRoot, flats), scaleName: scale.label, chordNames: chords.map((c) => c.symbol) }
-  const settings = useRef({ bpm, beatsPerChord, click, auto, len: chords.length, steps, isSong: !!song, total: totalBeats(steps), ...words })
-  settings.current = { bpm, beatsPerChord, click, auto, len: chords.length, steps, isSong: !!song, total: totalBeats(steps), ...words }
+  const settings = useRef({ bpm, beatsPerChord, click, auto, len: chords.length, steps, isSong: !!song, total: totalBeats(steps), title: song?.title ?? '', ...words })
+  settings.current = { bpm, beatsPerChord, click, auto, len: chords.length, steps, isSong: !!song, total: totalBeats(steps), title: song?.title ?? '', ...words }
   // Where we are in the song (beats from its start), for the progress bar; and whether it has ended.
   const [songBeat, setSongBeat] = useState(0)
   const [ended, setEnded] = useState(false)
@@ -302,6 +302,8 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
     clock.current.recSrc = null
     // Silence the band at once (a finished song's last chord rings out).
     if (!clock.current.finished) backing.current?.stop()
+    const finished = clock.current.finished
+    const beatAtStop = songBeatRef.current
     if (playLog.current) {
       logEnd(playLog.current, (songBeatRef.current * 60) / settings.current.bpm, clock.current.finished)
       playLog.current = null
@@ -317,12 +319,25 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
       // Against your usual (the jams before this one), then kept with them.
       const usual = sum ? againstUsual(sum, loadJamHistory()) : null
       if (sum) saveJam(sum)
-      setJamDone(sum ? { s: sum, usual, timing } : null)
-      // The live coach, when on, hears about the jam (the same numbers, and what was played over).
       const st = settings.current
+      // A song: how far it got (to the end, or which section it stopped in) and when.
+      const songEnd: SongRunEnd | undefined =
+        st.isSong && st.title
+          ? {
+              title: st.title,
+              finished,
+              section: finished ? null : (st.steps[locate(st.steps, Math.max(0, Math.floor(beatAtStop))).idx]?.section ?? null),
+              sec: Math.round((beatAtStop * 60) / st.bpm),
+              totalSec: Math.round((st.total * 60) / st.bpm),
+            }
+          : undefined
+      setJamDone(sum || songEnd ? { s: sum, usual, timing, song: songEnd } : null)
+      // The live coach, when on, hears about the jam (the same numbers, and what was played over).
       if (sum && liveCoachOn())
         void coachRunEnded({
-          moment: 'the player just stopped a free jam in the Jam tab: improvising over a band or click',
+          moment: songEnd
+            ? `the player just ${songEnd.finished ? 'played the band song ' + songEnd.title + ' to the end' : 'stopped the band song ' + songEnd.title + (songEnd.section ? ' in its ' + songEnd.section : '')} in the Songs tab, playing along with the band`
+            : 'the player just stopped a free jam in the Jam tab: improvising over a band or click',
           jam: { ...sum, pointer: undefined, key: st.keyName, scale: st.scaleName, chords: st.chordNames, bpm: st.bpm },
           timingAgainstBand: timing ? { averageMsLateIsPositive: timing.meanMs, attacks: timing.n } : null,
           yourUsual: usual ? { chordTonesPercent: usual.chordPct, outsidePercent: usual.outPct, overJams: usual.jams, thisOneBetter: usual.better } : null,
@@ -994,7 +1009,7 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
       </div>
 
       {view === 'jam' && <GoalSongBar current={songSel} onPlay={playSong} />}
-      {view === 'jam' && jamDone && <JamSummaryCard s={jamDone.s} usual={jamDone.usual} timing={jamDone.timing} onClose={() => setJamDone(null)} />}
+      {view === 'jam' && jamDone?.s && <JamSummaryCard s={jamDone.s} usual={jamDone.usual} timing={jamDone.timing} onClose={() => setJamDone(null)} />}
       {view === 'jam' && <LooperPanel jamBpm={bpm} bandRunning={running} />}
 
       {view === 'songs' && (
@@ -1166,6 +1181,7 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
           }}
         />
       )}
+      {view === 'songs' && jamDone?.song && !running && <SongRunCard end={jamDone.song} s={jamDone.s} timing={jamDone.timing} onClose={() => setJamDone(null)} />}
       {song && setPos >= 0 && (
         <div className="set-bar hint">
           <span>
@@ -1359,6 +1375,39 @@ function nextSectionName(steps: Step[], i: number) {
 }
 
 /** The jam just played, in numbers, with one pointer for next time. */
+interface SongRunEnd {
+  title: string
+  finished: boolean
+  section: string | null // where it stopped, when not at the end
+  sec: number
+  totalSec: number
+}
+
+/** After a song in the Songs tab: how far it got, and (with the guitar connected) how your notes sat. */
+function SongRunCard({ end, s, timing, onClose }: { end: SongRunEnd; s: JamSummary | null; timing: ReturnType<typeof bandTiming>; onClose: () => void }) {
+  const mmss = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
+  return (
+    <section className="jam-summary" aria-label="Your run of the song">
+      <header>
+        <b>{end.title}</b>
+        <span className="ls-num">{end.finished ? `🏁 played to the end · ${mmss(end.totalSec)}` : `stopped${end.section ? ` in ${end.section}` : ''} at ${mmss(end.sec)} of ${mmss(end.totalSec)}`}</span>
+        <button className="btn small ghost" onClick={onClose}>
+          Close
+        </button>
+      </header>
+      {s ? (
+        <p>
+          You: {s.notes} notes, {s.chordPct}% chord tones, {s.outPct}% outside the scale. {s.pointer}
+        </p>
+      ) : (
+        <p className="hint">Connect your guitar (top right) to hear how your notes sat against the band.</p>
+      )}
+      {timing?.text && <p>Timing: {timing.text}.</p>}
+      {!end.finished && end.section && <p className="hint">Stuck in {end.section}? 🔁 loops it until it sits.</p>}
+    </section>
+  )
+}
+
 function JamSummaryCard({ s, usual, timing, onClose }: { s: JamSummary; usual: ReturnType<typeof againstUsual>; timing: ReturnType<typeof bandTiming>; onClose: () => void }) {
   const min = Math.floor(s.sec / 60)
   return (

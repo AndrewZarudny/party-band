@@ -97,3 +97,25 @@ export function saveSongNote(key: string, text: string) {
     /* storage unavailable */
   }
 }
+
+/**
+ * Band rehearsal between two times (the Songs tab's play log), for the weekly review and the coach: per song, how
+ * many plays and how many to the end, and minutes in all; plus the songs that need a rehearsal now. Null with none.
+ */
+export function rehearsalWork(history: PlayLog[], library: SongSetup[], from: number, to: number) {
+  const week = history.filter((h) => h.startedAt >= from && h.startedAt < to)
+  const toRehearse = rehearseList(library, history, to).map((x) => `${x.song.title} (${x.st.rehearse})`)
+  if (!week.length && !toRehearse.length) return null
+  const bySong = new Map<string, { song: string; plays: number; toTheEnd: number }>()
+  for (const h of week) {
+    const e = bySong.get(h.key) ?? { song: h.title, plays: 0, toTheEnd: 0 }
+    e.plays++
+    if (h.finished) e.toTheEnd++
+    bySong.set(h.key, e)
+  }
+  return {
+    minutes: Math.round(week.reduce((a, h) => a + h.playedSec, 0) / 60),
+    songs: [...bySong.values()].sort((a, b) => b.plays - a.plays),
+    toRehearse: toRehearse.slice(0, 5),
+  }
+}

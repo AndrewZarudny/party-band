@@ -9,6 +9,8 @@ import { goalFacts } from './goal'
 import { loadCheckIns } from './checkin'
 import { loadJamHistory } from '../music/jamSummary'
 import { songWork } from '../music/songRuns'
+import { rehearsalWork } from '../music/songStatus'
+import { loadHistory, loadLibrary } from '../music/songLibrary'
 import { loadLevels } from '../music/songLevels'
 
 const DAY = 86_400_000
@@ -66,6 +68,8 @@ export function weeklyFacts(p: Progress, now: Date, name: string | null) {
     // Free jams in the Jam tab: how much, and how the notes sat against the chords and the scale, against the week before.
     // Learn a song: runs per song and where each part's score moved last week.
     songWork: songWork(from, to),
+    // The Songs tab: songs played with the band last week (to the end or not), and the ones due a rehearsal.
+    bandRehearsals: rehearsalWork(loadHistory(), loadLibrary(), from, to),
     jamming: (() => {
       const all = loadJamHistory()
       const week = all.filter((j) => inWeek(j.at))
