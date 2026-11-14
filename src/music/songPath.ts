@@ -1,8 +1,9 @@
 // A song's path from its parts to the whole song: the parts as lessons, then each part with the song in Learn a
 // song, then the whole song, then the whole song at full tempo. Pure: the caller passes what was played.
 import type { SongLevels } from './songLevels'
+import { BAND_READY_PCT } from './songLevels'
 
-export type PathStepKey = 'parts' | 'sections' | 'whole' | 'tempo'
+export type PathStepKey = 'parts' | 'sections' | 'whole' | 'ready'
 
 export interface PathStep {
   key: PathStepKey
@@ -19,6 +20,20 @@ export interface SongPath {
   next: { kind: 'part'; id: string } | { kind: 'song' } | null
   /** The next step's label, e.g. "Play the whole song". */
   nextLabel: string | null
+}
+
+/**
+ * Where the song still breaks: its sections (by name, from the part lessons) not passed in Learn a song yet, or
+ * passed under the band-ready share. `names`: section index to name.
+ */
+export function weakSpots(levels: SongLevels | null, names: Map<number, string>): string[] {
+  if (!levels?.total) return []
+  const out: string[] = []
+  for (let i = 0; i < levels.total; i++) {
+    const r = levels.passed[String(i)]
+    if (!r || r.pct < BAND_READY_PCT) out.push(names.get(i) ?? `Section ${i + 1}`)
+  }
+  return out
 }
 
 /** A song's part lessons (ids like song:<songId>:<n>), in song order, and whether each is passed. */
@@ -47,7 +62,12 @@ export function songPath(parts: { id: string; passed: boolean }[], levels: SongL
     detail: sectionsTotal ? `${sectionsDone} of ${sectionsTotal} in Learn a song` : 'in Learn a song',
   })
   steps.push({ key: 'whole', label: 'Play the whole song', done: !!levels?.full, detail: levels?.full ? `${levels.full.pct}% at ${levels.full.speed}% speed` : 'start to end' })
-  steps.push({ key: 'tempo', label: 'The whole song at full tempo', done: (levels?.full?.speed ?? 0) >= 100, detail: 'at 100% speed' })
+  steps.push({
+    key: 'ready',
+    label: 'Band-ready',
+    done: !!levels?.ready,
+    detail: levels?.ready ? `${levels.ready.pct}% in one run at full tempo` : `the whole song in one run at full tempo, ${BAND_READY_PCT}% or more`,
+  })
 
   const first = steps.find((s) => !s.done) ?? null
   const unpassed = parts.find((p) => !p.passed)

@@ -249,6 +249,43 @@
   color: var(--accent);
 }
 
+/* The song goal (GoalCard.tsx): progress bar with a mark for where on-schedule would be. */
+.lessons .ls-goal-card {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+}
+.lessons .ls-goal-card p {
+  margin: 0;
+}
+.lessons .ls-goal-card.behind {
+  border-left-color: #e0695f;
+}
+.lessons .ls-goal-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--bg);
+}
+.lessons .ls-goal-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--accent);
+}
+.lessons .ls-goal-bar s {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 14px;
+  background: var(--text);
+  opacity: 0.6;
+}
+
 /* Then & now on the Lessons home (ThenAndNow.tsx). */
 .lessons .ls-then-now {
   display: grid;

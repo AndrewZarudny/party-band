@@ -44,6 +44,10 @@ export interface PlanCtx {
   songParts?: string[]
   /** Songs whose parts are learned and whose path goes on in Learn a song: the Song block opens one of them. */
   songsToPlay?: { id: string; title: string }[]
+  /** The song goal's song: its parts and its Learn a song steps come first in the Song block. */
+  goalSongId?: string
+  /** How the last session felt (the check-in after it): too hard gives up new material, too easy adds some. */
+  lastFeel?: 'easy' | 'right' | 'hard'
 }
 
 /** Minutes per step (research section 4). Every list sums to the session length. */
@@ -374,6 +378,11 @@ export function makeSessionPlan(p: Progress, now: Date, ctx: PlanCtx): SessionPl
       used.add(id)
       steps.push(lessonStep(p, 'cold', { id, why: coldWhy(p, id) }, m))
     } else if (kind === 'new') {
+      // The last session was too hard: no new lesson today, mixed practice of what you know instead.
+      if (ctx.lastFeel === 'hard') {
+        steps.push({ ...skillStep('mix', undefined, '', m), lessonId: null })
+        continue
+      }
       if (brake) {
         // The New minutes go to a struggling item, blocked; with none free, to the mix (or changes and ear).
         const id = brakeList(p, now).find((x) => !used.has(x))
@@ -404,7 +413,12 @@ export function makeSessionPlan(p: Progress, now: Date, ctx: PlanCtx): SessionPl
       // Nothing to consolidate: interleave instead.
       steps.push({ ...skillStep('mix', undefined, '', m), lessonId: null })
     } else if (kind === 'mix') {
-      steps.push({ ...skillStep('mix', undefined, '', m), lessonId: null })
+      // The last session was too easy: a new lesson in the mix's place, when there is one to start.
+      const fresh = ctx.lastFeel === 'easy' && !brake && !steps.some((x) => x.kind === 'new') ? newList(p).ids.find((x) => !used.has(x)) : undefined
+      if (fresh) {
+        used.add(fresh)
+        steps.push(lessonStep(p, 'new', { id: fresh, why: 'You said last session was too easy: something new. ' + NEW_WHY }, m))
+      } else steps.push({ ...skillStep('mix', undefined, '', m), lessonId: null })
     } else if (kind === 'changes') {
       const c = changesStep(p, ctx)
       steps.push(skillStep('changes', c.skill, c.why, m))
@@ -448,12 +462,15 @@ export function makeSessionPlan(p: Progress, now: Date, ctx: PlanCtx): SessionPl
   }
   // A real song before the jam, when the player has any: added on top of the plan (nothing gives up its minutes),
   // a different song each session.
-  const songPick = pickSongPart(p, (ctx.songParts ?? []).filter((id) => !used.has(id)))
+  // The song goal first: its parts before any other song's.
+  const goalFirst = (ids: string[]) => (ctx.goalSongId ? [...ids.filter((id) => id.startsWith(`song:${ctx.goalSongId}:`)), ...ids.filter((id) => !id.startsWith(`song:${ctx.goalSongId}:`))] : ids)
+  const songPick = pickSongPart(p, goalFirst((ctx.songParts ?? []).filter((id) => !used.has(id))))
   const ji = steps.findIndex((x) => x.kind === 'jam')
   if (ji >= 0) {
     // A part not learned yet first; else a song whose path goes on in Learn a song; else a known part, kept fresh.
     const fresh = songPick && !isPassed(p, songPick.id)
-    const song = !fresh ? songToPlay(ctx.songsToPlay ?? [], now) : null
+    const goalSong = ctx.goalSongId ? (ctx.songsToPlay ?? []).find((sg) => sg.id === ctx.goalSongId) : undefined
+    const song = !fresh ? (goalSong ?? songToPlay(ctx.songsToPlay ?? [], now)) : null
     if (song) steps.splice(ji, 0, songStep(song, SONG_MIN))
     else if (songPick) steps.splice(ji, 0, lessonStep(p, 'song', songPick, SONG_MIN))
   }

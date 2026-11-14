@@ -436,6 +436,9 @@ export function registerLesson(l: Lesson): void {
   MADE.set(l.id, l)
 }
 
+/** The lessons made from the player's songs, as built now (empty until Lessons has read the songs). */
+export const madeLessons = (): Lesson[] => [...MADE.values()]
+
 export function lessonById(id: string): Lesson | undefined {
   return LESSONS.find((l) => l.id === id) ?? MADE.get(id)
 }

@@ -7,7 +7,9 @@ import { Fretboard } from '../../components/Fretboard'
 import type { FretPos } from '../../music/theory'
 import { midiName, noteName } from '../../music/theory'
 import type { Grade, Mark } from '../ear'
-import { gradePhrase, makePhrase, nextLength, poolFor } from '../ear'
+import { gradePhrase, licksFrom, makePhrase, nextLength, poolFor } from '../ear'
+import { madeLessons } from '../../lessons/data'
+import { buildChart } from '../../lessons/charts'
 import { dailyBest } from '../data'
 import { finishRound, loadStats, setLevels } from '../store'
 import { useGuitar, useKeys, useRoundActivity } from '../hooks'
@@ -38,6 +40,10 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
   const [streak, setStreak] = useState(0)
   const [phase, setPhase] = useState<Phase>('idle')
   const [phrase, setPhrase] = useState<FretPos[]>([])
+  // Phrases made up, or licks from the player's own songs (their part lessons, when Lessons has built them).
+  const [fromSongs, setFromSongs] = useState(false)
+  const [lickFrom, setLickFrom] = useState<string | null>(null)
+  const hasSongs = madeLessons().length > 0
   const [played, setPlayed] = useState<number[]>([])
   const [grade, setGrade] = useState<Grade | null>(null)
   const [count, setCount] = useState(0)
@@ -90,7 +96,9 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
   }
 
   const newPhrase = (length: number) => {
-    const p = makePhrase(length)
+    const lick = fromSongs ? songLick(length) : null
+    setLickFrom(lick?.title ?? null)
+    const p = lick?.phrase ?? makePhrase(length)
     replayed.current = false
     setPhrase(p)
     setPlayed([])
@@ -168,7 +176,9 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
     else if (k === 'r' && phase === 'answer') replay()
   })
 
-  const pool = poolFor(phrase.length || len)
+  // From a song the notes can be anywhere: the pad offers the phrase's own notes, the board shows its frets.
+  const pool = lickFrom ? [...new Map(phrase.map((x) => [x.midi, x])).values()].sort((a, b) => a.midi - b.midi) : poolFor(phrase.length || len)
+  const maxFret = Math.max(8, ...phrase.map((x) => x.fret + 1))
   const markers: Marker[] = []
   if (phase === 'graded' && grade)
     phrase.forEach((p, i) => markers.push({ ...p, kind: grade.marks[i] === 'ok' ? 'box' : 'upcoming', label: String(i + 1) }))
@@ -181,6 +191,19 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
   return (
     <section className="sk-game" aria-labelledby="sk-game-h">
       <GameHead title="Ear training" sub={`Listen, then play it back. ${PHRASES} phrases; they grow as you get them right.`} onBack={onBack} />
+      {hasSongs && (
+        <div className="sk-pick-row">
+          <div className="ls-seg" role="radiogroup" aria-label="Phrases">
+            <button role="radio" aria-checked={!fromSongs} className={!fromSongs ? 'on' : ''} disabled={running} onClick={() => setFromSongs(false)}>
+              Made up
+            </button>
+            <button role="radio" aria-checked={fromSongs} className={fromSongs ? 'on' : ''} disabled={running} onClick={() => setFromSongs(true)}>
+              From your songs
+            </button>
+          </div>
+          {lickFrom && <span className="ls-muted">From {lickFrom}</span>}
+        </div>
+      )}
       {done ? (
         <RoundDone s={done} onAgain={start} onBack={onBack}>
           <TrendChart points={dailyBest(stats, 'ear')} unit="notes" label="Longest phrase per day" />
@@ -228,7 +251,7 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
             </ol>
           )}
           <div className="sk-board">
-            <Fretboard markers={markers} maxFret={8} />
+            <Fretboard markers={markers} maxFret={maxFret} />
           </div>
           {phase === 'answer' && keyboard && (
             <div className="sk-pad" role="group" aria-label="Notes to play">
@@ -263,4 +286,14 @@ export function EarGame({ keyboard, onBack }: { keyboard: boolean; onBack: () =>
       )}
     </section>
   )
+}
+
+/** A lick of `len` notes from one of the player's song parts, at random; null when none has one that long. */
+function songLick(len: number): { title: string; phrase: FretPos[] } | null {
+  const all: { title: string; phrase: FretPos[] }[] = []
+  for (const l of madeLessons()) {
+    const notes = buildChart(l).events.flatMap((e) => (e.kind === 'note' ? [{ string: e.string, fret: e.fret, midi: e.midi, beat: e.beat }] : []))
+    for (const phrase of licksFrom(notes, len, !!l.tuning)) all.push({ title: l.title, phrase })
+  }
+  return all.length ? all[Math.floor(Math.random() * all.length)] : null
 }

@@ -13,11 +13,13 @@ import { FULL_SPEED, pct } from '../speed'
 import { weakestPair } from '../../skills/chords'
 import { loadStats } from '../../skills/store'
 import { ACHIEVEMENTS } from '../achievements'
-import { partsOf, songPath } from '../../music/songPath'
+import { partsOf, songPath, weakSpots } from '../../music/songPath'
 import type { SongLevels } from '../../music/songLevels'
 import { pace } from '../weeks'
 import { CoachCard, WeeklyReview } from './CoachCard'
 import { ThenAndNow } from './ThenAndNow'
+import { GoalCard } from './GoalCard'
+import { CheckInCard } from './CheckInCard'
 import { Dino } from './Dino'
 import { TodayCard } from './TodayPlan'
 import { PocketCard, WeekDots, WeeklyNote } from './SessionCards'
@@ -365,9 +367,11 @@ export function LessonMap({
         </p>
       )}
 
+      {onSong && <GoalCard progress={progress} songs={songs} songParts={songParts} onOpen={onOpen} onSong={onSong} />}
       <WeeklyReview progress={progress} />
       <ThenAndNow progress={progress} />
       <CoachCard progress={progress} moment={setDone ? 'done' : 'open'} />
+      {setDone && <CheckInCard />}
       {star3 && (
         <p className="sc-quiet-note ls-star3-goal">
           Closest third star: <b>{star3.title}</b>, {star3.gap > 0 ? `${star3.gap}% to go at full tempo` : 'the score is there, now at full tempo'}.{' '}
@@ -441,13 +445,16 @@ export function LessonMap({
               {songs.map((sg) => {
                 // The song's path: parts as lessons, then each part with the song, the whole song, full tempo.
                 const path = songPath(partsOf(songParts, sg.id, (id) => isPassed(progress, id)), sg.levels)
+                // Where it still breaks, by section name (the part lessons carry the names).
+                const names = new Map(songParts.filter((sp) => sp.id.startsWith(`song:${sg.id}:`)).map((sp) => [Number(sp.id.split(':').pop()), sp.part] as [number, string]))
+                const weak = sg.levels?.ready ? [] : weakSpots(sg.levels, names)
                 const open = () => (path.next?.kind === 'part' ? onOpen(path.next.id) : onSong(sg.id))
                 return (
                   <li key={sg.id} className="ls-fret">
                     <button
                       className={`ls-node ${path.next ? 'open' : 'done'}`}
                       onClick={open}
-                      title={path.steps.map((st) => `${st.done ? '✓' : '·'} ${st.label} (${st.detail})`).join('\n')}
+                      title={[...path.steps.map((st) => `${st.done ? '✓' : '·'} ${st.label} (${st.detail})`), ...(weak.length ? [`Still breaks: ${weak.join(', ')}`] : [])].join('\n')}
                       aria-label={`${sg.title}: song path ${path.done} of ${path.steps.length}${path.nextLabel ? `, next: ${path.nextLabel}` : ', done'}`}
                     >
                       <span className="ls-node-pick">
@@ -459,7 +466,7 @@ export function LessonMap({
                         <span className="ls-num">
                           {path.done}/{path.steps.length}
                         </span>{' '}
-                        · {path.nextLabel ?? 'done'}
+                        · {path.next ? path.nextLabel : 'Band-ready ✓'}
                       </span>
                     </button>
                   </li>

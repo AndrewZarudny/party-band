@@ -20,7 +20,7 @@ import type { BeatLike } from '../music/tunings'
 import { TUNINGS, describeTuning, isUniformShift, refinger, setSongTuning, tuningLabel } from '../music/tunings'
 import { holdReload, practice } from '../account/activity'
 import type { SongLevels } from '../music/songLevels'
-import { MIN_NOTES, PASS_PCT, PASS_SPEED, levelPassed, loadLevels, nextLevel, saveLevels, songSections, withPass } from '../music/songLevels'
+import { BAND_READY_PCT, MIN_NOTES, PASS_PCT, PASS_SPEED, levelPassed, loadLevels, nextLevel, saveLevels, songSections, withPass } from '../music/songLevels'
 import { hasSavedProgress, loadProgress, saveProgress } from '../lessons/progress'
 
 interface Conversion {
@@ -394,7 +394,16 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
       saveProgress({ ...p, xp: p.xp + (lv === 'full' ? 150 : 40) })
     }
     const after = nextLevel(next, sections.length)
-    setLevelNote(`${name} passed: ${pct}% of the notes at ${speed}% speed.${lv === 'full' ? '' : after === null ? ' Every part is passed: now the whole song.' : ` Next: ${sections[after].name}.`}`)
+    // The whole song: band-ready needs one run at full tempo with BAND_READY_PCT of the notes.
+    const fullNote =
+      next.ready && (!same?.ready || pct > same.ready.pct) && speed >= 100 && pct >= BAND_READY_PCT
+        ? ' Band-ready: you can play it with the band.'
+        : speed < 100
+          ? ` Band-ready next: the whole song at full tempo, ${BAND_READY_PCT}% of the notes.`
+          : pct < BAND_READY_PCT
+            ? ` Band-ready at ${BAND_READY_PCT}%: ${BAND_READY_PCT - pct} more to go at this tempo.`
+            : ''
+    setLevelNote(`${name} passed: ${pct}% of the notes at ${speed}% speed.${lv === 'full' ? fullNote : after === null ? ' Every part is passed: now the whole song.' : ` Next: ${sections[after].name}.`}`)
   }
 
   // Render the chosen track and pick its tone.
@@ -897,7 +906,7 @@ export function SongMode({ onToneLabel, onImported, onEditTone }: { onToneLabel:
             })}
             <button className={`btn small${level === 'full' ? ' on' : ''}${levels?.track === track?.name && levels?.full ? ' done' : ''}`} disabled={!ready} onClick={() => startLevel('full')} aria-pressed={level === 'full'}>
               {levels?.track === track?.name && levels?.full ? '✓ ' : ''}
-              Whole song
+              Whole song{levels?.track === track?.name && levels?.ready ? ' · band-ready' : ''}
             </button>
             {level !== null && (
               <button className="link" onClick={() => startLevel(null)}>

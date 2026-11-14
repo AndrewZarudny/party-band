@@ -5,6 +5,8 @@ import type { Progress } from './types'
 import { lessonById } from './data'
 import { closestThirdStar, dayKey, isPassed, isPlateau, thirdStar, timingHabit } from './progress'
 import { strugglingList, weekKey } from './review'
+import { goalFacts } from './goal'
+import { loadLevels } from '../music/songLevels'
 
 const DAY = 86_400_000
 
@@ -57,6 +59,7 @@ export function weeklyFacts(p: Progress, now: Date, name: string | null) {
     timingHabits: [...perLesson.keys()].map((id) => ({ id, h: timingHabit(p.runs, id) })).filter((x) => x.h).map((x) => ({ lesson: title(x.id), usually: x.h!.dir, byMs: x.h!.ms })),
     thirdStars: [...perLesson.keys()].map((id) => ({ id, t: thirdStar(lessonById(id), p.lessons[id]) })).filter((x) => x.t && x.t.gap <= 8).map((x) => ({ lesson: title(x.id), pointsToGo: x.t!.gap })),
     focusThisWeek: weekFocus(p, now).map((f) => ({ lesson: title(f.id), why: f.why })),
+    songGoal: goalFacts((id) => isPassed(p, id), (id) => !!lessonById(id), loadLevels, now),
     instruction:
       'Write the weekly review: what improved last week, what is stuck and what that means, then this week\'s focus, naming the focusThisWeek lessons and why (the plan puts them first all week). "next" is the single most important thing for this week.',
   }

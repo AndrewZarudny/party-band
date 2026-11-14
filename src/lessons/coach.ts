@@ -5,7 +5,10 @@ import type { ApplyOutcome, Lesson, LessonResult, Progress, SessionPlan } from '
 import { bpmAt } from './speed'
 import type { SkillStats } from '../skills/data'
 import { lessonById } from './data'
-import { closestThirdStar, dayKey, nextLesson, timingHabit } from './progress'
+import { closestThirdStar, dayKey, isPassed, nextLesson, timingHabit } from './progress'
+import { goalFacts } from './goal'
+import { lastCheckIn, todayCheckIn } from './checkin'
+import { loadLevels } from '../music/songLevels'
 import { strugglingList, weekStatus } from './review'
 import { improvements, planDone, planPlayedSec, stepScore, stepTitle } from './session'
 import { pace } from './weeks'
@@ -35,6 +38,12 @@ export function coachFacts(p: Progress, stats: SkillStats, now: Date, moment: Co
     dino: p.dinoName,
     plan12Weeks: { headline: pc.headline, state: pc.state, advice: pc.advice.slice(0, 2) },
     closestThirdStar: closestThirdStar(p),
+    songGoal: goalFacts((id) => isPassed(p, id), (id) => !!lessonById(id), loadLevels, now),
+    // The player's own words after a session: how it felt, and anything they wanted the coach to know.
+    lastCheckIn: (() => {
+      const c = todayCheckIn(now) ?? lastCheckIn(now)
+      return c ? { day: c.day, felt: c.feel === 'easy' ? 'too easy' : c.feel === 'hard' ? 'too hard' : 'about right', note: c.note || null } : null
+    })(),
     week: { sessionsDone: ws.done, sessionGoal: ws.goal, weekStreak: ws.streak },
     daysSinceLastPractice: plan?.away ?? null,
     today: {

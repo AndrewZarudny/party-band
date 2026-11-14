@@ -51,6 +51,8 @@ import { levelCount, loadLevels } from '../music/songLevels'
 import { loadStats, onSkillRound } from '../skills/store'
 import type { MapSong, MapSongPart } from '../lessons/ui/LessonMap'
 import { partsOf, songPath } from '../music/songPath'
+import { loadGoal } from '../lessons/goal'
+import { lastCheckIn } from '../lessons/checkin'
 import { LessonMap } from '../lessons/ui/LessonMap'
 import { LessonIntro } from '../lessons/ui/LessonIntro'
 import { ResultCard } from '../lessons/ui/ResultCard'
@@ -352,12 +354,14 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
     let p = progress
     let changed = false
     // Song parts whose week is open, in map order.
-    const openParts = songParts.filter((sp) => stageOpen(p, sp.stage as StageId)).map((sp) => sp.id)
+    // The song goal's parts count as open whatever their week: it is the song you chose to work on.
+    const goal = loadGoal()
+    const openParts = songParts.filter((sp) => stageOpen(p, sp.stage as StageId) || (!!goal && sp.id.startsWith(`song:${goal.songId}:`))).map((sp) => sp.id)
     // Songs whose parts are learned (or that have none) and whose path goes on in Learn a song.
     const songsToPlay = (songs ?? [])
       .filter((sg) => songPath(partsOf(songParts, sg.id, (id) => isPassed(p, id)), sg.levels).next?.kind === 'song')
       .map((sg) => ({ id: sg.id, title: sg.title }))
-    const made = withTodayPlan(p, now, { unratedTake: unrated, stats: loadStats(), songParts: openParts, songsToPlay })
+    const made = withTodayPlan(p, now, { unratedTake: unrated, stats: loadStats(), songParts: openParts, songsToPlay, goalSongId: goal?.songId, lastFeel: lastCheckIn(now)?.feel })
     if (made) {
       p = made
       changed = true

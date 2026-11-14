@@ -47,6 +47,7 @@ import { dayNum } from '../heat'
 import { buildChart, jamChart } from '../charts'
 import { lessonById, registerLesson } from '../data'
 import { at, oldMapSave, rec, result } from './fixtures'
+import { lastCheckIn, saveCheckIn } from '../checkin'
 
 const NOW = at('2026-11-04') // a Wednesday; the week starts on Monday 2026-11-02
 const ctx = ctxDefault()
@@ -753,5 +754,49 @@ describe('the loop jam', () => {
 
   it('under two known chords: no loop jam', () => {
     expect(loopJam(newProgress(), 'w8-02')).toBeNull()
+  })
+})
+
+describe('the song goal in the plan', () => {
+  it("the goal song's parts come before another song's", () => {
+    registerLesson({ ...(lessonById('w1-02') as Lesson), id: 'song:other:0', title: 'Other: Verse', world: 4 })
+    registerLesson({ ...(lessonById('w1-02') as Lesson), id: 'song:goal:0', title: 'Goal: Verse', world: 4 })
+    const p = base([day('2026-11-02'), day('2026-11-03'), day('2026-11-04')])
+    const c = { ...ctx, songParts: ['song:other:0', 'song:goal:0'] }
+    expect(plan(p, at('2026-11-05'), c).plan.steps.find((s) => s.kind === 'song')?.lessonId).toBe('song:other:0')
+    expect(plan(p, at('2026-11-05'), { ...c, goalSongId: 'goal' }).plan.steps.find((s) => s.kind === 'song')?.lessonId).toBe('song:goal:0')
+  })
+
+  it('parts learned: the goal song is the one opened in Learn a song', () => {
+    const p = base([day('2026-11-02'), day('2026-11-03'), day('2026-11-04')])
+    const c = { ...ctx, songsToPlay: [{ id: 'a', title: 'A' }, { id: 'goal', title: 'Goal' }], goalSongId: 'goal' }
+    expect(plan(p, at('2026-11-05'), c).plan.steps.find((s) => s.kind === 'song')?.song).toEqual({ id: 'goal', title: 'Goal' })
+  })
+})
+
+describe('the check-in after a session', () => {
+  it('too hard: the next A session has no new lesson, mixed practice instead', () => {
+    const p = base()
+    expect(plan(p, NOW, ctx).plan.steps.some((s) => s.kind === 'new' && !s.consolidate)).toBe(true) // A session
+    const hard = plan(p, NOW, { ...ctx, lastFeel: 'hard' }).plan.steps
+    expect(hard.some((s) => s.kind === 'new')).toBe(false)
+    expect(hard.reduce((a, s) => a + s.min, 0)).toBe(30)
+  })
+
+  it('too easy: a B session gets a new lesson in place of its mix', () => {
+    const p = base([day('2026-11-02')]) // B: no new step
+    p.lessons['w1-03'].review = firstReview(0)
+    expect(plan(p, NOW, ctx).plan.steps.some((s) => s.kind === 'new')).toBe(false)
+    const easy = plan(p, NOW, { ...ctx, lastFeel: 'easy' }).plan.steps
+    expect(easy.find((s) => s.kind === 'new')?.why).toMatch(/too easy/)
+  })
+
+  it('kept per day; the last one before today is what today follows', () => {
+    localStorage.clear()
+    saveCheckIn({ day: '2026-11-02', feel: 'hard', note: '' })
+    saveCheckIn({ day: '2026-11-03', feel: 'easy', note: 'more please' })
+    saveCheckIn({ day: '2026-11-03', feel: 'right', note: 'actually fine' })
+    expect(lastCheckIn(at('2026-11-04'))).toEqual({ day: '2026-11-03', feel: 'right', note: 'actually fine' })
+    expect(lastCheckIn(at('2026-11-03'))?.feel).toBe('hard')
   })
 })

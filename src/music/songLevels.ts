@@ -7,6 +7,8 @@ export const LEVELS_PREFIX = 'song-levels:'
 export const PASS_PCT = 70
 /** Slowest speed a pass counts at; under it the run is practice. */
 export const PASS_SPEED = 70
+/** Band-ready: one run of the whole song at full tempo with this share of its notes hit. */
+export const BAND_READY_PCT = 85
 /** Fewer judged notes than this is too little to call a pass. */
 export const MIN_NOTES = 4
 const CHUNK = 8 // bars per level when the tab marks no sections
@@ -26,7 +28,8 @@ export interface SongLevels {
   track: string // the track the levels were played on
   total: number // sections in the song
   passed: Record<string, LevelRecord> // by section index
-  full?: LevelRecord // the whole song, start to end
+  full?: LevelRecord // the whole song, start to end (best share and best speed, kept apart)
+  ready?: LevelRecord // band-ready: the best one run of the whole song at full tempo with BAND_READY_PCT or more
 }
 
 /**
@@ -69,7 +72,11 @@ const better = (a: LevelRecord | undefined, b: LevelRecord): LevelRecord => (a ?
 export function withPass(l: SongLevels | null, track: string, total: number, index: number | 'full', run: LevelRecord): SongLevels {
   // Another track is another part: its levels start again.
   const base: SongLevels = l && l.track === track ? { ...l, total, passed: { ...l.passed } } : { track, total, passed: {} }
-  if (index === 'full') base.full = better(base.full, run)
+  if (index === 'full') {
+    base.full = better(base.full, run)
+    // Band-ready needs both in one run: full tempo and enough notes.
+    if (run.speed >= 100 && run.pct >= BAND_READY_PCT && (!base.ready || run.pct > base.ready.pct)) base.ready = run
+  }
   else base.passed[String(index)] = better(base.passed[String(index)], run)
   return base
 }
@@ -94,7 +101,7 @@ const rec = (v: unknown): LevelRecord | null => {
 export function parseLevels(raw: string | null): SongLevels | null {
   if (!raw) return null
   try {
-    const o = JSON.parse(raw) as { track?: unknown; total?: unknown; passed?: unknown; full?: unknown } | null
+    const o = JSON.parse(raw) as { track?: unknown; total?: unknown; passed?: unknown; full?: unknown; ready?: unknown } | null
     if (!o || typeof o.track !== 'string' || typeof o.total !== 'number') return null
     const passed: Record<string, LevelRecord> = {}
     if (o.passed && typeof o.passed === 'object') for (const [k, v] of Object.entries(o.passed as Record<string, unknown>)) {
@@ -104,6 +111,8 @@ export function parseLevels(raw: string | null): SongLevels | null {
     const out: SongLevels = { track: o.track, total: Math.max(0, Math.round(o.total)), passed }
     const full = rec(o.full)
     if (full) out.full = full
+    const ready = rec(o.ready)
+    if (ready) out.ready = ready
     return out
   } catch {
     return null

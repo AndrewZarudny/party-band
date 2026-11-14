@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { SkillStats } from '../data'
 import { dailyBest, emptyStats, fretTimeRows, lowerBetter, mergeStatsRaw, parseStats, record, skillXp } from '../data'
-import { MAX_LEN, MIN_LEN, gradePhrase, nextLength } from '../ear'
+import { MAX_LEN, MIN_LEN, gradePhrase, licksFrom, nextLength } from '../ear'
+import { STANDARD_TUNING } from '../../music/theory'
 import { barDrifts, cycleOk, STEADY_MS } from '../clock'
 import { widenAfter } from '../fret'
 import { CORE_PAIRS, RETIRE_AT, weakestPair } from '../chords'
@@ -203,5 +204,23 @@ describe('level rules', () => {
     expect(widenAfter(5, 8, 10)).toBe(5)
     expect(widenAfter(5, 9, 9)).toBe(5)
     expect(widenAfter(12, 20, 20)).toBe(12)
+  })
+})
+
+describe('ear training licks from your songs', () => {
+  const n = (string: number, fret: number, beat: number) => ({ string, fret, midi: STANDARD_TUNING[string] + fret, beat })
+
+  it('runs of single notes close in time, in one hand position, not one note repeated', () => {
+    const notes = [n(3, 5, 0), n(3, 7, 0.5), n(4, 5, 1), n(4, 8, 1.5), n(2, 7, 5), n(2, 5, 5.5)]
+    const licks = licksFrom(notes, 3)
+    expect(licks.map((l) => l.map((x) => x.fret))).toEqual([
+      [5, 7, 5],
+      [7, 5, 8],
+    ]) // the pause after beat 1.5 ends the phrase
+  })
+
+  it('a drop-tuned part leaves its low string out; one note repeated is no lick', () => {
+    expect(licksFrom([n(0, 3, 0), n(1, 5, 0.5), n(1, 7, 1)], 3, true)).toEqual([])
+    expect(licksFrom([n(2, 5, 0), n(2, 5, 0.5), n(2, 5, 1)], 3)).toEqual([])
   })
 })
