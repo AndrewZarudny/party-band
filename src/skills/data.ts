@@ -15,6 +15,7 @@ export type SkillStart =
   | { game: 'clock' }
   | { game: 'record'; band?: string }
   | { game: 'mental' } // pocket: lick in your head (the lessons screen shows it, not SkillsHome)
+  | { game: 'loop'; chords: string[]; bpm: number; key?: string; boxFret?: number } // jam over your own looped chords
 
 export interface SkillEntry {
   id: string

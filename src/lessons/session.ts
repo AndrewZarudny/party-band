@@ -7,8 +7,9 @@ import type { SkillEntry, SkillStats } from '../skills/data'
 import { bestKey, emptyStats } from '../skills/data'
 import { CHANGE_CHORDS, weakestPair } from '../skills/chords'
 import { ORDER, PLAN_PATH, lessonById, stageOf, weeksLabel } from './data'
-import { dayKey, daysAway, isPassed, isUnlocked, nextLesson, resting, trimLog } from './progress'
+import { dayKey, daysAway, isPassed, isUnlocked, nextLesson, resting, timingHabit, trimLog } from './progress'
 import { weekFocus } from './weekly'
+import { noteName } from '../music/theory'
 import { FULL_SPEED, autoSpeed, bpmAt, earnedTop } from './speed'
 import { drillTitle, heatReady, spotLabel, topSpots } from './heat'
 import { SESSION_MIN_SEC, coldSpeedFor, isCold, isReviewItem, reviewBrake, sessionNow, sessionOf, strugglingList, weekKey, weekStatus } from './review'
@@ -134,6 +135,27 @@ function drillPick(p: Progress, now: Date): Pick | null {
   const s = topSpots(p.heat, now, 1)[0]
   if (!s || s.score < DRILL_MIN_SCORE || !lessonById(s.lessonId)) return null
   return { id: s.lessonId, drill: s.key, why: `Your top trouble spot: ${spotLabel(s.key)}.` }
+}
+
+/**
+ * A warm-up aimed at a timing habit: the passed lesson, played in the last two weeks, with the biggest steady lean
+ * early or late (not one due a cold start, which must stay a first try). Null when no lesson has a habit.
+ */
+export function habitWarmup(p: Progress, now: Date): Pick | null {
+  let best: { id: string; dir: 'early' | 'late'; ms: number } | null = null
+  for (const [id, rec] of Object.entries(p.lessons)) {
+    const l = lessonById(id)
+    if (!l || !isPassed(p, id) || isCold(p, id, now) || now.getTime() - rec.lastPlayed > 14 * 86_400_000) continue
+    const h = timingHabit(p.runs, id)
+    if (h && (!best || h.ms > best.ms)) best = { id, dir: h.dir, ms: h.ms }
+  }
+  if (!best) return null
+  const title = lessonById(best.id)?.title ?? best.id
+  const why =
+    best.dir === 'early'
+      ? `Timing warm-up: you usually rush ${title} by about ${best.ms} ms. Play it relaxed and let every note wait for its click.`
+      : `Timing warm-up: you usually drag ${title} by about ${best.ms} ms. Have each fret ready early and pick right on the click.`
+  return { id: best.id, why }
 }
 
 /** Warm-ups never use an item due for a cold start: its first try today must be the cold test. */
@@ -284,6 +306,20 @@ function lessonStep(p: Progress, kind: StepKind, pick: Pick, min: number): Sessi
   return step
 }
 
+const LOOP_JAM_FROM = 15 // jam minutes from which a session has a loop jam too
+const LOOP_JAM_MIN = 8
+const LOOP_JAM_WHY = 'Record two bars of chords on the looper, then solo over your own loop: rhythm and lead together, like a band of one.'
+
+/** The loop jam's setup: two chords you know (A and D first, the blues pair) and the jam lesson's key, box and tempo. */
+export function loopJam(p: Progress, jamId: string): Extract<SessionStep['skill'], { game: 'loop' }> | null {
+  const known = knownChords(p)
+  if (known.length < 2) return null
+  const pick = ['A', 'D'].every((c) => known.includes(c)) ? ['A', 'D'] : known.slice(0, 2)
+  const l = lessonById(jamId)
+  const imp = l?.improv
+  return { game: 'loop', chords: pick, bpm: l?.bpm ?? 90, ...(imp ? { key: noteName(imp.key), boxFret: imp.boxFret } : {}) }
+}
+
 function skillStep(kind: StepKind, skill: SessionStep['skill'], why: string, min: number): SessionStep {
   return { kind, lessonId: null, skill, min, state: 'todo', why, from: { best: 0, stars: 0, speed: 1, loops: 0 } }
 }
@@ -312,7 +348,9 @@ export function makeSessionPlan(p: Progress, now: Date, ctx: PlanCtx): SessionPl
   for (const [kind, m] of TEMPLATES[min][shape]) {
     if (kind === 'warmup') {
       // A drill on an item due for a cold start would warm it up: then the plain warm-up instead.
-      const dp = drillPick(p, now)
+      // A timing habit first (the warm-up aimed at how you play), then the top trouble spot.
+      const hp = habitWarmup(p, now)
+      const dp = hp && !colds.includes(hp.id) ? hp : drillPick(p, now)
       const d = dp && !colds.includes(dp.id) ? dp : null
       const id = d ? null : (warmupList(p, now).find((x) => !used.has(x)) ?? null)
       if (d) {
@@ -377,7 +415,13 @@ export function makeSessionPlan(p: Progress, now: Date, ctx: PlanCtx): SessionPl
       // Only an early jam so far: the jam keeps its own minutes, the rest goes to guided work below.
       const extra = TASTE_IDS.includes(id) ? Math.min(0, extraJam) : extraJam
       spare = extraJam - extra
-      steps.push(lessonStep(p, 'jam', { id, why: jamWhy(p, id) }, m + extra))
+      const total = m + extra
+      // A long jam (a D session) gives 8 of its minutes to jamming over your own loop, once two chords are known.
+      const loop = total >= LOOP_JAM_FROM ? loopJam(p, id) : null
+      if (loop) {
+        steps.push(lessonStep(p, 'jam', { id, why: jamWhy(p, id) }, total - LOOP_JAM_MIN))
+        steps.push(skillStep('jam', loop, LOOP_JAM_WHY, LOOP_JAM_MIN))
+      } else steps.push(lessonStep(p, 'jam', { id, why: jamWhy(p, id) }, total))
     }
   }
 
@@ -467,6 +511,7 @@ export function stepTitle(s: SessionStep): string {
   if (s.skill?.game === 'changes') return s.skill.pair ? `One-minute changes: ${s.skill.pair}` : 'One-minute changes'
   if (s.skill?.game === 'find') return 'Fretboard notes'
   if (s.skill?.game === 'ear') return 'Call and response'
+  if (s.skill?.game === 'loop') return 'Jam over your own loop'
   return KIND_LABEL[s.kind]
 }
 
@@ -726,7 +771,9 @@ export function planAddTime(p: Progress, i: number, sec: number, now: Date): Tic
   const next = clone(p)
   const s = (next.plan as SessionPlan).steps[i]
   addSec(s, sec)
-  return tick(next, i, (s.runs ?? 0) > 0 && timeUp(s) && (s.kind !== 'mix' || new Set(s.played ?? []).size >= mixNeed(s)))
+  // A loop jam has no runs to count: its minutes are enough.
+  const played = (s.runs ?? 0) > 0 || s.skill?.game === 'loop'
+  return tick(next, i, played && timeUp(s) && (s.kind !== 'mix' || new Set(s.played ?? []).size >= mixNeed(s)))
 }
 
 export interface StepScore {

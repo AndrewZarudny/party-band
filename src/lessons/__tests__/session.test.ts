@@ -7,6 +7,8 @@ import {
   blockLine,
   clockText,
   extraOptions,
+  habitWarmup,
+  loopJam,
   jamPasses,
   mixNext,
   passSec,
@@ -701,5 +703,55 @@ describe('timing habits', () => {
     expect(timingHabit([run('a', 150), run('a', -140), run('a', 160), run('a', -150)], 'a')).toBeNull()
     expect(timingHabit([run('a', -150, 3), run('a', -150, 3), run('a', -150, 3)], 'a')).toBeNull()
     expect(timingHabit([run('b', -150), run('b', -150), run('b', -150)], 'a')).toBeNull() // another lesson's runs
+  })
+})
+
+describe('the timing-habit warm-up', () => {
+  const run = (id: string, mean: number): RunSample => ({ at: 1, id, bpm: 64, swing: false, mean, spread: 60, n: 10, tab: 'full', quiet: false, cold: false, clean: false, bend: null })
+
+  it('the passed lesson with the biggest steady lean warms you up, with a cue for its direction', () => {
+    const p = base()
+    p.lessons['w1-02'] = passed({ lastPlayed: at('2026-11-03').getTime() })
+    p.lessons['w1-04'] = passed({ lastPlayed: at('2026-11-03').getTime() })
+    p.runs = [run('w1-02', -150), run('w1-02', -120), run('w1-02', -90), run('w1-04', 60), run('w1-04', 70), run('w1-04', 50)]
+    const w = plan(p).plan.steps[0]
+    expect(w).toMatchObject({ kind: 'warmup', lessonId: 'w1-02' })
+    expect(w.why).toMatch(/rush String Roll Call by about 120 ms/)
+  })
+
+  it('no habit, or played over two weeks ago: the usual warm-up', () => {
+    const p = base()
+    p.lessons['w1-02'] = passed({ lastPlayed: at('2026-10-01').getTime() })
+    p.runs = [run('w1-02', -150), run('w1-02', -120), run('w1-02', -90)]
+    expect(habitWarmup(p, NOW)).toBeNull()
+    expect(plan(p).plan.steps[0].why).not.toMatch(/Timing warm-up/)
+  })
+})
+
+describe('the loop jam', () => {
+  it('a long jam gives 8 minutes to jamming over your own loop, set up with A and D and the jam lesson', () => {
+    const p = base([day('2026-11-02'), day('2026-11-03'), day('2026-11-04')]) // a D session: a 22-minute jam
+    p.lessons['w4-01'] = passed() // Power Pair: A, D and E power chords and more, known
+    const steps = plan(p, at('2026-11-05')).plan.steps
+    const loop = steps.find((s) => s.skill?.game === 'loop')
+    const jam = steps.find((s) => s.kind === 'jam' && s.lessonId)
+    expect(knownChords(p).length).toBeGreaterThanOrEqual(2)
+    expect(loop).toMatchObject({ kind: 'jam', min: 8 })
+    expect(stepTitle(loop!)).toBe('Jam over your own loop')
+    expect(jam!.min + loop!.min).toBe(22)
+    expect(steps.reduce((a, s) => a + s.min, 0)).toBe(30)
+  })
+
+  it('its block is done once its minutes are played (it has no rounds)', () => {
+    const p = base([day('2026-11-02'), day('2026-11-03'), day('2026-11-04')])
+    p.lessons['w4-01'] = passed()
+    const q = plan(p, at('2026-11-05'))
+    const i = q.plan.steps.findIndex((s) => s.skill?.game === 'loop')
+    expect(i).toBeGreaterThanOrEqual(0)
+    expect(planAddTime(q, i, 8 * 60, at('2026-11-05')).progress.plan!.steps[i].state).toBe('done')
+  })
+
+  it('under two known chords: no loop jam', () => {
+    expect(loopJam(newProgress(), 'w8-02')).toBeNull()
   })
 })

@@ -15,6 +15,8 @@ import { RunCoach } from './CoachCard'
 import { Dino } from './Dino'
 import { STAR } from './LessonMap'
 import { RestTimer } from './RestTimer'
+import { playBar, replayFor } from '../barReplay'
+import type { Chart } from '../types'
 import './timing.css'
 
 const COUNT_ORDER: Verdict[] = ['perfect', 'good', 'early', 'late', 'miss', 'wrong', 'clean-stop', 'ringing']
@@ -420,6 +422,7 @@ export function ResultCard({
           ) : (
             result.hardestBar !== null && <p className="ls-muted">Hardest bar: {result.hardestBar + 1}</p>
           )}
+          {result.hardestBar !== null && lesson.type !== 'improv' && <HearBar lesson={lesson} chart={chart} bar={result.hardestBar} />}
         </div>
 
         <div className="ls-result-col">
@@ -540,5 +543,28 @@ export function ResultCard({
         />
       )}
     </div>
+  )
+}
+
+/** The hardest bar played back: as you played it, then as written. Only after a run on the guitar (it was taped). */
+function HearBar({ lesson, chart, bar }: { lesson: Lesson; chart: Chart; bar: number }) {
+  const [replay] = useState(() => replayFor(lesson.id))
+  const [busy, setBusy] = useState(false)
+  const [gone, setGone] = useState(false)
+  if (!replay || gone) return null
+  return (
+    <button
+      className="ls-btn small ls-hear-bar"
+      disabled={busy}
+      onClick={() => {
+        setBusy(true)
+        void playBar(replay, lesson, chart, bar).then((ok) => {
+          setBusy(false)
+          if (!ok) setGone(true)
+        })
+      }}
+    >
+      {busy ? `Playing bar ${bar + 1}: you, then as written…` : `▶ Hear bar ${bar + 1}: you, then as written`}
+    </button>
   )
 }

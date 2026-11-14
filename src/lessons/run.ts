@@ -19,6 +19,7 @@ import { LeadVoice } from './synth'
 import { Judge, STRUM_SHIFT_MS, voteMidi, windowsFor } from './judge'
 import { ChainMeter, buildResult } from './scoring'
 import { TechSpotter, analyseImprov, chordPcs, noteKind, scalePcsOf } from './improv'
+import { RunTape, setLatestReplay } from './barReplay'
 
 const END_PAD_SEC = 0.4
 const END_GUARD_SEC = 0.2 // endAt(): a beat closer than this is already scheduled (lookahead 0.12 s)
@@ -94,6 +95,7 @@ export class LessonRun {
   private scalePcs: number[] = []
   private listenBars = new Set<number>()
   private endBeat = Infinity
+  private tape: RunTape | null = null
 
   constructor(o: RunOpts) {
     this.opts = o
@@ -180,6 +182,11 @@ export class LessonRun {
       const v: KeysVoicing | null = c ? keysVoicing(c, prev) : null
       if (v) prev = v.right
       voicings.push(v)
+    }
+    // On the guitar: tape the run, so the result card can play its hardest bar back.
+    if (useEngine && engine.output) {
+      this.tape = new RunTape()
+      void this.tape.start(ctx, engine.output).catch(() => (this.tape = null))
     }
     this.clock = new LessonClock()
     this.clock.run(ctx, {
@@ -323,6 +330,11 @@ export class LessonRun {
   }
 
   private release() {
+    if (this.tape && this.clock) {
+      this.tape.stop()
+      setLatestReplay({ lessonId: this.lesson.id, tape: this.tape, start: this.clock.start, secPerBeat: this.secPerBeat, offSec: this.offSec })
+      this.tape = null
+    }
     this.clock?.stop()
     cancelAnimationFrame(this.raf)
     this.raf = 0

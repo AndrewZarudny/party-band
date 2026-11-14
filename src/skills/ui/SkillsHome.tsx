@@ -9,11 +9,12 @@ import { InnerClock } from './InnerClock'
 import { RecordTakes } from './RecordTakes'
 import { EarGame } from './EarGame'
 import '../skills.css'
+import { LoopJam } from './LoopJam'
 
-type Screen = 'home' | 'find' | 'name' | 'changes' | 'clock' | 'record' | 'ear'
+type Screen = 'home' | 'find' | 'name' | 'changes' | 'clock' | 'record' | 'ear' | 'loop'
 
 interface Card {
-  id: Exclude<Screen, 'home'>
+  id: Exclude<Screen, 'home' | 'loop'>
   title: string
   text: string
   best: (b: Record<string, number>) => string | null
@@ -73,6 +74,8 @@ export function SkillsHome({ keyboard, onBack, onConnect, start }: { keyboard: b
   if (screen === 'clock') return <InnerClock keyboard={keyboard} onBack={leave} />
   if (screen === 'record') return <RecordTakes keyboard={keyboard} onBack={leave} band={band} />
   if (screen === 'ear') return <EarGame keyboard={keyboard} onBack={leave} />
+  if (screen === 'loop' && start?.game === 'loop')
+    return <LoopJam chords={start.chords} bpm={start.bpm} keyName={start.key} boxFret={start.boxFret} onBack={leave} />
 
   return (
     <section className="ls-panel sk-home" aria-labelledby="sk-home-h">

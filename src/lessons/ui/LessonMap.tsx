@@ -17,6 +17,7 @@ import { partsOf, songPath } from '../../music/songPath'
 import type { SongLevels } from '../../music/songLevels'
 import { pace } from '../weeks'
 import { CoachCard, WeeklyReview } from './CoachCard'
+import { ThenAndNow } from './ThenAndNow'
 import { Dino } from './Dino'
 import { TodayCard } from './TodayPlan'
 import { PocketCard, WeekDots, WeeklyNote } from './SessionCards'
@@ -365,6 +366,7 @@ export function LessonMap({
       )}
 
       <WeeklyReview progress={progress} />
+      <ThenAndNow progress={progress} />
       <CoachCard progress={progress} moment={setDone ? 'done' : 'open'} />
       {star3 && (
         <p className="sc-quiet-note ls-star3-goal">

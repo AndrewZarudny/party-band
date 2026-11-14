@@ -505,3 +505,12 @@
   background: var(--panel);
   font-size: var(--fs-sm);
 }
+
+/* Jam over your own loop (LoopJam.tsx): the steps above the looper. */
+.lessons .sk-loop-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding-left: 22px;
+  line-height: 1.45;
+}

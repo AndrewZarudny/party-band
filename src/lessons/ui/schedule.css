@@ -248,3 +248,27 @@
   letter-spacing: 0.1em;
   color: var(--accent);
 }
+
+/* Then & now on the Lessons home (ThenAndNow.tsx). */
+.lessons .ls-then-now {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.lessons .ls-then-now p {
+  margin: 0;
+}
+.lessons .ls-then-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.lessons .ls-rec-on {
+  background: #c9524a;
+  border-color: #c9524a;
+  color: #fff;
+}

@@ -11,7 +11,7 @@ import { swungBeat } from '../clock'
 import { applyResult, importProgress, nextLesson } from '../progress'
 import { autoSpeed, bpmAt, tempoStep } from '../speed'
 import { SESSION_GAPS, coldRun, isCold, sessionNow } from '../review'
-import { ctxDefault, newList, planAfterRun, planAfterSkill, withSessionDay, withTodayPlan } from '../session'
+import { planAddTime, ctxDefault, newList, planAfterRun, planAfterSkill, withSessionDay, withTodayPlan } from '../session'
 import { tabLevelFor } from '../listen'
 import {
   bendSeries,
@@ -117,6 +117,9 @@ describe('a week with an old save', () => {
           p = r.progress
           // a new item is practised blocked: two more clean runs earn its tempo
           if (step.kind === 'new') for (let i = 0; i < 2; i++) p = run(p, step.lessonId, now).progress
+        } else if (step.skill?.game === 'loop') {
+          // A loop jam has no rounds: it is done once its minutes are played.
+          p = planAddTime(p, plan.steps.indexOf(step), 3600, now).progress
         } else if (step.skill) {
           const g = step.skill.game
           const e: SkillEntry = { id: `${step.kind}-${now.getTime()}`, game: g === 'record' ? 'rate' : g === 'mental' ? 'find' : g, at: now.getTime(), score: 30, ...(step.skill.game === 'changes' && step.skill.pair ? { detail: step.skill.pair } : {}) }

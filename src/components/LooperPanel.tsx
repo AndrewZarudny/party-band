@@ -20,10 +20,10 @@ const STATUS: Record<string, string> = {
   stopped: 'Stopped',
 }
 
-export function LooperPanel({ jamBpm }: { jamBpm: number }) {
+export function LooperPanel({ jamBpm, startOpen = false }: { jamBpm: number; startOpen?: boolean }) {
   const lp = useLooper()
   const e = useEngineState()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(startOpen)
   const bars = lp.mode === 'bars'
   const busy = lp.state !== 'idle'
   const barsRecording = bars && lp.state === 'recording'
