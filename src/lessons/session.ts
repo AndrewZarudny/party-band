@@ -594,17 +594,23 @@ function pickSongPart(p: Progress, parts: string[]): { id: string; why: string }
  * part) take another of the player's song parts, or are skipped when there is none. `songParts`: the parts there
  * are now. Null when nothing changed. Steps keep their place, so a block in progress keeps its index.
  */
-export function withSongStepsFixed(p: Progress, songParts: string[]): Progress | null {
+export function withSongStepsFixed(p: Progress, songParts: string[], allParts: string[] = songParts): Progress | null {
   const plan = p.plan
   if (!plan) return null
+  // Gone: the part doesn't exist any more (its song was deleted). A part that only moved to a week not open yet
+  // (parts are spread over the weeks across all songs, so deleting a song moves the others) is still there.
+  const exists = new Set(allParts.filter((id) => !!lessonById(id)))
   const there = new Set(songParts.filter((id) => !!lessonById(id)))
-  const gone = (st: SessionStep) => st.kind === 'song' && st.state === 'todo' && !!st.lessonId && !there.has(st.lessonId)
-  if (!plan.steps.some(gone)) return null
+  const gone = (st: SessionStep) => st.kind === 'song' && st.state === 'todo' && !!st.lessonId && !exists.has(st.lessonId)
+  // Skipped by mistake as gone (by the earlier rule) while its part still exists: back on the plan.
+  const wronglySkipped = (st: SessionStep) => st.kind === 'song' && st.state === 'skipped' && st.why === GONE_WHY && !!st.lessonId && exists.has(st.lessonId)
+  if (!plan.steps.some((st) => gone(st) || wronglySkipped(st))) return null
   const inPlan = new Set(plan.steps.map((st) => st.lessonId).filter((id): id is string => !!id))
   const steps = plan.steps.map((st) => {
+    if (wronglySkipped(st)) return { ...lessonStep(p, 'song', { id: st.lessonId as string, why: 'A part of one of your songs. It starts slow; clean runs earn the tempo.' }, st.min), sec: st.sec }
     if (!gone(st)) return st
     const pick = pickSongPart(p, [...there].filter((id) => !inPlan.has(id)))
-    if (!pick) return { ...st, state: 'skipped' as const, why: 'That song is no longer in your library.' }
+    if (!pick) return { ...st, state: 'skipped' as const, why: GONE_WHY }
     inPlan.add(pick.id)
     const made = lessonStep(p, 'song', pick, st.min)
     // Time already played in this block still counts.
@@ -612,6 +618,8 @@ export function withSongStepsFixed(p: Progress, songParts: string[]): Progress |
   })
   return { ...p, plan: { ...plan, steps } }
 }
+
+const GONE_WHY = 'That song is no longer in your library.'
 
 export function planDone(plan: SessionPlan): boolean {
   const done = plan.steps.filter((s) => s.state === 'done').length

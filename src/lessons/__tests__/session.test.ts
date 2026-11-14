@@ -800,3 +800,19 @@ describe('the check-in after a session', () => {
     expect(lastCheckIn(at('2026-11-03'))?.feel).toBe('hard')
   })
 })
+
+describe('a song part that moved week is not gone', () => {
+  it("stays on the plan when its song still exists, even outside today's open weeks; a step skipped by mistake comes back", () => {
+    registerLesson({ ...(lessonById('w1-02') as Lesson), id: 'song:numb:0', title: 'Numb: Intro', world: 4 })
+    const p = base([day('2026-11-02'), day('2026-11-03'), day('2026-11-04')])
+    const q = plan(p, at('2026-11-05'), { ...ctx, songParts: ['song:numb:0'] })
+    const i = q.plan.steps.findIndex((s) => s.kind === 'song')
+    // Its week closed after a re-spread: not among the open parts, but the song still has it.
+    expect(withSongStepsFixed(q, [], ['song:numb:0'])).toBeNull()
+    // Skipped by the old rule: back on the plan.
+    const skipped = { ...q, plan: { ...q.plan, steps: q.plan.steps.map((s, j) => (j === i ? { ...s, state: 'skipped' as const, why: 'That song is no longer in your library.' } : s)) } }
+    expect(withSongStepsFixed(skipped, [], ['song:numb:0'])?.plan?.steps[i]).toMatchObject({ lessonId: 'song:numb:0', state: 'todo' })
+    // Really gone (not built at all): skipped, as before.
+    expect(withSongStepsFixed(q, [], [])?.plan?.steps[i].state).toBe('skipped')
+  })
+})

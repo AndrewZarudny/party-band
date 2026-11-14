@@ -366,7 +366,7 @@ export function LessonsMode({ onConnect, onOpenSong }: { onConnect: () => void; 
       changed = true
     }
     // A song deleted since the plan was made: its step takes another song part, or is skipped.
-    const fixed = withSongStepsFixed(p, openParts)
+    const fixed = withSongStepsFixed(p, openParts, songParts.map((sp) => sp.id))
     if (fixed) {
       p = fixed
       changed = true
