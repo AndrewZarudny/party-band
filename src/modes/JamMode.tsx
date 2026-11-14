@@ -42,6 +42,7 @@ import type { KeysVoicing } from '../music/parts'
 import { LooperPanel } from '../components/LooperPanel'
 import { setLooperBand, useLooper } from '../audio/looper'
 import { pickLick, songLicksIn } from '../music/songLicks'
+import { loadGoal } from '../lessons/goal'
 import { coachRunEnded, liveCoachOn, setCoachActions } from '../lessons/liveCoach'
 import type { CoachActions } from '../lessons/liveCoach'
 import type { JamSummary } from '../music/jamSummary'
@@ -933,6 +934,7 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
         </button>
       </div>
 
+      {view === 'jam' && <GoalSongBar current={songSel} onPlay={playSong} />}
       {view === 'jam' && jamDone && <JamSummaryCard s={jamDone.s} usual={jamDone.usual} onClose={() => setJamDone(null)} />}
       {view === 'jam' && <LooperPanel jamBpm={bpm} bandRunning={running} />}
 
@@ -1279,5 +1281,31 @@ function JamSummaryCard({ s, usual, onClose }: { s: JamSummary; usual: ReturnTyp
         </p>
       )}
     </section>
+  )
+}
+
+/** The song you're getting band-ready (the goal in Lessons): jam over its chords, or how to set it up here. */
+function GoalSongBar({ current, onPlay }: { current: SongSetup | null; onPlay: (sg: SongSetup) => void }) {
+  const goal = loadGoal()
+  if (!goal) return null
+  const norm = (t: string) => t.toLowerCase().replace(/\s*[-–(].*$/, '').trim()
+  const setup = loadLibrary().find((sg) => norm(sg.title) === norm(goal.title))
+  if (current && setup && libKey(current) === libKey(setup)) return <p className="hint jam-goal">Jamming over your goal song, {goal.title}.</p>
+  return (
+    <p className="hint jam-goal">
+      Your goal song: <b>{goal.title}</b>.{' '}
+      {setup ? (
+        <button className="btn small" onClick={() => onPlay(setup)}>
+          Jam over its chords
+        </button>
+      ) : (
+        <>
+          Set it up in Songs (from its tab, free) to jam over its chords.{' '}
+          <button className="btn small" onClick={() => window.dispatchEvent(new CustomEvent('fretwise-open-tab', { detail: 'songs' }))}>
+            Open Songs
+          </button>
+        </>
+      )}
+    </p>
   )
 }

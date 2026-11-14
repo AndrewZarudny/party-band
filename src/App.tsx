@@ -46,7 +46,21 @@ export default function App() {
       }
     }
     window.addEventListener('fretwise-open-tuner', toTuner)
-    return () => window.removeEventListener('fretwise-open-tuner', toTuner)
+    // Any tab, from inside another (Jam sends the player to Songs to set a song up).
+    const toTab = (ev: Event) => {
+      const m = (ev as CustomEvent<Mode>).detail
+      setMode(m)
+      try {
+        localStorage.setItem('mode', m)
+      } catch {
+        /* storage unavailable */
+      }
+    }
+    window.addEventListener('fretwise-open-tab', toTab)
+    return () => {
+      window.removeEventListener('fretwise-open-tuner', toTuner)
+      window.removeEventListener('fretwise-open-tab', toTab)
+    }
   }, [])
   // The header button already shows the active tone's name.
   const onToneLabel = useCallback(() => {}, [])
