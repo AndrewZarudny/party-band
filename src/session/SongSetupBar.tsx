@@ -363,7 +363,7 @@ function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () 
             . The best-rated Chords version is picked; UG's “Official” versions are part of its paid Pro plan.
           </p>
         )}
-        <textarea value={text} onChange={(e) => setText(e.target.value)} rows={12} placeholder={'[Verse 1]\n…\n\n[Chorus]\n…'} />
+        <textarea className={hasChords ? 'chords' : undefined} value={text} onChange={(e) => setText(e.target.value)} rows={12} placeholder={'[Verse 1]\n…\n\n[Chorus]\n…'} />
         <div className="lyrics-map">
           {song.form.map((name, i) => (
             <div key={i} className={matched[i] ? 'has' : ''}>
@@ -375,7 +375,7 @@ function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () 
           ))}
         </div>
         {hasChords && (
-          <label className="row">
+          <label className="lyrics-check">
             <input type="checkbox" checked={playChords} onChange={(e) => setPlayChords(e.target.checked)} />
             🎸 The band plays these chords (instead of the ones it has now), each where it stands over the words
           </label>

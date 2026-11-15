@@ -1853,6 +1853,9 @@ code {
   flex-direction: column;
   gap: 12px;
 }
+.dialog > * {
+  flex-shrink: 0; /* a tall dialog scrolls instead of squashing its text boxes and lists */
+}
 .dialog input:not([type]) {
   width: 100%;
   font-size: var(--fs-body);
@@ -2448,6 +2451,23 @@ code {
   padding: 10px;
   font: inherit;
   font-size: 14px;
+  min-height: 220px;
+  resize: vertical;
+}
+/* Chord sheets line their chords up by column: a fixed-width font keeps them over the right letters. */
+.lyrics-dialog textarea.chords {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 13px;
+  white-space: pre;
+}
+.lyrics-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.lyrics-check input {
+  margin-top: 3px;
+  flex-shrink: 0;
 }
 .lyrics-map {
   font-size: var(--fs-ui);
