@@ -39,7 +39,7 @@ export interface SongSetup {
   lyricWords?: (number[][] | null)[]
   vocalPhrases?: (number[] | null)[]
   // Auto-sync: when each word is sung, in seconds of the song's recording (per form entry, per line).
-  lyricSecs?: (number[][] | null)[]
+  lyricSecs?: ((number | null)[][] | null)[] // null: a word the aligner wasn't sure of
   // Measured from the user's recording (Analyse): each form entry's length in bars, the record's
   // chord per bar ("C" or "C|G"), and whether to play those instead of the setup's chords.
   // Played in another key for everyone: semitones up (+) or down (−) from the song's own key.
@@ -47,6 +47,8 @@ export interface SongSetup {
   formBars?: number[]
   barChords?: string[]
   useRecordedChords?: boolean
+  // Section lengths follow where the words are sung on the record (set by auto-sync and by a chord sheet's parts).
+  fitToWords?: boolean
   // The words were pasted with chords over them (from a chord site): the band plays those chords.
   wordChords?: boolean
 }

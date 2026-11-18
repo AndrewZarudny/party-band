@@ -10,7 +10,7 @@ const KINDS = 'intro|verse|pre[\\s-]?chorus|post[\\s-]?chorus|chorus|refrain|hoo
 const PLAIN = new RegExp(`^\\s*(?:\\(\\s*(${KINDS})\\b[^)\\n]*\\)|(${KINDS})(?:\\s*\\d+)?\\s*:?)\\s*$`, 'i')
 const KIND_IN = new RegExp(`\\b(${KINDS})\\b`, 'i')
 /** The section a heading line names (or its text, for labels like "[Instrumental]"), else null. */
-function headingKind(line: string): string | null {
+export function headingKind(line: string): string | null {
   const bracket = /^\s*\[([^\]\n]+)\]\s*:?\s*$/.exec(line)
   if (bracket && normChord(bracket[1])) return null // a chord on a line of its own, not a heading
   if (bracket) return KIND_IN.exec(bracket[1])?.[1] ?? bracket[1].trim()

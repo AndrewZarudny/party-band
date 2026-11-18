@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { Cost } from '../aiCost'
 import { costTag, describeCost, useAiStatus } from '../aiCost'
 import type { SongSetup } from '../music/songForm'
@@ -7,6 +7,8 @@ import { noteName, parseChord, pc, prefersFlats } from '../music/theory'
 import { matchLyrics, sungLines } from '../music/lyrics'
 import { chordsInWords, hasWordChords, inlineChords, isHeadingLine, shiftWordChords } from '../music/wordChords'
 import { keyFromChords } from '../music/keyGuess'
+import { sheetParts, songFromSheet } from '../music/sheetForm'
+import { remapSecs } from '../music/wordTiming'
 import { amdmSearchUrl, geniusSongUrl } from '../music/lyricsLinks'
 import { TabPicker } from './TabPicker'
 import type { UgSheet, UgVersion } from '../../server/ultimateGuitar'
@@ -114,10 +116,10 @@ export function SongSetupBar({
         <LyricsEditor
           song={song}
           onClose={() => setLyricsOpen(false)}
-          onSave={(lyrics, wordChords) => {
+          onSave={(next) => {
             // Chords pasted over the words: the band plays them, and they tell the song's key.
-            const key = wordChords ? keyFromChords(chordsInWords(lyrics)) : null
-            onUpdate({ ...song, lyrics, wordChords, ...(key ? { key: noteName(key.root, prefersFlats(key.root, key.minor)), minor: key.minor } : {}) })
+            const key = next.wordChords ? keyFromChords(chordsInWords(next.lyrics)) : null
+            onUpdate({ ...next, ...(key ? { key: noteName(key.root, prefersFlats(key.root, key.minor)), minor: key.minor } : {}) })
             setLyricsOpen(false)
           }}
         />
@@ -207,7 +209,7 @@ export function SongSetupBar({
 }
 
 /** Paste the song's words (from your songbook or lyrics source); they're matched to the form. */
-function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () => void; onSave: (lyrics: string[], wordChords: boolean) => void }) {
+function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () => void; onSave: (song: SongSetup) => void }) {
   const [text, setText] = useState(() => (song.lyrics ?? []).map((l, i) => (l ? `[${song.form[i]}]\n${l}` : '')).filter(Boolean).join('\n\n'))
   const solos = new Set(song.sections.filter((s) => s.solo).map((s) => s.name))
   // AI arrangement: line ranges per form entry, applied to the user's own text (the AI returns no words).
@@ -233,7 +235,14 @@ function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () 
   // Chord lines over the words (from a chord site) stay with the words, each chord at its letter.
   // A sheet written for a capo: its chords moved up to how the song sounds.
   const [capo, setCapo] = useState(0)
-  const blocks = matched.map((b) => shiftWordChords(inlineChords(b.split('\n').filter((l) => !isHeadingLine(l)).join('\n')), capo))
+  const toWords = (b: string) => shiftWordChords(inlineChords(b.split('\n').filter((l) => !isHeadingLine(l)).join('\n')), capo)
+  // A sheet with its own parts (UG's [Verse] [Chorus] [Instrumental]…): the song's form can follow it.
+  const parts = useMemo(() => sheetParts(text), [text])
+  const [followSheet, setFollowSheet] = useState(false)
+  const fromSheet = followSheet ? songFromSheet(song, parts, toWords) : null
+  const canFollow = !!songFromSheet(song, parts, (t) => t)
+  const blocks = fromSheet ? (fromSheet.lyrics ?? []) : matched.map(toWords)
+  const form = fromSheet ? fromSheet.form : song.form
   const hasChords = blocks.some(hasWordChords)
   const [playChords, setPlayChords] = useState(song.wordChords ?? true)
   const hasHeadings = /^\s*\[[^\]\n]+\]\s*$/m.test(text)
@@ -257,6 +266,7 @@ function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () 
         setText(r.sheet.text)
         setCapo(r.sheet.capo)
         setPlayChords(true)
+        setFollowSheet(true)
       }
     } catch (err) {
       const late = err instanceof DOMException && (err.name === 'TimeoutError' || err.name === 'AbortError')
@@ -364,9 +374,15 @@ function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () 
           </p>
         )}
         <textarea className={hasChords ? 'chords' : undefined} value={text} onChange={(e) => setText(e.target.value)} rows={12} placeholder={'[Verse 1]\n…\n\n[Chorus]\n…'} />
+        {canFollow && (
+          <label className="lyrics-check">
+            <input type="checkbox" checked={followSheet} onChange={(e) => setFollowSheet(e.target.checked)} />
+            Song parts in the sheet's order: {parts.map((p) => p.name || p.key).join(' → ')} (instead of {song.form.join(' → ')})
+          </label>
+        )}
         <div className="lyrics-map">
-          {song.form.map((name, i) => (
-            <div key={i} className={matched[i] ? 'has' : ''}>
+          {form.map((name, i) => (
+            <div key={i} className={blocks[i] ? 'has' : ''}>
               <span className="label">
                 {i + 1}. {name}
               </span>{' '}
@@ -388,7 +404,23 @@ function LyricsEditor({ song, onClose, onSave }: { song: SongSetup; onClose: () 
           </label>
         )}
         <div className="row">
-          <button className="btn primary" onClick={() => onSave(blocks, hasChords && playChords)}>
+          <button
+            className="btn primary"
+            onClick={() => {
+              const base: SongSetup = fromSheet ?? { ...song, lyrics: blocks }
+              // Times found on the record stay with the words they belong to, whatever the new line split or form.
+              const lyricSecs = remapSecs(song.lyrics, song.lyricSecs, base.lyrics)
+              // Tapped line times only stay for a part whose lines didn't change.
+              const same = (f: number) => !fromSheet && JSON.stringify(sungLines(song.lyrics?.[f])) === JSON.stringify(sungLines(blocks[f]))
+              onSave({
+                ...base,
+                wordChords: hasChords && playChords,
+                lyricSecs: lyricSecs.some(Boolean) ? lyricSecs : undefined,
+                lyricBeats: base.lyricBeats?.map((b, f) => (same(f) ? b : null)),
+                lyricWords: base.lyricWords?.map((w, f) => (same(f) ? w : null)),
+              })
+            }}
+          >
             Save lyrics
           </button>
           <button className="btn" onClick={onClose}>

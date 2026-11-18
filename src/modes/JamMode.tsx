@@ -26,6 +26,7 @@ import { keyFromChords } from '../music/keyGuess'
 import { AnalysisReview } from '../session/AnalysisReview'
 import type { AnalysisResult } from '../session/AnalysisReview'
 import type { RecordingEntry } from '../music/library'
+import { applySecs } from '../music/wordTiming'
 import { deleteRecording, getRecording, recordingId, saveRecording } from '../music/library'
 import { HostSession } from '../session/HostSession'
 import { HOST_ID } from '../session/hostId'
@@ -194,8 +195,22 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // The Songs tab plays the selected song; the Jam tab is free jamming.
-  const song = view === 'songs' ? songSel : null
+  // The song's original recording (the user's own file), when the band plays along with it.
+  const [rec, setRec] = useState<{ entry: RecordingEntry; buffer: AudioBuffer } | null>(null)
+  const [recOn, setRecOn] = useState(true)
+  // Playing along with the record: the record plays at its own speed, so the beat clock (and the words and
+  // chords on it) must run at the record's tempo. Any other tempo would drift off the record.
+  // (Loading the record or turning it on sets the tempo to the record's; the slider and voice commands are off.)
+  const recLocked = view === 'songs' && recOn && !!rec
+  // The Songs tab plays the selected song; the Jam tab is free jamming. With the record, the words' times
+  // (seconds on the record) give the karaoke beats and, when asked, the section lengths, on its current grid.
+  const songPicked = view === 'songs' ? songSel : null
+  const song = useMemo(() => {
+    if (!songPicked || !rec) return songPicked
+    const spb = 60 / rec.entry.bpm
+    const grid = { beat0: rec.entry.firstBeat + rec.entry.offsetMs / 1000 + rec.entry.beatShift * spb, spb }
+    return applySecs(songPicked, grid, rec.buffer.duration, (s) => songSegments(songSteps(s)))
+  }, [songPicked, rec])
   const steps = useMemo<Step[]>(() => {
     if (!song) return progressionSteps(progChords, beatsPerChord)
     const shift = song.transpose ?? 0
@@ -240,9 +255,6 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   // ---- Clock -------------------------------------------------------------
   const clock = useRef({ start: 0, timer: 0, raf: 0, nextEighth: 0, withRec: false, recSrc: null as AudioBufferSourceNode | null, finished: false })
 
-  // The song's original recording (the user's own file), when the band plays along with it.
-  const [rec, setRec] = useState<{ entry: RecordingEntry; buffer: AudioBuffer } | null>(null)
-  const [recOn, setRecOn] = useState(true)
   // The record's volume (0–1) and mute, kept between sessions; they apply live while it plays.
   const [recVol, setRecVol] = useState(() => {
     const v = Number(localStorage.getItem('rec-volume') ?? '1')
@@ -652,22 +664,8 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
   const loopIdx = loop && loop.song === songKey && loop.idx < segments.length ? loop.idx : null
   loopRef.current = loopIdx !== null ? { start: segments[loopIdx].start, beats: segments[loopIdx].beats } : null
   seekRef.current = seek
-  // Auto-synced words are kept in seconds of the recording; their beats follow the recording's
-  // current grid and the song's current sections, so later nudges or Analyse don't pull them off the record.
-  const timing = useMemo(() => {
-    if (!song?.lyricSecs || !rec) return { lyricBeats: song?.lyricBeats, lyricWords: song?.lyricWords }
-    const spb = 60 / rec.entry.bpm
-    const beat0 = rec.entry.firstBeat + rec.entry.offsetMs / 1000 + rec.entry.beatShift * spb
-    const lyricBeats = [...(song.lyricBeats ?? [])]
-    const lyricWords = [...(song.lyricWords ?? [])]
-    song.lyricSecs.forEach((lines, f) => {
-      const seg = segments.find((x) => x.formIdx === f)
-      if (!lines || !seg) return
-      lyricWords[f] = lines.map((l) => l.map((t) => Math.round(((t - beat0) / spb - seg.start) * 100) / 100))
-      lyricBeats[f] = lyricWords[f]!.map((l) => l[0])
-    })
-    return { lyricBeats, lyricWords }
-  }, [song, rec, segments])
+  // The words' beats (from the record's seconds, worked out above, or tapped).
+  const timing = useMemo(() => ({ lyricBeats: song?.lyricBeats, lyricWords: song?.lyricWords }), [song])
   const lyricLines = useMemo(() => lyricTimeline({ lyrics: song?.lyrics, vocalPhrases: song?.vocalPhrases, ...timing }, segments), [song, timing, segments])
   // The song sheet: chords over the words (pasted chords moved into the key everyone plays in).
   const sheet = useMemo(() => {
@@ -895,8 +893,8 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
     coachHere.current = true
     const acts: CoachActions = {
       ...(running ? { stop: { about: 'stop the band', run: () => stop() } } : { start: { about: 'start the band', run: () => void start() } }),
-      slower: { about: `the tempo 5 BPM slower (now ${bpm})`, run: () => setBpm((b) => Math.max(40, b - 5)) },
-      faster: { about: `the tempo 5 BPM faster (now ${bpm})`, run: () => setBpm((b) => Math.min(220, b + 5)) },
+      slower: { about: `the tempo 5 BPM slower (now ${bpm})`, run: () => !recLocked && setBpm((b) => Math.max(40, b - 5)) },
+      faster: { about: `the tempo 5 BPM faster (now ${bpm})`, run: () => !recLocked && setBpm((b) => Math.min(220, b + 5)) },
       phrase: { about: 'a new phrase to play', run: () => (setMode ? playFromSet(setIdx + 1) : newPhrase(false)) },
       ...(!auto ? { 'next-chord': { about: 'on to the next chord', run: () => nextManual(1) } } : {}),
     }
@@ -970,9 +968,10 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
         </label>
           </>
         )}
-        <label>
+        <label title={recLocked ? 'Playing along with the record: the tempo is the record’s. Turn the record off to change it.' : undefined}>
           BPM {Math.round(bpm * 10) / 10}
-          <input type="range" min={50} max={180} value={bpm} onChange={(e) => setBpm(Number(e.target.value))} />
+          {recLocked && ' · the record’s'}
+          <input type="range" min={50} max={180} value={bpm} disabled={recLocked} onChange={(e) => setBpm(Number(e.target.value))} />
         </label>
         {view === 'jam' && (
           <label>
@@ -1106,7 +1105,8 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
               : null
           }
           onAutoSync={(r) => {
-            const next = { ...song, lyricBeats: r.lyricBeats, lyricWords: r.lyricWords, lyricSecs: r.lyricSecs }
+            // The record's timing now sets where each part starts (sections follow the singing).
+            const next = { ...song, lyricSecs: r.lyricSecs, fitToWords: true }
             setSongState(next)
             localStorage.setItem('jam-song', JSON.stringify(next))
             saveToLibrary(next)
@@ -1134,6 +1134,8 @@ export function JamMode({ view = 'jam', active = true, suspend = false }: { view
               ...song,
               ...(k ? { key: noteName(k.root, prefersFlats(k.root, k.minor)), minor: k.minor } : {}),
               formBars: lengths ? analysis.formBars : song.formBars,
+              // Lengths measured from the music replace the ones fitted to the singing.
+              fitToWords: lengths ? false : song.fitToWords,
               barChords: analysis.barChords,
               useRecordedChords: useChords,
             }

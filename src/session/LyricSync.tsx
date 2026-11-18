@@ -45,7 +45,7 @@ export function LyricSync(props: {
       props.onAutoSync(r)
       setAuto({
         busy: false,
-        msg: `Placed ${r.placed} of ${r.total} words in ${r.sections} section${r.sections === 1 ? '' : 's'}${r.seconds ? ` (${Math.round(r.seconds)} s)` : ''}. Play it with the record and re-tap any line that's off.`,
+        msg: `Sure of ${r.placed} of ${r.total} words (the rest fill in between them); ${r.sections} sung part${r.sections === 1 ? '' : 's'} synced${r.seconds ? ` in ${Math.round(r.seconds)} s` : ''}. The song's parts now start where they're sung on the record. Play it with the record and re-tap any line that's off.`,
       })
     } catch (err) {
       setAuto({ busy: false, msg: err instanceof Error ? err.message : String(err), error: true })

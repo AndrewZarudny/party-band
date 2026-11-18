@@ -521,7 +521,7 @@ function runAlign(job: unknown): Promise<unknown> {
   fs.writeFileSync(jobFile, JSON.stringify(job))
   const models = path.resolve('.cache/models')
   return new Promise((resolve, reject) => {
-    const env = { ...process.env, PATH: `${BREW_BIN}:${process.env.PATH ?? ''}`, HF_HOME: models, TORCH_HOME: path.join(models, 'torch'), PYTORCH_ENABLE_MPS_FALLBACK: '1', TOKENIZERS_PARALLELISM: 'false' }
+    const env = { ...process.env, PATH: `${BREW_BIN}:${process.env.PATH ?? ''}`, HF_HOME: models, TORCH_HOME: path.join(models, 'torch'), PYTORCH_ENABLE_MPS_FALLBACK: '1', TOKENIZERS_PARALLELISM: 'false', HF_HUB_DISABLE_XET: '1', HF_HUB_DOWNLOAD_TIMEOUT: '60' } // the Xet downloader can stall on a model's first download
     execFile(ALIGN_PY, [ALIGN_SCRIPT, jobFile], { env, maxBuffer: 64 * 1024 * 1024, timeout: 15 * 60 * 1000 }, (err, stdout, stderr) => {
       fs.rm(jobFile, () => {})
       if (stderr) console.log(`[fretwise] align: ${stderr.trim().split('\n').slice(-6).join(' | ')}`)
